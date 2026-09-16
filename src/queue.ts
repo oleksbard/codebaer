@@ -36,7 +36,7 @@ export class Queue {
       <div class="tabs"><button class="tab" data-tab="changes">Changes</button><button class="tab" data-tab="files">Files</button></div>
       <div class="list" tabindex="0"></div>
       <div class="commit">
-        <textarea id="commit-message" placeholder="Commit message" aria-label="Commit message"></textarea>
+        <textarea id="commit-message" rows="1" placeholder="Commit message" aria-label="Commit message"></textarea>
         <div class="bar"><span class="hint"></span><span class="r"><button class="ico" id="ai-btn" title="Write the commit message with Claude" aria-label="Write the commit message with Claude" disabled>${SPARKLE}</button><button class="btn primary" id="commit-btn" disabled>Commit <kbd>⌘↩</kbd></button></span></div>
       </div>`;
     this.list = root.querySelector('.list')!;
@@ -48,6 +48,7 @@ export class Queue {
     });
     root.querySelector('#commit-btn')!.addEventListener('click', () => h.commit(this.message()));
     root.querySelector('#ai-btn')!.addEventListener('click', () => h.aiMessage());
+    this.msg.addEventListener('input', () => this.fit());
     this.msg.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); h.commit(this.message()); }
     });
@@ -92,6 +93,7 @@ export class Queue {
   render(q: { unstaged: Row[]; staged: Row[] }, files: string[], selectedKey: string | null, tab: Tab): void {
     this.root.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset.tab === tab));
     this.commitBox.hidden = tab !== 'changes';
+    this.fit();
     this.rows.clear();
     for (const d of this.list.querySelectorAll<HTMLDetailsElement>('details[data-sec]')) this.open[d.dataset.sec as Section] = d.open;
     if (tab === 'files') {
@@ -133,8 +135,13 @@ export class Queue {
   focusCommit(): void { this.msg.focus(); }
   focusList(): void { this.list.focus(); }
   message(): string { return this.msg.value.trim(); }
-  clearMessage(): void { this.msg.value = ''; }
-  setMessage(text: string): void { this.msg.value = text; }
+  clearMessage(): void { this.msg.value = ''; this.fit(); }
+  setMessage(text: string): void { this.msg.value = text; this.fit(); }
   setAiBusy(on: boolean): void { this.aiBusy = on; this.root.querySelector('#ai-btn')!.classList.toggle('busy', on); this.updateAi(); }
+  private fit(): void {
+    if (this.commitBox.hidden) return;
+    this.msg.style.height = 'auto';
+    this.msg.style.height = `${this.msg.scrollHeight + this.msg.offsetHeight - this.msg.clientHeight}px`;
+  }
   private updateAi(): void { (this.root.querySelector('#ai-btn') as HTMLButtonElement).disabled = this.staged === 0 || this.aiBusy; }
 }

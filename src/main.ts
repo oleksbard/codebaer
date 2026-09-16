@@ -54,12 +54,35 @@ document.getElementById('app')!.innerHTML = `
       <span class="spin" id="spin"></span><button class="kbtn" id="cancel-btn" hidden>Cancel</button><span id="repo-name"></span></div>
     <div class="right"><button class="kbtn" id="palette-btn">Commands <kbd>⌘⇧P</kbd></button></div>
   </header>
-  <aside class="side" id="side"></aside>
+  <aside class="side" id="side"></aside><div class="gutter" id="gutter"></div>
   <main class="main"><div class="tbar" id="tbar"></div><div id="banner"></div><div class="editor-host" id="host"></div><div class="blank" id="blank"></div></main>
   <footer class="foot"><span id="queue-info"></span><span class="save" id="save-info"></span></footer>
 </div>`;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+if (localStorage.getItem('codebaer.sidebarHidden') === 'true') $('shell').classList.add('nosidebar');
+const sideW = localStorage.getItem('codebaer.sideWidth');
+if (sideW) $('shell').style.setProperty('--side-w', `${Math.max(180, Number(sideW))}px`);
+$('gutter').addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const g = e.currentTarget as HTMLElement;
+  g.setPointerCapture(e.pointerId);
+  let w = 0;
+  const move = (ev: PointerEvent) => {
+    w = Math.max(180, Math.min(globalThis.innerWidth - 400, Math.round(ev.clientX)));
+    $('shell').style.setProperty('--side-w', `${w}px`);
+  };
+  const done = () => {
+    g.removeEventListener('pointermove', move);
+    g.removeEventListener('pointerup', done);
+    g.removeEventListener('pointercancel', done);
+    if (w) localStorage.setItem('codebaer.sideWidth', String(w));
+  };
+  g.addEventListener('pointermove', move);
+  g.addEventListener('pointerup', done);
+  g.addEventListener('pointercancel', done);
+});
 export const view = new EditorView({ state: EditorState.create({ doc: '' }), parent: $('host') });
 const queue = new Queue($('side'), {
   openRow: (row) => void openRow(row),
@@ -649,7 +672,7 @@ function dispatch(a: Action): void {
     nextFile: () => nextFile(1), prevFile: () => nextFile(-1),
     quickOpen, palette,
     save: () => { if (S.open?.dirty) void flush(); },
-    toggleSidebar: () => $('shell').classList.toggle('nosidebar'),
+    toggleSidebar: () => localStorage.setItem('codebaer.sidebarHidden', String($('shell').classList.toggle('nosidebar'))),
     focusList: () => queue.focusList(),
     focusEditor: () => view.focus(),
     focusCommit: () => { S.tab = 'changes'; renderQueue(); queue.focusCommit(); },

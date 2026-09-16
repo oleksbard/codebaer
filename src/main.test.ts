@@ -6,6 +6,8 @@ import type { Blob, FileText, Status } from './git';
 const rangeProto = Range.prototype as unknown as Record<string, unknown>;
 rangeProto.getClientRects = () => [];
 rangeProto.getBoundingClientRect = () => new DOMRect();
+// jsdom has PointerEvent but no pointer capture
+HTMLElement.prototype.setPointerCapture ??= () => {};
 
 vi.mock('./git', async () => {
   const actual = await vi.importActual<typeof import('./git')>('./git');
@@ -189,5 +191,24 @@ describe('the two special reject cases', () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(g.revertPath!).not.toHaveBeenCalled();
     expect(g.writeFile!).not.toHaveBeenCalled();
+  });
+});
+
+describe('sidebar resize', () => {
+  it('follows the pointer between 180px and window width minus 400px and stores the width on release', () => {
+    const g = document.getElementById('gutter')!;
+    const shell = document.getElementById('shell')!;
+    const ev = (type: string, clientX = 0) => g.dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX }));
+    ev('pointerdown', 272);
+    ev('pointermove', 340);
+    expect(shell.style.getPropertyValue('--side-w')).toBe('340px');
+    ev('pointermove', 20);
+    expect(shell.style.getPropertyValue('--side-w')).toBe('180px');
+    ev('pointermove', 5000);
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
+    ev('pointerup');
+    expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(globalThis.innerWidth - 400));
+    ev('pointermove', 300);
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
   });
 });

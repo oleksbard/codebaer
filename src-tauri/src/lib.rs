@@ -46,7 +46,22 @@ pub fn run_app() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // the plugin saves is_visible(), which macOS reports false for a minimized window;
+                // with VISIBLE on, quitting while minimized would keep the next launch hidden
+                .with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::VISIBLE)
+                .build(),
+        )
         .manage(git::AppState::new())
+        .setup(|app| {
+            // config windows are built and their saved state restored before setup runs
+            if let Some(w) = app.get_webview_window("main") {
+                w.show()?;
+                w.set_focus()?;
+            }
+            Ok(())
+        })
         .enable_macos_default_menu(false)
         .menu(|app| {
             let app_menu = Submenu::with_items(app, "CodeBär", true, &[

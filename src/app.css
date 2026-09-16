@@ -9,8 +9,9 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 button:focus-visible,textarea:focus-visible,input:focus-visible,.list:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 kbd{font:11px var(--mono);color:var(--muted);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
 .fatal{display:grid;place-items:center;height:100%;font-size:15px;color:var(--del)}
-.app{height:100%;display:grid;grid-template-rows:38px minmax(0,1fr) 26px;grid-template-columns:272px minmax(0,1fr);grid-template-areas:"head head" "side main" "foot foot"}
-.app.nosidebar{grid-template-columns:0 minmax(0,1fr)} .app.nosidebar .side{display:none}
+.app{height:100%;display:grid;grid-template-rows:38px minmax(0,1fr) 26px;grid-template-columns:min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);grid-template-areas:"head head" "side main" "foot foot"}
+.app.nosidebar{grid-template-columns:0 minmax(0,1fr)} .app.nosidebar .side,.app.nosidebar .gutter{display:none}
+.gutter{grid-area:side;justify-self:end;width:7px;margin-right:-3px;cursor:col-resize;z-index:1} .gutter:hover{background:var(--accent-soft)}
 .head{grid-area:head;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:600}
 .brand img{width:22px;height:22px;border-radius:6px}
@@ -51,7 +52,7 @@ summary.sec.d{text-transform:none;letter-spacing:0;font-size:12px}
 .ico:hover{background:var(--line);color:var(--text)} .ico:disabled{opacity:.35;pointer-events:none}
 .empty-sec{padding:6px 16px 10px;color:var(--faint);font-size:12px}
 .commit{border-top:1px solid var(--line);padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
-.commit textarea{resize:none;height:64px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:12.5px/1.4 var(--ui);padding:7px 9px}
+.commit textarea{resize:none;max-height:calc(11.2em + 16px)/* 8 lines at 1.4 line-height, plus padding and border */;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:12.5px/1.4 var(--ui);padding:7px 9px}
 .commit .bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .commit .hint{color:var(--faint);font-size:11px}
 .commit .r{display:flex;align-items:center;gap:6px} .commit .ico{width:26px;height:26px}
