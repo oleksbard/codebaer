@@ -9,10 +9,13 @@ export type QueueHandlers = {
   revertFile(path: string): void;
   unstageFile(path: string): void;
   commit(message: string): void;
+  aiMessage(): void;
   setTab(tab: Tab): void;
   stageAll(): void;
   unstageAll(): void;
 };
+
+const SPARKLE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M6.5 1Q7.1 5.4 11.5 6.5Q7.1 7.6 6.5 12Q5.9 7.6 1.5 6.5Q5.9 5.4 6.5 1z"/><path d="M12.5 9.5Q12.8 11.7 15 12.2Q12.8 12.7 12.5 15Q12.2 12.7 10 12.2Q12.2 11.7 12.5 9.5z"/></svg>';
 
 const split = (p: string): [string, string] => {
   const i = p.lastIndexOf('/');
@@ -25,6 +28,8 @@ export class Queue {
   private msg: HTMLTextAreaElement;
   private rows = new Map<string, Row>();
   private open: Record<Section, boolean> = { unstaged: true, staged: true };
+  private staged = 0;
+  private aiBusy = false;
 
   constructor(private root: HTMLElement, private h: QueueHandlers) {
     root.innerHTML = `
@@ -32,7 +37,7 @@ export class Queue {
       <div class="list" tabindex="0"></div>
       <div class="commit">
         <textarea id="commit-message" placeholder="Commit message" aria-label="Commit message"></textarea>
-        <div class="bar"><span class="hint"></span><button class="btn primary" id="commit-btn" disabled>Commit <kbd>⌘↩</kbd></button></div>
+        <div class="bar"><span class="hint"></span><span class="r"><button class="ico" id="ai-btn" title="Write the commit message with Claude" aria-label="Write the commit message with Claude" disabled>${SPARKLE}</button><button class="btn primary" id="commit-btn" disabled>Commit <kbd>⌘↩</kbd></button></span></div>
       </div>`;
     this.list = root.querySelector('.list')!;
     this.commitBox = root.querySelector('.commit')!;
@@ -42,6 +47,7 @@ export class Queue {
       if (b) h.setTab(b.dataset.tab as Tab);
     });
     root.querySelector('#commit-btn')!.addEventListener('click', () => h.commit(this.message()));
+    root.querySelector('#ai-btn')!.addEventListener('click', () => h.aiMessage());
     this.msg.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); h.commit(this.message()); }
     });
@@ -119,6 +125,8 @@ export class Queue {
       sec('staged', 'Staged', q.staged, 'Accepted hunks land here', 'unstage', 'Unstage all changes', '', '−');
     const n = q.staged.length;
     (this.root.querySelector('#commit-btn') as HTMLButtonElement).disabled = n === 0;
+    this.staged = n;
+    this.updateAi();
     this.root.querySelector('.hint')!.textContent = n ? `${n} file${n > 1 ? 's' : ''} staged` : 'Nothing staged yet';
   }
 
@@ -126,4 +134,7 @@ export class Queue {
   focusList(): void { this.list.focus(); }
   message(): string { return this.msg.value.trim(); }
   clearMessage(): void { this.msg.value = ''; }
+  setMessage(text: string): void { this.msg.value = text; }
+  setAiBusy(on: boolean): void { this.aiBusy = on; this.root.querySelector('#ai-btn')!.classList.toggle('busy', on); this.updateAi(); }
+  private updateAi(): void { (this.root.querySelector('#ai-btn') as HTMLButtonElement).disabled = this.staged === 0 || this.aiBusy; }
 }

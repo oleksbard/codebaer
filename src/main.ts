@@ -68,6 +68,7 @@ const queue = new Queue($('side'), {
   revertFile: (path) => void rejectFile(path),
   unstageFile: (path) => void guarded('unstagePath', () => git.unstagePath(path)),
   commit: (msg) => void commit(msg),
+  aiMessage: () => void aiMessage(),
   setTab: (tab) => void setTab(tab),
   stageAll: () => void guarded('stageAll', () => git.stageAll()),
   unstageAll: () => void guarded('unstageAll', () => git.unstageAll()),
@@ -516,6 +517,18 @@ async function commit(msg: string): Promise<void> {
     toast(errText(e), 'err');
   }
   void refresh();
+}
+
+async function aiMessage(): Promise<void> {
+  queue.setAiBusy(true);
+  try {
+    queue.setMessage(await git.aiCommitMessage());
+    queue.focusCommit();
+  } catch (e) {
+    toast(errText(e), 'err');
+  } finally {
+    queue.setAiBusy(false);
+  }
 }
 
 async function network(name: 'push' | 'pull'): Promise<void> {

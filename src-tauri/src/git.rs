@@ -109,14 +109,24 @@ pub fn run_raw(
     timeout: Option<Duration>,
     pid_slot: Option<&Mutex<Option<u32>>>,
 ) -> Result<Out, AppError> {
-    let start = Instant::now();
     let mut cmd = Command::new("git");
     cmd.args(args)
         .current_dir(root)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
-        .env_remove("GIT_SSH_COMMAND")
-        .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+        .env_remove("GIT_SSH_COMMAND");
+    run_child(cmd, stdin, timeout, pid_slot)
+}
+
+/// Runs the command in its own process group so a timeout kills its children too.
+pub fn run_child(
+    mut cmd: Command,
+    stdin: Option<&[u8]>,
+    timeout: Option<Duration>,
+    pid_slot: Option<&Mutex<Option<u32>>>,
+) -> Result<Out, AppError> {
+    let start = Instant::now();
+    cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
@@ -151,7 +161,7 @@ pub fn run_raw(
     let stdout = drain(out_rx);
     let stderr = String::from_utf8_lossy(&drain(err_rx)).trim().to_string();
     let code = status.code().unwrap_or(-1);
-    log::debug!("git {:?} -> {} in {:?}", args, code, start.elapsed());
+    log::debug!("{:?} {:?} -> {} in {:?}", cmd.get_program(), cmd.get_args().collect::<Vec<_>>(), code, start.elapsed());
     Ok(Out { code, stdout, stderr })
 }
 

@@ -54,6 +54,8 @@ summary.sec.d{text-transform:none;letter-spacing:0;font-size:12px}
 .commit textarea{resize:none;height:64px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:12.5px/1.4 var(--ui);padding:7px 9px}
 .commit .bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .commit .hint{color:var(--faint);font-size:11px}
+.commit .r{display:flex;align-items:center;gap:6px} .commit .ico{width:26px;height:26px}
+.ico.busy:disabled{opacity:1;color:var(--accent)} .ico.busy svg{animation:spin 1.2s linear infinite}
 .btn{padding:5px 10px;border-radius:6px;border:1px solid var(--line);color:var(--text);font-size:12px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
 .btn:hover{background:var(--panel2)}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}

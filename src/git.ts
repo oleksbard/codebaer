@@ -25,7 +25,7 @@ export type Status = {
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
 
 export type AppError =
-  | { kind: 'Git' | 'Io' | 'InvalidPath'; detail: string }
+  | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
   | { kind: 'Stale'; detail: FileText }
   | { kind: 'Timeout' | 'Cancelled' | 'NotARepo' | 'StaleIndex' | 'NotUtf8' | 'Binary' | 'TooLarge' | 'Special' | 'Conflicted' };
 
@@ -75,6 +75,7 @@ export const git = {
   discardPreview: () => invoke<string[]>('discard_preview'),
   discardAll: () => invoke<void>('discard_all'),
   commit: (message: string) => invoke<void>('commit', { message }),
+  aiCommitMessage: () => invoke<string>('ai_commit_message'),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   push: () => invoke<void>('push'),

@@ -744,3 +744,9 @@ fn run_net_refuses_a_second_concurrent_network_command() {
     let res = t.join().unwrap();
     assert_eq!(res.unwrap_err(), AppError::Cancelled);
 }
+
+#[test]
+fn ai_commit_message_needs_staged_changes() {
+    let d = repo();
+    assert!(matches!(codebaer_lib::ai::commit_message_impl(d.path()), Err(AppError::Ai(_))));
+}

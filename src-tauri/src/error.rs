@@ -16,6 +16,7 @@ pub enum AppError {
     TooLarge,
     Special,
     Conflicted,
+    Ai(String),
 }
 
 impl From<std::io::Error> for AppError {

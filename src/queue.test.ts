@@ -12,7 +12,7 @@ let q: Queue;
 beforeEach(() => {
   document.body.innerHTML = '<div id="side"></div>';
   root = document.getElementById('side')!;
-  h = { openRow: vi.fn(), openPlain: vi.fn(), stageFile: vi.fn(), revertFile: vi.fn(), unstageFile: vi.fn(), commit: vi.fn(), setTab: vi.fn(), stageAll: vi.fn(), unstageAll: vi.fn() };
+  h = { openRow: vi.fn(), openPlain: vi.fn(), stageFile: vi.fn(), revertFile: vi.fn(), unstageFile: vi.fn(), commit: vi.fn(), aiMessage: vi.fn(), setTab: vi.fn(), stageAll: vi.fn(), unstageAll: vi.fn() };
   q = new Queue(root, h as unknown as QueueHandlers);
 });
 
@@ -118,5 +118,30 @@ describe('sections', () => {
     render([row('a', 'M')], [], 'unstaged:a');
     list.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(h.openRow).not.toHaveBeenCalled();
+  });
+});
+
+describe('AI commit message button', () => {
+  const btn = () => root.querySelector<HTMLButtonElement>('#ai-btn')!;
+
+  it('is disabled with nothing staged and enabled once something is', () => {
+    render([]);
+    expect(btn().disabled).toBe(true);
+    render([], [row('a.ts', 'M', 'staged')]);
+    expect(btn().disabled).toBe(false);
+  });
+
+  it('click asks for a message, busy disables it, setMessage fills the box', () => {
+    render([], [row('a.ts', 'M', 'staged')]);
+    btn().click();
+    expect(h.aiMessage).toHaveBeenCalledTimes(1);
+    q.setAiBusy(true);
+    expect(btn().disabled).toBe(true);
+    expect(btn().classList.contains('busy')).toBe(true);
+    q.setAiBusy(false);
+    expect(btn().disabled).toBe(false);
+    expect(btn().classList.contains('busy')).toBe(false);
+    q.setMessage('Fix the thing');
+    expect(q.message()).toBe('Fix the thing');
   });
 });

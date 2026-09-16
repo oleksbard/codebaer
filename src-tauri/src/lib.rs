@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod error;
 pub mod eol;
 pub mod git;
@@ -59,7 +60,7 @@ pub fn run_app() {
             ])?;
             Menu::with_items(app, &[&app_menu, &window])
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::cancel])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::cancel, ai::ai_commit_message])
         .run(tauri::generate_context!())
         .expect("error while running CodeBär");
 }
