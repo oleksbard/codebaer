@@ -105,7 +105,7 @@ function renderTitle() {
     $('host').hidden = true;
     blank.hidden = false;
     const n = S.status ? buildQueue(S.status).unstaged.length : 0;
-    blank.innerHTML = `<div><img src="/icon.png" alt=""><h2>${n ? `${n} files to review` : 'Nothing left to review'}</h2><p>${n ? 'Pick a file on the left, or press ⌥F5 to start at the first hunk.' : 'Write a message and commit with ⌘↩, or wait for the agent.'}</p></div>`;
+    blank.innerHTML = `<div><img src="/logo.png" alt=""><h2>${n ? `${n} files to review` : 'Nothing left to review'}</h2><p>${n ? 'Pick a file on the left, or press ⌥F5 to start at the first hunk.' : 'Write a message and commit with ⌘↩, or wait for the agent.'}</p></div>`;
     return;
   }
   const [dir, name] = (() => { const i = o.path.lastIndexOf('/'); return i < 0 ? ['', o.path] : [o.path.slice(0, i + 1), o.path.slice(i + 1)]; })();
