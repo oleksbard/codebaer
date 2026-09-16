@@ -92,7 +92,7 @@ export class Queue {
       const dirs = new Map<string, string[]>();
       for (const p of files) { const [d] = split(p); (dirs.get(d) ?? dirs.set(d, []).get(d)!).push(p); }
       this.list.innerHTML = [...dirs.keys()].sort().map((d) =>
-        `<details open><summary class="d">${esc(d || '/')}</summary>${dirs.get(d)!.map((p) =>
+        `<details open><summary class="sec d"><span class="l">${esc(d || '/')}</span></summary>${dirs.get(d)!.map((p) =>
           `<div class="row f ${selectedKey === `plain:${p}` ? 'sel' : ''}" data-key="plain:${esc(p)}" data-path="${esc(p)}" data-plain><span class="path"><span class="name">${esc(split(p)[1])}</span></span></div>`).join('')}</details>`).join('');
       return;
     }

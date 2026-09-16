@@ -35,7 +35,7 @@ details:not([open])>.sec .l::before{content:'▸'}
 .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 10px 4px 14px;cursor:pointer;border-left:2px solid transparent;min-height:26px}
 .row:hover{background:var(--panel2)} .row.sel{background:var(--sel);border-left-color:var(--accent)}
 .row.f{grid-template-columns:minmax(0,1fr);padding-left:32px}
-summary.d{color:var(--muted);padding:5px 16px;font-size:12px;cursor:pointer;list-style:none}
+summary.sec.d{text-transform:none;letter-spacing:0;font-size:12px}
 .path{display:flex;align-items:baseline;gap:6px;min-width:0}
 .path .name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .path .dir{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px}
