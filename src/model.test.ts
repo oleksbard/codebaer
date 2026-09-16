@@ -4,7 +4,7 @@ import type { FileEntry, Status } from './git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
-const status = (files: FileEntry[]): Status => ({ head: 'abc', branch: 'main', ahead: 0, behind: 0, files });
+const status = (files: FileEntry[]): Status => ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files });
 
 describe('buildQueue', () => {
   it('splits MM into both sections and keeps conflicts out of staged', () => {

@@ -17,6 +17,7 @@ export type FileEntry = {
 export type Status = {
   head: string | null;
   branch: string | null;
+  upstream: string | null;
   ahead: number;
   behind: number;
   files: FileEntry[];

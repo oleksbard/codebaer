@@ -85,7 +85,7 @@ function renderHeader() {
   const st = S.status;
   if (!st) return;
   $('branch-name').textContent = st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
-  $('ab').textContent = `↑${st.ahead} ↓${st.behind}`;
+  $('ab').textContent = st.upstream ? `↑${st.ahead} ↓${st.behind}` : 'no upstream';
   $('repo-name').textContent = S.root ?? '';
 }
 function renderFoot() {
@@ -586,7 +586,7 @@ async function palette(): Promise<void> {
 
 async function quickOpen(): Promise<void> {
   try {
-    const files = visibleFiles(await git.listFiles(), S.status ?? { head: null, branch: null, ahead: 0, behind: 0, files: [] });
+    const files = visibleFiles(await git.listFiles(), S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, files: [] });
     const p = await pick(files.map((f) => ({ label: f, value: f })), 'Search files by name');
     if (p) await openPlain(p);
   } catch (e) {

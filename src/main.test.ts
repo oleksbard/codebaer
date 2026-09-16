@@ -21,7 +21,7 @@ const g = git as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const blob = (text: string, oid: string | null = 'oid1'): Blob => ({ text, eol: 'lf', oid, exists: oid !== null });
 const file = (text: string, exists = true): FileText => ({ text, eol: 'lf', exists });
 const status = (path: string, x = '.', y = 'M', untracked = false, conflicted = false): Status =>
-  ({ head: 'abc', branch: 'main', ahead: 0, behind: 0, files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }] });
+  ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }] });
 
 let m: typeof import('./main');
 let confirmSpy: MockInstance<(message?: string) => boolean>;

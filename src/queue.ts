@@ -105,7 +105,7 @@ export class Queue {
       const badge = r.conflicted ? `<span class="badge">conflict</span>` : '';
       return `<div class="row ${selectedKey === key ? 'sel' : ''}" data-key="${esc(key)}" role="button">
         <span class="st ${r.letter === '?' ? 'Q' : r.letter}">${r.letter}</span>
-        <span class="path"><span class="dir">${esc(dir)}</span>${esc(name)}</span>${badge}<span class="acts">${acts}</span></div>`;
+        <span class="path"><span class="dir">${esc(dir)}</span>${esc(name)}</span><span class="tail">${badge}<span class="acts">${acts}</span></span></div>`;
     };
     const sec = (label: string, n: number, all: 'stage' | 'unstage', name: string, hint: string, glyph: string) =>
       `<div class="sec"><span>${label}</span><span class="r"><span class="n">${n}</span>` +

@@ -4,6 +4,7 @@ use serde::Serialize;
 pub struct Status {
     pub head: Option<String>,
     pub branch: Option<String>,
+    pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
     pub files: Vec<FileEntry>,
@@ -35,6 +36,7 @@ pub fn parse(bytes: &[u8]) -> Status {
             match k {
                 "branch.oid" => st.head = (v != "(initial)").then(|| v.to_string()),
                 "branch.head" => st.branch = (v != "(detached)").then(|| v.to_string()),
+                "branch.upstream" => st.upstream = Some(v.to_string()),
                 "branch.ab" => {
                     for part in v.split(' ') {
                         if let Some(n) = part.strip_prefix('+') {
@@ -142,6 +144,7 @@ mod tests {
                           "# branch.upstream origin/main", "# branch.ab +2 -1"]));
         assert_eq!(s.head.as_deref(), Some("1234567890123456789012345678901234567890"));
         assert_eq!(s.branch.as_deref(), Some("main"));
+        assert_eq!(s.upstream.as_deref(), Some("origin/main"));
         assert_eq!((s.ahead, s.behind), (2, 1));
     }
 
@@ -150,6 +153,7 @@ mod tests {
         let s = parse(&z(&["# branch.oid (initial)", "# branch.head (detached)"]));
         assert_eq!(s.head, None);
         assert_eq!(s.branch, None);
+        assert_eq!(s.upstream, None);
         assert_eq!((s.ahead, s.behind), (0, 0));
     }
 

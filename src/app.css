@@ -37,7 +37,7 @@ summary.d{color:var(--muted);padding:5px 16px;font-size:12px;cursor:pointer;list
 .st.M{color:var(--info)} .st.A{color:var(--add)} .st.D{color:var(--del)} .st.Q{color:var(--muted)} .st.U{color:var(--del);background:var(--del-bg)}
 .path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .path .dir{color:var(--muted)}
 .badge{font:10px var(--mono);padding:0 5px;border-radius:3px;background:var(--del-bg);color:var(--del)}
-.row .acts{display:flex;gap:2px;visibility:hidden} .row:hover .acts{visibility:visible}
+.row .tail{display:flex;align-items:center;gap:6px} .row .acts{display:flex;gap:2px;visibility:hidden} .row:hover .acts{visibility:visible}
 .ico{width:20px;height:20px;border-radius:4px;display:grid;place-items:center;color:var(--muted);font-size:12px}
 .ico:hover{background:var(--line);color:var(--text)} .ico:disabled{opacity:.35;pointer-events:none}
 .empty-sec{padding:6px 16px 10px;color:var(--faint);font-size:12px}
