@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodeBär",
+  "version": "0.1.0",
+  "identifier": "com.codebaer.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "title": "CodeBär", "width": 1280, "height": 820, "minWidth": 900, "minHeight": 560 }],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'",
+      "devCsp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'"
+    }
+  },
+  "bundle": { "active": true, "targets": ["app", "dmg"], "icon": ["icons/icon.icns", "icons/icon.png"] }
+}

@@ -1,0 +1,52 @@
+import type { FileEntry, FileText, Status } from './git';
+
+export type Section = 'unstaged' | 'staged';
+export type Row = { section: Section; path: string; letter: string; untracked: boolean; conflicted: boolean };
+
+export const rowKey = (r: { section: Section; path: string }) => `${r.section}:${r.path}`;
+
+export function buildQueue(s: Status): { unstaged: Row[]; staged: Row[] } {
+  const unstaged: Row[] = [];
+  const staged: Row[] = [];
+  for (const e of s.files) {
+    if (e.conflicted) {
+      unstaged.push({ section: 'unstaged', path: e.path, letter: 'U', untracked: false, conflicted: true });
+      continue;
+    }
+    if (e.worktreeStatus !== '.' || e.untracked) {
+      const letter = e.untracked && e.worktreeStatus === '.' ? '?' : e.worktreeStatus;
+      unstaged.push({ section: 'unstaged', path: e.path, letter, untracked: e.untracked, conflicted: false });
+    }
+    if (e.indexStatus !== '.') {
+      staged.push({ section: 'staged', path: e.path, letter: e.indexStatus, untracked: false, conflicted: false });
+    }
+  }
+  return { unstaged, staged };
+}
+
+export function decideRefresh(disk: FileText, baseline: string | null, dirty: boolean): 'none' | 'replace' | 'badge' {
+  const diskText = disk.exists ? disk.text : null;
+  if (diskText === baseline) return 'none';
+  return dirty ? 'badge' : 'replace';
+}
+
+export function visibleFiles(list: string[], s: Status): string[] {
+  const deleted = new Set(s.files.filter((e: FileEntry) => e.worktreeStatus === 'D' && !e.untracked).map((e) => e.path));
+  return list.filter((p) => !deleted.has(p));
+}
+
+export const FLUSH_SET: ReadonlySet<string> = new Set([
+  'stageContent', 'stagePath', 'unstagePath', 'revertPath', 'stageAll', 'unstageAll', 'discardAll',
+  'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo',
+]);
+
+export function rejectSpecialCase(baseline: string | null, originalExists: boolean): 'restore' | 'removeConfirm' | null {
+  if (baseline === null) return 'restore';
+  if (!originalExists) return 'removeConfirm';
+  return null;
+}
+
+export const acceptText = (text: string, baseline: string | null): string | null =>
+  text === '' && baseline === null ? null : text;
+export const unstageText = (text: string, headExists: boolean): string | null =>
+  text === '' && !headExists ? null : text;
