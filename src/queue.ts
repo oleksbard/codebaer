@@ -1,4 +1,4 @@
-import { rowKey, type Row } from './model';
+import { rowKey, type Row, type Section } from './model';
 import { esc } from './palette';
 
 export type Tab = 'changes' | 'files';
@@ -24,6 +24,7 @@ export class Queue {
   private commitBox: HTMLElement;
   private msg: HTMLTextAreaElement;
   private rows = new Map<string, Row>();
+  private open: Record<Section, boolean> = { unstaged: true, staged: true };
 
   constructor(private root: HTMLElement, private h: QueueHandlers) {
     root.innerHTML = `
@@ -48,6 +49,7 @@ export class Queue {
       const t = e.target as HTMLElement;
       const all = t.closest('[data-all]') as HTMLElement | null;
       if (all) {
+        e.preventDefault();
         e.stopPropagation();
         if (all.dataset.all === 'stage') h.stageAll(); else h.unstageAll();
         return;
@@ -68,8 +70,8 @@ export class Queue {
     });
     this.list.addEventListener('keydown', (e) => {
       if (e.target !== this.list) return;
-      const sel = this.list.querySelector('.row.sel') as HTMLElement | null;
-      const all = [...this.list.querySelectorAll<HTMLElement>('.row')];
+      const sel = this.list.querySelector('details[open] .row.sel') as HTMLElement | null;
+      const all = [...this.list.querySelectorAll<HTMLElement>('details[open] .row')];
       const i = sel ? all.indexOf(sel) : -1;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const next = all[Math.max(0, Math.min(all.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
@@ -85,36 +87,36 @@ export class Queue {
     this.root.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', (t as HTMLElement).dataset.tab === tab));
     this.commitBox.hidden = tab !== 'changes';
     this.rows.clear();
+    for (const d of this.list.querySelectorAll<HTMLDetailsElement>('details[data-sec]')) this.open[d.dataset.sec as Section] = d.open;
     if (tab === 'files') {
       const dirs = new Map<string, string[]>();
       for (const p of files) { const [d] = split(p); (dirs.get(d) ?? dirs.set(d, []).get(d)!).push(p); }
       this.list.innerHTML = [...dirs.keys()].sort().map((d) =>
         `<details open><summary class="d">${esc(d || '/')}</summary>${dirs.get(d)!.map((p) =>
-          `<div class="row f ${selectedKey === `plain:${p}` ? 'sel' : ''}" data-key="plain:${esc(p)}" data-path="${esc(p)}" data-plain><span class="path">${esc(split(p)[1])}</span></div>`).join('')}</details>`).join('');
+          `<div class="row f ${selectedKey === `plain:${p}` ? 'sel' : ''}" data-key="plain:${esc(p)}" data-path="${esc(p)}" data-plain><span class="path"><span class="name">${esc(split(p)[1])}</span></span></div>`).join('')}</details>`).join('');
       return;
     }
     const rowHtml = (r: Row) => {
       const key = rowKey(r);
       this.rows.set(key, r);
-      const [dir, name] = split(r.path);
+      const [dirSlash, name] = split(r.path);
       const acts = r.section === 'staged'
         ? `<button class="ico" data-act="unstage" title="Unstage file">−</button>`
         : r.conflicted
           ? `<button class="ico" data-act="stage" title="Mark resolved">+</button>`
           : `<button class="ico" data-act="stage" title="Stage file (⌘⇧Y)">+</button><button class="ico" data-act="revert" title="Discard changes (⌘⇧N)">↶</button>`;
       const badge = r.conflicted ? `<span class="badge">conflict</span>` : '';
-      return `<div class="row ${selectedKey === key ? 'sel' : ''}" data-key="${esc(key)}" role="button">
-        <span class="st ${r.letter === '?' ? 'Q' : r.letter}">${r.letter}</span>
-        <span class="path"><span class="dir">${esc(dir)}</span>${esc(name)}</span><span class="tail">${badge}<span class="acts">${acts}</span></span></div>`;
+      return `<div class="row ${selectedKey === key ? 'sel' : ''}" data-key="${esc(key)}" data-st="${esc(r.letter)}" role="button" title="${esc(r.path)}">
+        <span class="path"><span class="name">${esc(name)}</span><span class="dir">${esc(dirSlash.slice(0, -1))}</span></span>
+        <span class="tail">${badge}<span class="acts">${acts}</span><span class="st">${esc(r.letter)}</span></span></div>`;
     };
-    const sec = (label: string, n: number, all: 'stage' | 'unstage', name: string, hint: string, glyph: string) =>
-      `<div class="sec"><span>${label}</span><span class="r"><span class="n">${n}</span>` +
-      `<button class="ico" data-all="${all}" title="${name}${hint}" aria-label="${name}" ${n ? '' : 'disabled'}>${glyph}</button></span></div>`;
+    const sec = (id: Section, label: string, rows: Row[], empty: string, all: 'stage' | 'unstage', name: string, hint: string, glyph: string) =>
+      `<details data-sec="${id}" ${this.open[id] ? 'open' : ''}><summary class="sec"><span class="l">${label}</span><span class="r">` +
+      `<button class="ico" data-all="${all}" title="${name}${hint}" aria-label="${name}" ${rows.length ? '' : 'disabled'}>${glyph}</button><span class="n">${rows.length}</span></span></summary>` +
+      (rows.length ? rows.map(rowHtml).join('') : `<div class="empty-sec">${empty}</div>`) + `</details>`;
     this.list.innerHTML =
-      sec('Changes', q.unstaged.length, 'stage', 'Stage all changes', ' (⌘⌥Y)', '+') +
-      (q.unstaged.length ? q.unstaged.map(rowHtml).join('') : `<div class="empty-sec">Nothing left to review</div>`) +
-      sec('Staged', q.staged.length, 'unstage', 'Unstage all changes', '', '−') +
-      (q.staged.length ? q.staged.map(rowHtml).join('') : `<div class="empty-sec">Accepted hunks land here</div>`);
+      sec('unstaged', 'Changes', q.unstaged, 'Nothing left to review', 'stage', 'Stage all changes', ' (⌘⌥Y)', '+') +
+      sec('staged', 'Staged', q.staged, 'Accepted hunks land here', 'unstage', 'Unstage all changes', '', '−');
     const n = q.staged.length;
     (this.root.querySelector('#commit-btn') as HTMLButtonElement).disabled = n === 0;
     this.root.querySelector('.hint')!.textContent = n ? `${n} file${n > 1 ? 's' : ''} staged` : 'Nothing staged yet';

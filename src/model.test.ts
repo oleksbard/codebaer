@@ -12,11 +12,13 @@ describe('buildQueue', () => {
     expect(q.unstaged.map((r) => r.path)).toEqual(['a', 'c', 'n', 'u']);
     expect(q.staged.map((r) => r.path)).toEqual(['a', 'b']);
     expect(q.unstaged.find((r) => r.path === 'u')?.conflicted).toBe(true);
+    expect(q.unstaged.find((r) => r.path === 'u')?.letter).toBe('!');
+    expect(q.unstaged.find((r) => r.path === 'n')?.letter).toBe('U');
   });
   it('shows a staged deletion plus recreated file in both sections as two rows', () => {
     const q = buildQueue(status([f('x', 'D', '.', { untracked: true })]));
     expect(q.staged.map((r) => r.letter)).toEqual(['D']);
-    expect(q.unstaged.map((r) => r.letter)).toEqual(['?']);
+    expect(q.unstaged.map((r) => r.letter)).toEqual(['U']);
     expect(rowKey(q.staged[0]!)).not.toEqual(rowKey(q.unstaged[0]!));
   });
 });

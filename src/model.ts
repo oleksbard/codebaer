@@ -9,12 +9,13 @@ export function buildQueue(s: Status): { unstaged: Row[]; staged: Row[] } {
   const unstaged: Row[] = [];
   const staged: Row[] = [];
   for (const e of s.files) {
+    // VS Code's SCM alphabet: U untracked, ! conflicted (git itself prints ? and U)
     if (e.conflicted) {
-      unstaged.push({ section: 'unstaged', path: e.path, letter: 'U', untracked: false, conflicted: true });
+      unstaged.push({ section: 'unstaged', path: e.path, letter: '!', untracked: false, conflicted: true });
       continue;
     }
     if (e.worktreeStatus !== '.' || e.untracked) {
-      const letter = e.untracked && e.worktreeStatus === '.' ? '?' : e.worktreeStatus;
+      const letter = e.untracked && e.worktreeStatus === '.' ? 'U' : e.worktreeStatus;
       unstaged.push({ section: 'unstaged', path: e.path, letter, untracked: e.untracked, conflicted: false });
     }
     if (e.indexStatus !== '.') {

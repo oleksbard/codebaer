@@ -94,7 +94,7 @@ describe('a paneled record', () => {
     m.S.status = status('n.txt', '.', '.', true);
     g.status!.mockResolvedValue(m.S.status);
     g.readBlob!.mockRejectedValueOnce({ kind: 'Io', detail: 'boom' });
-    await m.openRow({ section: 'unstaged', path: 'n.txt', letter: '?', untracked: true, conflicted: false });
+    await m.openRow({ section: 'unstaged', path: 'n.txt', letter: 'U', untracked: true, conflicted: false });
     expect(m.S.open!.panel).toBe('Io');
 
     g.readBlob!.mockResolvedValue(blob('', null));
