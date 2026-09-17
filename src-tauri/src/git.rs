@@ -323,6 +323,9 @@ pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) ->
     // watcher's handle becomes live.
     *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = Some(repo);
     *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+    // every way in (dialog, launch argument, second instance, File menu) lands here
+    crate::recents::push(&app, &root);
+    crate::refresh_recent_menu(&app);
     Ok(root)
 }
 

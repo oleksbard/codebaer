@@ -554,9 +554,13 @@ async function pickRepo(): Promise<void> {
   if (typeof dir === 'string') await openRepo(dir);
 }
 
+/** An open overlay owns the keyboard; Radix handles its own Escape. */
+function overlayIdle(): boolean {
+  return !S.palette && !S.confirm && !S.prompt;
+}
+
 export function dispatch(a: Action): void {
-  // an open overlay owns the keyboard; Radix handles its own Escape
-  if (S.palette || S.confirm || S.prompt) return;
+  if (!overlayIdle()) return;
   const map: Record<Action, () => unknown> = {
     nextHunk: () => nextHunk(1), prevHunk: () => nextHunk(-1),
     accept, reject, unstage: unstageHunk,
@@ -594,6 +598,9 @@ export async function start(): Promise<void> {
   view.dom.addEventListener('mouseup', notify);
   await listen('repo-changed', () => void refresh());
   await listen<string>('open-repo', (e) => void openRepo(e.payload));
+  // a menu item reaches us even while an overlay owns the keyboard, where dispatch() would have refused
+  await listen('menu-open-folder', () => { if (overlayIdle()) void pickRepo(); });
+  await listen<string>('menu-open-recent', (e) => { if (overlayIdle()) void openRepo(e.payload); });
   const initial = (await git.initialRepo()) ?? localStorage.getItem('codebaer.lastRepo');
   if (initial) await openRepo(initial);
   else await pickRepo();

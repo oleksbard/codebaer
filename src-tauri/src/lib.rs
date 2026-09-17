@@ -2,13 +2,14 @@ pub mod ai;
 pub mod error;
 pub mod eol;
 pub mod git;
+pub mod recents;
 pub mod status;
 pub mod watcher;
 
 pub use error::AppError;
 
-use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 
 #[tauri::command(async)]
 fn git_version() -> Result<String, error::AppError> {
@@ -32,6 +33,39 @@ fn repo_arg(args: &[String]) -> Option<String> {
 #[tauri::command]
 fn initial_repo() -> Option<String> {
     repo_arg(&std::env::args().skip(1).collect::<Vec<_>>())
+}
+
+fn recent_menu(app: &AppHandle) -> Option<Submenu<Wry>> {
+    app.menu()?.get("file")?.as_submenu()?.get("file.recent")?.as_submenu().cloned()
+}
+
+/// Replaces the submenu's items in place, so the instance already in the menu bar stays put.
+fn fill_recent(app: &AppHandle, menu: &Submenu<Wry>) -> tauri::Result<()> {
+    for item in menu.items()? {
+        menu.remove(&item)?;
+    }
+    let paths = recents::load(app);
+    menu.set_enabled(!paths.is_empty())?;
+    for p in &paths {
+        menu.append(&MenuItem::with_id(app, format!("recent:{p}"), recents::label(p), true, None::<&str>)?)?;
+    }
+    if !paths.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&MenuItem::with_id(app, "recent.clear", "Clear Menu", true, None::<&str>)?)?;
+    }
+    Ok(())
+}
+
+/// AppKit rejects menu mutation off the main thread, and `open_repo` is an async command.
+pub fn refresh_recent_menu(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(m) = recent_menu(&handle) {
+            if let Err(e) = fill_recent(&handle, &m) {
+                log::warn!("recent menu: {e}");
+            }
+        }
+    });
 }
 
 pub fn run_app() {
@@ -60,6 +94,11 @@ pub fn run_app() {
                 w.show()?;
                 w.set_focus()?;
             }
+            // the menu builder runs before the path resolver is managed, so Open Recent
+            // is built empty there and only gets its items once app_config_dir resolves
+            if let Some(m) = recent_menu(app.handle()) {
+                fill_recent(app.handle(), &m)?;
+            }
             Ok(())
         })
         .enable_macos_default_menu(false)
@@ -80,11 +119,28 @@ pub fn run_app() {
                 &PredefinedMenuItem::paste(app, None)?,
                 &PredefinedMenuItem::select_all(app, None)?,
             ])?;
+            let recent = Submenu::with_id(app, "file.recent", "Open Recent", false)?;
+            let file = Submenu::with_id_and_items(app, "file", "File", true, &[
+                &MenuItem::with_id(app, "file.open", "Open Folder\u{2026}", true, Some("CmdOrCtrl+O"))?,
+                &recent,
+            ])?;
             let window = Submenu::with_items(app, "Window", true, &[
                 &PredefinedMenuItem::minimize(app, None)?,
                 &PredefinedMenuItem::close_window(app, None)?,
             ])?;
-            Menu::with_items(app, &[&app_menu, &edit, &window])
+            Menu::with_items(app, &[&app_menu, &file, &edit, &window])
+        })
+        .on_menu_event(|app, event| {
+            let id = event.id().as_ref();
+            if id == "file.open" {
+                let _ = app.emit("menu-open-folder", ());
+            } else if id == "recent.clear" {
+                recents::clear(app);
+                refresh_recent_menu(app);
+            } else if let Some(path) = id.strip_prefix("recent:") {
+                // not "open-repo": that one also carries an external launch, which outranks an open overlay
+                let _ = app.emit("menu-open-recent", path.to_string());
+            }
         })
         .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::cancel, ai::ai_commit_message])
         .run(tauri::generate_context!())
