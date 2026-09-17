@@ -2,9 +2,9 @@ import { ChangeSet, EditorState, Transaction, type Extension } from '@codemirror
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { LanguageDescription } from '@codemirror/language';
+import { LanguageDescription, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { editorHighlight, editorTheme } from './editor-theme';
 import {
   acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, unifiedMergeView, updateOriginalDoc,
 } from '@codemirror/merge';
@@ -30,7 +30,8 @@ export async function buildState(
     highlightActiveLine(),
     drawSelection(),
     highlightSelectionMatches(),
-    oneDark,
+    editorTheme,
+    syntaxHighlighting(editorHighlight),
     await languageFor(path),
     keymap.of([...defaultKeymap, ...searchKeymap, { key: 'Ctrl-g', run: gotoLine }]),
     EditorView.editable.of(kind !== 'staged'),

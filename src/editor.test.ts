@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
+import { tags } from '@lezer/highlight';
 import { acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, rejectChunk, replaceDoc, replaceOriginal } from './editor';
+import { editorHighlight } from './editor-theme';
 
 const ORIGINAL = 'a\nb\nc\nd\n';
 const DOC = 'A\nb\nc\nD\n';
@@ -50,5 +52,21 @@ describe('CodeMirror merge contract', () => {
     expect(count).toBe(1);
     replaceDoc(view, 'y\n');
     expect(count).toBe(1);
+  });
+
+  it('the state carries the token theme: dark flag set, keyword and comment get distinct classes', async () => {
+    const view = await mount('unstaged');
+    expect(view.state.facet(EditorView.darkTheme)).toBe(true);
+    const keyword = editorHighlight.style([tags.keyword]);
+    expect(keyword).toBeTruthy();
+    expect(editorHighlight.style([tags.comment])).not.toBe(keyword);
+  });
+
+  it('the merge chunk rules name the merge root, so they outrank @codemirror/merge own base theme', async () => {
+    await mount('unstaged');
+    const css = [...document.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
+    expect(css).toMatch(/\.cm-merge-b \.cm-changedText\s*\{[^}]*var\(--diff-changed\)/);
+    expect(css).toMatch(/\.cm-merge-b \.cm-changedLine\s*\{[^}]*var\(--add-bg\)/);
+    expect(css).toMatch(/\.cm-merge-b \.cm-changedLineGutter\s*\{[^}]*var\(--add\)/);
   });
 });

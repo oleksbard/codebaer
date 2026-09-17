@@ -1,6 +1,7 @@
-@import './tokens.css';
+@import '../ui/tokens.css';
+@import '../ui/themes.css';
 @import './base.css';
-@import './controls.css';
+@import '../ui/ui.css';
 @import './layout.css';
 @import './sidebar.css';
 @import './editor.css';

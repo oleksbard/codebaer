@@ -1,0 +1,41 @@
+/* No attribute means dark. A new theme is one more [data-theme] block overriding these names. */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: var(--gray-1);
+  --panel: var(--gray-2);
+  --panel2: var(--gray-3);
+  --line: var(--gray-4);
+  --faint: var(--gray-5);
+  --muted: var(--gray-6);
+  --text: var(--gray-7);
+
+  --accent: var(--amber);
+  --accent-ink: var(--amber-ink);
+  --accent-soft: oklch(0.769 0.139 79 / 0.16);
+  --sel: oklch(0.769 0.139 79 / 0.10);
+  --focus: var(--accent);
+
+  --add: var(--green);
+  --add-bg: oklch(0.683 0.130 153 / 0.13);
+  --del: var(--red);
+  --del-bg: oklch(0.656 0.155 25 / 0.13);
+  --diff-changed: oklch(0.683 0.130 153 / 0.30);
+
+  --warn: var(--amber-2);
+  --info: var(--blue);
+  --mod: var(--sand);
+  --scrim: oklch(0 0 0 / 0.38);
+  --shadow: var(--shadow-1);
+
+  --syn-keyword: var(--violet);
+  --syn-name: var(--coral);
+  --syn-function: var(--sky);
+  --syn-constant: var(--whiskey);
+  --syn-type: var(--chalk);
+  --syn-operator: var(--cyan);
+  --syn-comment: var(--stone);
+  --syn-string: var(--sage);
+  --syn-invalid: white;
+}

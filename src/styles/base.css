@@ -10,7 +10,7 @@ html, body, #app {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 var(--ui);
+  font: var(--fs-3)/1.45 var(--ui);
   overflow: hidden;
 }
 
@@ -26,24 +26,15 @@ button:focus-visible,
 textarea:focus-visible,
 input:focus-visible,
 .list:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
-}
-
-kbd {
-  font: 11px var(--mono);
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 5px;
 }
 
 .fatal {
   display: grid;
   place-items: center;
   height: 100%;
-  font-size: 15px;
+  font-size: var(--fs-4);
   color: var(--del);
 }
 

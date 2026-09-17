@@ -1,0 +1,44 @@
+:root {
+  --gray-1: oklch(0.205 0.010 268);
+  --gray-2: oklch(0.235 0.014 267);
+  --gray-3: oklch(0.264 0.016 264);
+  --gray-4: oklch(0.308 0.018 262);
+  --gray-5: oklch(0.489 0.027 267);
+  --gray-6: oklch(0.657 0.025 269);
+  --gray-7: oklch(0.891 0.010 267);
+
+  --amber: oklch(0.769 0.139 79);
+  --amber-ink: oklch(0.195 0.024 84);
+  --amber-2: oklch(0.756 0.123 72);
+  --sand: oklch(0.825 0.077 78);
+  --green: oklch(0.683 0.130 153);
+  --red: oklch(0.656 0.155 25);
+  --blue: oklch(0.718 0.108 262);
+
+  --violet: oklch(0.694 0.164 318);
+  --coral: oklch(0.671 0.145 17);
+  --sky: oklch(0.730 0.121 245);
+  --whiskey: oklch(0.727 0.095 64);
+  --chalk: oklch(0.825 0.097 82);
+  --cyan: oklch(0.723 0.092 206);
+  --stone: oklch(0.621 0.030 262);
+  --sage: oklch(0.768 0.110 133);
+
+  --r-1: 3px;
+  --r-2: 4px;
+  --r-3: 6px;
+  --r-4: 8px;
+  --r-5: 10px;
+  --r-pill: 999px;
+  /* ponytail: spacing stays literal px in component CSS; a spacing scale lands when a second density is wanted */
+
+  --fs-1: 11px;
+  --fs-2: 12px;
+  --fs-3: 13px;
+  --fs-4: 14px;
+  --fs-5: 16px;
+
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "SF Mono", Menlo, Consolas, monospace;
+  --shadow-1: 0 14px 44px oklch(0 0 0 / 0.5);
+}

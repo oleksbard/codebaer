@@ -1,0 +1,150 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createRoot, type Root } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { setValue, tick } from './test-setup';
+
+vi.mock('./git', async () => {
+  const actual = await vi.importActual<typeof import('./git')>('./git');
+  return { ...actual, git: Object.fromEntries(Object.keys(actual.git).map((k) => [k, vi.fn()])) };
+});
+
+const { S } = await import('./app/store');
+const { pick } = await import('./palette');
+const { confirmDialog, toast } = await import('./toast');
+const { dispatch } = await import('./app/controller');
+const { Overlays } = await import('./app/Overlays');
+
+let root: Root;
+
+beforeEach(() => {
+  document.body.innerHTML = '<div id="host"></div>';
+  S.palette = null; S.confirm = null; S.toasts = []; S.chord = false; S.sidebarHidden = false;
+  root = createRoot(document.getElementById('host')!);
+  flushSync(() => root.render(<Overlays />));
+});
+
+afterEach(() => {
+  root.unmount();
+  document.body.innerHTML = '';
+});
+
+describe('command palette', () => {
+  it('lists items, filters on typing, Enter resolves the highlighted value and closes', async () => {
+    const p = pick([{ label: 'Git: Push', value: 'push' }, { label: 'Open Repository…', hint: '⌘O', value: 'open' }], 'Type a command');
+    await tick();
+    const input = document.querySelector<HTMLInputElement>('.dialog.pal input')!;
+    expect(input.placeholder).toBe('Type a command');
+    expect([...document.querySelectorAll('.pal li')].map((l) => l.textContent)).toEqual(['Git: Push', 'Open Repository…⌘O']);
+    setValue(input, 'open');
+    await tick();
+    expect([...document.querySelectorAll('.pal li')].map((l) => l.textContent)).toEqual(['Open Repository…⌘O']);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await expect(p).resolves.toBe('open');
+    await tick();
+    expect(document.querySelector('.pal')).toBeNull();
+  });
+
+  it('ArrowDown moves the highlight, a click resolves that item', async () => {
+    const p = pick([{ label: 'A', value: 1 }, { label: 'B', value: 2 }], 'x');
+    await tick();
+    const input = document.querySelector<HTMLInputElement>('.pal input')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await tick();
+    expect(document.querySelector('.pal li.on')!.textContent).toBe('B');
+    document.querySelector<HTMLElement>('.pal li.on')!.click();
+    await expect(p).resolves.toBe(2);
+  });
+
+  it('shows "No matching results" and Enter then resolves null', async () => {
+    const p = pick([{ label: 'A', value: 1 }], 'x');
+    await tick();
+    const input = document.querySelector<HTMLInputElement>('.pal input')!;
+    setValue(input, 'zzz');
+    await tick();
+    expect(document.querySelector('.pal li')!.textContent).toBe('No matching results');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await expect(p).resolves.toBeNull();
+  });
+
+  it('Escape closes the palette and resolves null', async () => {
+    const p = pick([{ label: 'A', value: 1 }], 'x');
+    await tick();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(p).resolves.toBeNull();
+  });
+
+  it('a second pick while one is open resolves the first with null', async () => {
+    const first = pick([{ label: 'A', value: 1 }], 'x');
+    await tick();
+    const second = pick([{ label: 'B', value: 2 }], 'y');
+    await expect(first).resolves.toBeNull();
+    await tick();
+    expect(document.querySelector<HTMLInputElement>('.pal input')!.placeholder).toBe('y');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(second).resolves.toBeNull();
+  });
+});
+
+describe('confirm dialog', () => {
+  it('splits the message into title and body, OK resolves true', async () => {
+    const p = confirmDialog('Delete x?\nIts content is not in git.');
+    await tick();
+    expect(document.querySelector('.dialog-title')!.textContent).toBe('Delete x?');
+    expect(document.querySelector('.dialog-body')!.textContent).toBe('Its content is not in git.');
+    document.querySelector<HTMLButtonElement>('.dialog-actions .btn.primary')!.click();
+    await expect(p).resolves.toBe(true);
+    await tick();
+    expect(document.querySelector('.dialog')).toBeNull();
+  });
+
+  it('a one-line message has no body, Cancel resolves false', async () => {
+    const p = confirmDialog('Discard?');
+    await tick();
+    expect(document.querySelector('.dialog-title')!.textContent).toBe('Discard?');
+    expect(document.querySelector('.dialog-body')).toBeNull();
+    document.querySelector<HTMLButtonElement>('.dialog-actions .btn:not(.primary)')!.click();
+    await expect(p).resolves.toBe(false);
+  });
+
+  it('Escape resolves false', async () => {
+    const p = confirmDialog('Discard?');
+    await tick();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(p).resolves.toBe(false);
+  });
+});
+
+describe('keyboard while an overlay is open', () => {
+  it('dispatch ignores actions until the overlay closes', async () => {
+    const p = confirmDialog('Discard?');
+    await tick();
+    dispatch('toggleSidebar');
+    expect(S.sidebarHidden).toBe(false);
+    document.querySelector<HTMLButtonElement>('.dialog-actions .btn:not(.primary)')!.click();
+    await p;
+    dispatch('toggleSidebar');
+    expect(S.sidebarHidden).toBe(true);
+    S.sidebarHidden = false;
+    localStorage.removeItem('codebaer.sidebarHidden');
+  });
+});
+
+describe('toasts and chord hint', () => {
+  it('toast renders with its kind, click removes it', async () => {
+    toast('Committed', 'ok');
+    await tick();
+    const el = document.querySelector<HTMLElement>('.toasts .toast.ok')!;
+    expect(el.textContent).toBe('Committed');
+    el.click();
+    await tick();
+    expect(document.querySelector('.toast')).toBeNull();
+  });
+
+  it('the chord hint follows S.chord', async () => {
+    expect(document.querySelector('.chord')).toBeNull();
+    S.chord = true;
+    (await import('./app/store')).notify();
+    await tick();
+    expect(document.querySelector('.chord')!.textContent).toBe('⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage');
+  });
+});

@@ -5,6 +5,11 @@ export type Row = { section: Section; path: string; letter: string; untracked: b
 
 export const rowKey = (r: { section: Section; path: string }) => `${r.section}:${r.path}`;
 
+export const split = (p: string): [string, string] => {
+  const i = p.lastIndexOf('/');
+  return i < 0 ? ['', p] : [p.slice(0, i + 1), p.slice(i + 1)];
+};
+
 export function buildQueue(s: Status): { unstaged: Row[]; staged: Row[] } {
   const unstaged: Row[] = [];
   const staged: Row[] = [];

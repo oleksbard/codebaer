@@ -42,19 +42,19 @@
   gap: 8px;
   font-weight: 600;
 
-  img { width: 22px; height: 22px; border-radius: 6px; }
+  img { width: 22px; height: 22px; border-radius: var(--r-3); }
 }
 
 .branch {
   display: flex;
   align-items: center;
   gap: 8px;
-  font: 12px var(--mono);
+  font: var(--fs-2) var(--mono);
   color: var(--muted);
 
   button {
     padding: 3px 8px;
-    border-radius: 5px;
+    border-radius: var(--r-3);
     border: 1px solid var(--line);
     color: var(--text);
     display: flex;
@@ -79,7 +79,7 @@
   padding: 0 16px;
   border-top: 1px solid var(--line);
   background: var(--panel);
-  font-size: 11.5px;
+  font-size: var(--fs-1);
   color: var(--muted);
 
   .save.dirty { color: var(--warn); }

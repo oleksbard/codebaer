@@ -1,29 +1,11 @@
-.scrim {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.38);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 10vh 16px 0;
-  z-index: 20;
-}
-
 .pal {
-  width: min(600px,100%);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  overflow: hidden;
-
   input {
     width: 100%;
     border: 0;
     border-bottom: 1px solid var(--line);
     background: transparent;
     color: var(--text);
-    font: 14px var(--ui);
+    font: var(--fs-4) var(--ui);
     padding: 12px 14px;
     outline: none;
   }
@@ -41,16 +23,16 @@
     justify-content: space-between;
     gap: 12px;
     padding: 7px 10px;
-    border-radius: 6px;
+    border-radius: var(--r-3);
     cursor: pointer;
 
     &.on,
     &:hover { background: var(--sel); }
 
-    .k { color: var(--muted); font: 11px var(--mono); }
+    .k { color: var(--muted); font: var(--fs-1) var(--mono); }
   }
 
-  .desc { color: var(--faint); font-size: 12px; }
+  .desc { color: var(--faint); font-size: var(--fs-2); }
 }
 
 .toasts {
@@ -68,14 +50,14 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--info);
-  border-radius: 8px;
+  border-radius: var(--r-4);
   padding: 9px 12px;
   box-shadow: var(--shadow);
-  font-size: 12.5px;
+  font-size: var(--fs-2);
   cursor: pointer;
   white-space: pre-wrap;
 
-  &.err { border-left-color: var(--del); font: 12px/1.5 var(--mono); }
+  &.err { border-left-color: var(--del); font: var(--fs-2)/1.5 var(--mono); }
   &.warn { border-left-color: var(--warn); }
   &.ok { border-left-color: var(--add); }
 }
@@ -87,9 +69,9 @@
   transform: translateX(-50%);
   background: var(--panel);
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--r-3);
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--fs-2);
   color: var(--muted);
   z-index: 30;
 }

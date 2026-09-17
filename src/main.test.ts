@@ -1,13 +1,6 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Blob, FileText, Status } from './git';
-
-// jsdom implements no Range geometry, and CodeMirror measures the document
-// whenever a dispatch asks to scroll a chunk into view
-const rangeProto = Range.prototype as unknown as Record<string, unknown>;
-rangeProto.getClientRects = () => [];
-rangeProto.getBoundingClientRect = () => new DOMRect();
-// jsdom has PointerEvent but no pointer capture
-HTMLElement.prototype.setPointerCapture ??= () => {};
+import { tick } from './test-setup';
 
 vi.mock('./git', async () => {
   const actual = await vi.importActual<typeof import('./git')>('./git');
@@ -16,42 +9,47 @@ vi.mock('./git', async () => {
     git: Object.fromEntries(Object.keys(actual.git).map((k) => [k, vi.fn()])),
   };
 });
+vi.mock('./toast', async () => {
+  const actual = await vi.importActual<typeof import('./toast')>('./toast');
+  return { ...actual, confirmDialog: vi.fn() };
+});
 
 const { git } = await import('./git');
+const { confirmDialog } = await import('./toast');
 const g = git as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
 
 const blob = (text: string, oid: string | null = 'oid1'): Blob => ({ text, eol: 'lf', oid, exists: oid !== null });
 const file = (text: string, exists = true): FileText => ({ text, eol: 'lf', exists });
 const status = (path: string, x = '.', y = 'M', untracked = false, conflicted = false): Status =>
   ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }] });
 
-let m: typeof import('./main');
-let confirmSpy: MockInstance<(message?: string) => boolean>;
+let m: typeof import('./app/controller');
+let S: typeof import('./app/store').S;
 
 beforeAll(async () => {
   document.body.innerHTML = '<div id="app"></div>';
-  m = await import('./main');
+  await import('./main');
+  m = await import('./app/controller');
+  S = (await import('./app/store')).S;
+  await tick();
 });
 
 beforeEach(() => {
   for (const fn of Object.values(g)) fn.mockReset().mockResolvedValue(undefined);
-  confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
-  m.S.open = null;
-  m.S.selected = null;
-  m.S.openEpoch = 0;
-  m.S.flushing = null;
-  m.S.status = status('a.txt');
-});
-
-afterEach(() => {
-  confirmSpy.mockRestore();
+  confirmMock.mockReset().mockResolvedValue(false);
+  S.open = null;
+  S.selected = null;
+  S.openEpoch = 0;
+  S.flushing = null;
+  S.status = status('a.txt');
 });
 
 /** Opens `path` in the Unstaged view through the real open path. */
 async function openUnstaged(path: string, index: Blob, disk: FileText): Promise<void> {
   g.readBlob!.mockResolvedValue(index);
   g.readFile!.mockResolvedValue(disk);
-  g.status!.mockResolvedValue(m.S.status);
+  g.status!.mockResolvedValue(S.status);
   await m.openRow({ section: 'unstaged', path, letter: 'M', untracked: false, conflicted: false });
   g.readBlob!.mockClear();
   g.readFile!.mockClear();
@@ -65,15 +63,15 @@ describe('autosave flush before a flush-set command', () => {
   it('abandons the command when the pre-flush comes back Stale', async () => {
     await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
     type('mine\n');
-    expect(m.S.open!.dirty).toBe(true);
+    expect(S.open!.dirty).toBe(true);
     g.writeFile!.mockRejectedValue({ kind: 'Stale', detail: file('agent\n') });
 
     await m.guarded('stagePath', () => git.stagePath('a.txt'));
 
     expect(g.writeFile!).toHaveBeenCalledTimes(1);
     expect(g.stagePath!).not.toHaveBeenCalled();
-    expect(m.S.open!.dirty).toBe(true);
-    expect(m.S.open!.badge).toEqual(file('agent\n'));
+    expect(S.open!.dirty).toBe(true);
+    expect(S.open!.badge).toEqual(file('agent\n'));
   });
 
   it('writes the doc text first and runs the command only after the write resolves', async () => {
@@ -87,47 +85,72 @@ describe('autosave flush before a flush-set command', () => {
 
     expect(order).toEqual(['write', 'stage']);
     expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
-    expect(m.S.open!.dirty).toBe(false);
+    expect(S.open!.dirty).toBe(false);
   });
 });
 
 describe('a paneled record', () => {
   it('is reopened by the next refresh into an editor that still arms autosave', async () => {
-    m.S.status = status('n.txt', '.', '.', true);
-    g.status!.mockResolvedValue(m.S.status);
+    S.status = status('n.txt', '.', '.', true);
+    g.status!.mockResolvedValue(S.status);
     g.readBlob!.mockRejectedValueOnce({ kind: 'Io', detail: 'boom' });
     await m.openRow({ section: 'unstaged', path: 'n.txt', letter: 'U', untracked: true, conflicted: false });
-    expect(m.S.open!.panel).toBe('Io');
+    expect(S.open!.panel).toBe('Io');
 
     g.readBlob!.mockResolvedValue(blob('', null));
     g.readFile!.mockResolvedValue(file('new\n'));
     await m.refresh();
 
-    expect(m.S.open!.panel).toBe(null);
+    expect(S.open!.panel).toBe(null);
     type('typed\n');
-    expect(m.S.open!.dirty).toBe(true);
+    expect(S.open!.dirty).toBe(true);
   });
 
   it('whose path became unmerged is reopened into the conflict view', async () => {
-    g.status!.mockResolvedValue(m.S.status);
+    g.status!.mockResolvedValue(S.status);
     g.readBlob!.mockRejectedValueOnce({ kind: 'Io', detail: 'boom' });
     await m.openRow({ section: 'unstaged', path: 'a.txt', letter: 'M', untracked: false, conflicted: false });
-    expect(m.S.open!.panel).toBe('Io');
+    expect(S.open!.panel).toBe('Io');
 
     g.status!.mockResolvedValue(status('a.txt', 'U', 'U', false, true));
     g.readBlob!.mockClear().mockRejectedValue({ kind: 'Conflicted' });
     g.readFile!.mockResolvedValue(file('<<<<<<< ours\n'));
     await m.refresh();
 
-    expect(m.S.open!.conflicted).toBe(true);
+    expect(S.open!.conflicted).toBe(true);
     expect(g.readBlob!).not.toHaveBeenCalled();
+  });
+});
+
+describe('the two special reject cases', () => {
+  it('a deleted file is restored with revert_path, without a write and without a confirmation', async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('', false));
+    expect(S.open!.baseline).toBe(null);
+
+    await m.reject();
+
+    expect(g.revertPath!).toHaveBeenCalledWith('a.txt');
+    expect(g.writeFile!).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
+  });
+
+  it('a file with no index entry confirms first and calls nothing when the answer is no', async () => {
+    await openUnstaged('n.txt', blob('', null), file('new\n'));
+    expect(S.open!.originalExists).toBe(false);
+
+    await m.reject();
+
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(g.revertPath!).not.toHaveBeenCalled();
+    expect(g.writeFile!).not.toHaveBeenCalled();
   });
 });
 
 describe('section header buttons', () => {
   it('Stage all runs stage_all; Unstage all is disabled while nothing is staged', async () => {
-    g.status!.mockResolvedValue(m.S.status);
+    g.status!.mockResolvedValue(S.status);
     await m.refresh();
+    await tick();
     const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
     const unstageAll = document.querySelector<HTMLButtonElement>('[data-all="unstage"]')!;
     expect(stageAll.disabled).toBe(false);
@@ -140,9 +163,10 @@ describe('section header buttons', () => {
   });
 
   it('Unstage all runs unstage_all once something is staged, and Stage all is then disabled', async () => {
-    m.S.status = status('a.txt', 'M', '.');
-    g.status!.mockResolvedValue(m.S.status);
+    S.status = status('a.txt', 'M', '.');
+    g.status!.mockResolvedValue(S.status);
     await m.refresh();
+    await tick();
     const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
     const unstageAll = document.querySelector<HTMLButtonElement>('[data-all="unstage"]')!;
     expect(stageAll.disabled).toBe(true);
@@ -155,60 +179,147 @@ describe('section header buttons', () => {
   });
 
   it('Enter on a focused header button does not also activate the selected row', async () => {
-    g.status!.mockResolvedValue(m.S.status);
+    g.status!.mockResolvedValue(S.status);
     await m.refresh();
+    await tick();
     const row = document.querySelector<HTMLElement>('.row')!;
     row.click();
-    await vi.waitFor(() => expect(m.S.open?.path).toBe('a.txt'));
+    await vi.waitFor(() => expect(S.open?.path).toBe('a.txt'));
     g.readBlob!.mockClear();
     const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
 
     stageAll.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
+    await tick();
 
     expect(g.readBlob!).not.toHaveBeenCalled();
   });
 });
 
-describe('the two special reject cases', () => {
-  it('a deleted file is restored with revert_path, without a write and without a confirmation', async () => {
-    await openUnstaged('a.txt', blob('index\n'), file('', false));
-    expect(m.S.open!.baseline).toBe(null);
-
-    await m.reject();
-
-    expect(g.revertPath!).toHaveBeenCalledWith('a.txt');
-    expect(g.writeFile!).not.toHaveBeenCalled();
-    expect(confirmSpy).not.toHaveBeenCalled();
-  });
-
-  it('a file with no index entry confirms first and calls nothing when the answer is no', async () => {
-    await openUnstaged('n.txt', blob('', null), file('new\n'));
-    expect(m.S.open!.originalExists).toBe(false);
-
-    await m.reject();
-
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(g.revertPath!).not.toHaveBeenCalled();
-    expect(g.writeFile!).not.toHaveBeenCalled();
-  });
-});
-
 describe('sidebar resize', () => {
-  it('follows the pointer between 180px and window width minus 400px and stores the width on release', () => {
-    const g = document.getElementById('gutter')!;
+  // jsdom drives requestAnimationFrame off its own ~16ms clock, which no tick() can wait for
+  const raf = globalThis.requestAnimationFrame;
+  const caf = globalThis.cancelAnimationFrame;
+  beforeAll(() => {
+    globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0)) as unknown as number;
+    globalThis.cancelAnimationFrame = (h) => clearTimeout(h);
+  });
+  afterAll(() => {
+    globalThis.requestAnimationFrame = raf;
+    globalThis.cancelAnimationFrame = caf;
+  });
+
+  it('follows the pointer between 180px and window width minus 400px and stores the width on release', async () => {
+    const gutter = document.getElementById('gutter')!;
     const shell = document.getElementById('shell')!;
-    const ev = (type: string, clientX = 0) => g.dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX }));
+    const ev = (kind: string, clientX = 0) => gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
     ev('pointerdown', 272);
     ev('pointermove', 340);
+    await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe('340px');
     ev('pointermove', 20);
+    await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe('180px');
     ev('pointermove', 5000);
+    await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
     ev('pointerup');
     expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(globalThis.innerWidth - 400));
     ev('pointermove', 300);
+    await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
+  });
+
+  it('coalesces the moves inside one frame into a single render of the last width', async () => {
+    const { subscribe } = await import('./app/store');
+    const gutter = document.getElementById('gutter')!;
+    const shell = document.getElementById('shell')!;
+    const ev = (kind: string, clientX = 0) => gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
+    let notifies = 0;
+    const off = subscribe(() => { notifies++; });
+    ev('pointerdown', 272);
+    ev('pointermove', 300);
+    ev('pointermove', 420);
+    await tick();
+    off();
+
+    expect(notifies).toBe(1);
+    expect(shell.style.getPropertyValue('--side-w')).toBe('420px');
+    ev('pointerup');
+    expect(localStorage.getItem('codebaer.sideWidth')).toBe('420');
+  });
+});
+
+describe('the blank panel', () => {
+  it('offers whole-file actions for a staged or unstaged panel and none in the plain view', async () => {
+    const { notify } = await import('./app/store');
+    S.open = { path: 'logo.png', view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: 'Binary', conflicted: false };
+    notify();
+    await tick();
+    expect(document.querySelector('.blank h2')!.textContent).toBe('binary file');
+    expect(document.querySelector('.blank p')).toBeNull();
+
+    S.open = { ...S.open!, view: 'unstaged' };
+    notify();
+    await tick();
+    expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent)).toEqual(['Whole-file actions only.', 'Reject file Accept file']);
+  });
+});
+
+describe('the title bar and the header', () => {
+  const pillButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.tbar .pill.warn button')];
+
+  it('shows the changed-on-disk pill, reloads from disk, and writes the buffer on Keep mine', async () => {
+    const { notify } = await import('./app/store');
+    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+    S.open!.badge = file('agent\n');
+    notify();
+    await tick();
+    expect(document.querySelector('.tbar .pill.warn')!.textContent).toBe('changed on diskReloadKeep mine');
+
+    g.readFile!.mockResolvedValue(file('agent\n'));
+    pillButtons()[0]!.click();
+    await vi.waitFor(() => expect(g.readFile!).toHaveBeenCalledWith('a.txt'));
+    expect(S.open!.badge).toBe(null);
+
+    type('ours\n');
+    S.open!.badge = file('agent\n');
+    notify();
+    await tick();
+    pillButtons()[1]!.click();
+
+    await vi.waitFor(() => expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'ours\n', 'lf', 'agent\n'));
+    expect(S.open!.badge).toBe(null);
+  });
+
+  it('counts the hunk and offers Reject and Accept for an unstaged record', async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+    await tick();
+    expect(document.querySelector('.tbar .pos')!.textContent).toBe('hunk 1 of 1');
+    expect(document.querySelector('.tbar .pill')!.textContent).toBe('index → working tree');
+    const btns = [...document.querySelectorAll<HTMLButtonElement>('.tbar .right .btn')];
+    expect(btns.map((b) => b.textContent)).toEqual(['Reject ⌘N', 'Accept ⌘Y']);
+
+    g.stageContent!.mockResolvedValue({ oid: 'oid2' });
+    btns[1]!.click();
+
+    await vi.waitFor(() => expect(g.stageContent!).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows a spinner and a Cancel button while busy, and Cancel reaches git', async () => {
+    const { notify } = await import('./app/store');
+    S.busy = true;
+    notify();
+    await tick();
+    expect(document.querySelector('.head .spinner')).not.toBeNull();
+    const cancel = document.querySelector<HTMLButtonElement>('.head .branch .btn')!;
+    expect(cancel.textContent).toBe('Cancel');
+
+    cancel.click();
+
+    expect(g.cancel!).toHaveBeenCalledTimes(1);
+    S.busy = false;
+    notify();
+    await tick();
+    expect(document.querySelector('.head .spinner')).toBeNull();
   });
 });

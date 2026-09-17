@@ -7,22 +7,6 @@
   min-height: 0;
 }
 
-.tabs {
-  display: flex;
-  border-bottom: 1px solid var(--line);
-  padding: 0 8px;
-}
-
-.tab {
-  padding: 8px 10px;
-  color: var(--muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  font-weight: 500;
-
-  &.on { color: var(--text); border-bottom-color: var(--accent); }
-}
-
 .list {
   flex: 1;
   overflow: auto;
@@ -37,14 +21,14 @@ summary.sec {
   align-items: center;
   padding: 8px 16px 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--fs-1);
   text-transform: uppercase;
   letter-spacing: .08em;
   cursor: pointer;
   list-style: none;
   user-select: none;
 
-  &.d { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  &.d { text-transform: none; letter-spacing: 0; font-size: var(--fs-2); }
 }
 
 summary::-webkit-details-marker {
@@ -57,13 +41,13 @@ summary::-webkit-details-marker {
     align-items: center;
     gap: 6px;
 
-    &::before { content: '▾'; width: 12px; font-size: 14px; line-height: 1; text-align: center; }
+    &::before { content: '▾'; width: 12px; font-size: var(--fs-4); line-height: 1; text-align: center; }
   }
 
   .n {
-    font: 11px var(--mono);
+    font: var(--fs-1) var(--mono);
     background: var(--panel2);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     padding: 0 6px;
     min-width: 18px;
     line-height: 16px;
@@ -127,23 +111,23 @@ details:not([open])>.sec .l::before {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--fs-2);
 
     &:empty { display: none; }
   }
 }
 
 .st {
-  font: 600 11px var(--mono);
+  font: 600 var(--fs-1) var(--mono);
   width: 14px;
   text-align: center;
-  border-radius: 3px;
+  border-radius: var(--r-1);
 }
 
 .empty-sec {
   padding: 6px 16px 10px;
   color: var(--faint);
-  font-size: 12px;
+  font-size: var(--fs-2);
 }
 
 .commit {
@@ -158,15 +142,15 @@ details:not([open])>.sec .l::before {
     max-height: calc(11.2em + 16px); /* 8 lines at 1.4 line-height, plus padding and border */
     overflow-y: auto;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--r-3);
     background: var(--bg);
     color: var(--text);
-    font: 12.5px/1.4 var(--ui);
+    font: var(--fs-2)/1.4 var(--ui);
     padding: 7px 9px;
   }
 
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .hint { color: var(--faint); font-size: 11px; }
+  .hint { color: var(--faint); font-size: var(--fs-1); }
   .r { display: flex; align-items: center; gap: 6px; }
   .ico { width: 26px; height: 26px; }
 }

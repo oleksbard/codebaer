@@ -4,13 +4,8 @@ export type Action =
   | 'quickOpen' | 'palette' | 'save' | 'toggleSidebar'
   | 'focusList' | 'focusEditor' | 'focusCommit' | 'filesTab' | 'escape';
 
-export function installKeys(dispatch: (a: Action) => void): void {
+export function installKeys(dispatch: (a: Action) => void, onChord: (visible: boolean) => void = () => {}): void {
   let chordUntil = 0;
-  const hint = document.createElement('div');
-  hint.className = 'chord';
-  hint.hidden = true;
-  hint.textContent = '⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage';
-  document.body.appendChild(hint);
 
   document.addEventListener(
     'keydown',
@@ -20,7 +15,7 @@ export function installKeys(dispatch: (a: Action) => void): void {
 
       if (Date.now() < chordUntil) {
         chordUntil = 0;
-        hint.hidden = true;
+        onChord(false);
         if (meta && alt && code === 'KeyS') return fire('accept');
         if (meta && code === 'KeyR') return fire('reject');
         if (meta && code === 'KeyN') return fire('unstage');
@@ -33,8 +28,8 @@ export function installKeys(dispatch: (a: Action) => void): void {
       if (!meta || ctrl) return;
       if (code === 'KeyK' && !shift && !alt) {
         chordUntil = Date.now() + 2500;
-        hint.hidden = false;
-        setTimeout(() => { if (Date.now() >= chordUntil) hint.hidden = true; }, 2600);
+        onChord(true);
+        setTimeout(() => { if (Date.now() >= chordUntil) onChord(false); }, 2600);
         e.preventDefault();
         return;
       }

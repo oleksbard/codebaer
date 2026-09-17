@@ -2,211 +2,20 @@ import { listen } from '@tauri-apps/api/event';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { errKind, errText, git, staleText, type Branch, type Eol, type FileText, type Status } from './git';
-import { acceptText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from './model';
+import { getChunks } from '@codemirror/merge';
+import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
+import { acceptText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from '../model';
 import {
   acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
-} from './editor';
-import { getChunks } from '@codemirror/merge';
-import { Queue, type Tab } from './queue';
-import { esc, pick } from './palette';
-import { confirmDialog, toast } from './toast';
-import { installKeys, type Action } from './keys';
-
-type Open = {
-  path: string;
-  view: ViewKind;
-  eol: Eol;
-  baseline: string | null;
-  originalOid: string | null;
-  originalExists: boolean;
-  docOid: string | null;
-  dirty: boolean;
-  badge: FileText | null;
-  panel: string | null;
-  conflicted: boolean;
-};
+} from '../editor';
+import { pick } from '../palette';
+import { confirmDialog, toast } from '../toast';
+import { installKeys, type Action } from '../keys';
+import { notify, refs, S, type Open, type Tab } from './store';
 
 const PANEL_KINDS = new Set(['Binary', 'NotUtf8', 'TooLarge', 'Special']);
-const PANEL_TEXT: Record<string, string> = {
-  Binary: 'binary file', NotUtf8: 'not UTF-8', TooLarge: 'over 2 MB', Special: 'not a regular file',
-};
 
-export const S = {
-  root: null as string | null,
-  status: null as Status | null,
-  files: [] as string[],
-  tab: 'changes' as Tab,
-  open: null as Open | null,
-  selected: null as string | null,
-  refreshing: false,
-  refreshAgain: false,
-  saveTimer: 0 as ReturnType<typeof setTimeout> | 0,
-  flushing: null as Promise<boolean> | null,
-  openEpoch: 0,
-};
-
-document.getElementById('app')!.innerHTML = `
-<div class="app" id="shell">
-  <header class="head">
-    <div class="brand"><img src="/icon.png" alt="">CodeBär</div>
-    <div class="branch"><button id="branch-btn" title="Checkout to…"><span id="branch-name">…</span><span id="ab"></span></button>
-      <span class="spin" id="spin"></span><button class="kbtn" id="cancel-btn" hidden>Cancel</button><span id="repo-name"></span></div>
-    <div class="right"><button class="kbtn" id="palette-btn">Commands <kbd>⌘⇧P</kbd></button></div>
-  </header>
-  <aside class="side" id="side"></aside><div class="gutter" id="gutter"></div>
-  <main class="main"><div class="tbar" id="tbar"></div><div id="banner"></div><div class="editor-host" id="host"></div><div class="blank" id="blank"></div></main>
-  <footer class="foot"><span id="queue-info"></span><span class="save" id="save-info"></span></footer>
-</div>`;
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-if (localStorage.getItem('codebaer.sidebarHidden') === 'true') $('shell').classList.add('nosidebar');
-const sideW = localStorage.getItem('codebaer.sideWidth');
-if (sideW) $('shell').style.setProperty('--side-w', `${Math.max(180, Number(sideW))}px`);
-$('gutter').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0) return;
-  e.preventDefault();
-  const g = e.currentTarget as HTMLElement;
-  g.setPointerCapture(e.pointerId);
-  let w = 0;
-  const move = (ev: PointerEvent) => {
-    w = Math.max(180, Math.min(globalThis.innerWidth - 400, Math.round(ev.clientX)));
-    $('shell').style.setProperty('--side-w', `${w}px`);
-  };
-  const done = () => {
-    g.removeEventListener('pointermove', move);
-    g.removeEventListener('pointerup', done);
-    g.removeEventListener('pointercancel', done);
-    if (w) localStorage.setItem('codebaer.sideWidth', String(w));
-  };
-  g.addEventListener('pointermove', move);
-  g.addEventListener('pointerup', done);
-  g.addEventListener('pointercancel', done);
-});
-export const view = new EditorView({ state: EditorState.create({ doc: '' }), parent: $('host') });
-const queue = new Queue($('side'), {
-  openRow: (row) => void openRow(row),
-  openPlain: (path) => void openPlain(path),
-  stageFile: (path) => void guarded('stagePath', () => git.stagePath(path)),
-  revertFile: (path) => void rejectFile(path),
-  unstageFile: (path) => void guarded('unstagePath', () => git.unstagePath(path)),
-  commit: (msg) => void commit(msg),
-  aiMessage: () => void aiMessage(),
-  setTab: (tab) => void setTab(tab),
-  stageAll: () => void guarded('stageAll', () => git.stageAll()),
-  unstageAll: () => void guarded('unstageAll', () => git.unstageAll()),
-});
-
-// ---------- rendering ----------
-function renderQueue() {
-  if (!S.status) return;
-  const q = buildQueue(S.status);
-  queue.render(q, S.files, S.selected, S.tab);
-  const n = q.unstaged.length;
-  $('queue-info').textContent = n ? `${n} file${n > 1 ? 's' : ''} to review` : 'nothing left to review';
-}
-function renderHeader() {
-  const st = S.status;
-  if (!st) return;
-  $('branch-name').textContent = st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
-  $('ab').textContent = st.upstream ? `↑${st.ahead} ↓${st.behind}` : 'no upstream';
-  $('repo-name').textContent = S.root ?? '';
-}
-function renderFoot() {
-  const o = S.open;
-  const el = $('save-info');
-  el.className = 'save' + (o?.dirty ? ' dirty' : '');
-  el.textContent = o?.dirty ? 'unsaved' : '';
-}
-function renderTitle() {
-  const o = S.open;
-  const tbar = $('tbar');
-  const banner = $('banner');
-  const blank = $('blank');
-  if (!o) {
-    tbar.innerHTML = '';
-    banner.innerHTML = '';
-    $('host').hidden = true;
-    blank.hidden = false;
-    const n = S.status ? buildQueue(S.status).unstaged.length : 0;
-    blank.innerHTML = `<div><img src="/logo.png" alt=""><h2>${n ? `${n} files to review` : 'Nothing left to review'}</h2><p>${n ? 'Pick a file on the left, or press ⌥F5 to start at the first hunk.' : 'Write a message and commit with ⌘↩, or wait for the agent.'}</p></div>`;
-    return;
-  }
-  const [dir, name] = (() => { const i = o.path.lastIndexOf('/'); return i < 0 ? ['', o.path] : [o.path.slice(0, i + 1), o.path.slice(i + 1)]; })();
-  const title = `<span class="file"><span class="dir">${esc(dir)}</span>${esc(name)}</span>`;
-  const badge = o.badge ? `<span class="pill warn">changed on disk<button data-act="reload">Reload</button><button data-act="keepMine">Keep mine</button></span>` : '';
-  if (o.panel) {
-    $('host').hidden = true;
-    blank.hidden = false;
-    // git refuses revert_path and stage_content on an unmerged path, so a conflicted
-    // record gets the panel text and nothing to press
-    const btns = o.conflicted ? ''
-      : o.view === 'unstaged' ? `<button class="btn" data-act="rejectFile">Reject file</button> <button class="btn primary" data-act="acceptFile">Accept file</button>`
-      : o.view === 'staged' ? `<button class="btn" data-act="unstageFile">Unstage file</button>` : '';
-    tbar.innerHTML = `${title}<span class="pos">${PANEL_TEXT[o.panel] ?? o.panel}</span><div class="right">${badge}</div>`;
-    banner.innerHTML = '';
-    blank.innerHTML = `<div><h2>${PANEL_TEXT[o.panel] ?? o.panel}</h2>${btns ? `<p>Whole-file actions only.</p><p>${btns}</p>` : ''}</div>`;
-    return;
-  }
-  $('host').hidden = false;
-  blank.hidden = true;
-  if (o.conflicted) {
-    tbar.innerHTML = `${title}<span class="pos">conflict</span><div class="right">${badge}<button class="btn primary" data-act="acceptFile">Mark resolved</button></div>`;
-    banner.innerHTML = `<div class="banner conflict">Resolve the markers, then stage the file.</div>`;
-    return;
-  }
-  const chunks = chunkCount(view.state);
-  const at = chunkIndexAtCursor(view.state);
-  const pos = o.view === 'plain' ? 'working tree' : chunks ? `hunk ${Math.max(at, 0) + 1} of ${chunks}` : o.view === 'staged' ? 'nothing staged' : 'no unstaged changes';
-  const pill = o.view === 'plain' ? 'whole file, current state' : o.view === 'staged' ? 'HEAD → index · read only' : 'index → working tree';
-  const btns = o.view === 'unstaged' && chunks ? `<button class="btn" data-act="reject">Reject <kbd>⌘N</kbd></button><button class="btn primary" data-act="accept">Accept <kbd>⌘Y</kbd></button>`
-    : o.view === 'staged' && chunks ? `<button class="btn" data-act="unstage">Unstage <kbd>⌘K ⌘N</kbd></button>`
-    : o.view === 'plain' && hasUnstaged(o.path) ? `<button class="btn" data-act="viewChanges">View changes</button>` : '';
-  tbar.innerHTML = `${title}<span class="pos">${pos}</span><div class="right">${badge}<span class="pill">${pill}</span>${btns}</div>`;
-  const changed = S.status?.files.some((f) => f.path === o.path && (o.view === 'staged' ? f.indexStatus !== '.' : f.worktreeStatus !== '.' || f.untracked));
-  banner.innerHTML = o.view !== 'plain' && chunks === 0 && changed
-    ? `<div class="banner">line endings, filters, or file mode only. ${o.view === 'unstaged' ? '<button class="btn" data-act="rejectFile">Reject file</button> <button class="btn primary" data-act="acceptFile">Accept file</button>' : '<button class="btn" data-act="unstageFile">Unstage file</button>'}</div>`
-    : '';
-}
-function hasUnstaged(path: string): boolean {
-  return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
-}
-function renderAll() { renderHeader(); renderQueue(); renderTitle(); renderFoot(); }
-
-document.querySelector('main')!.addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
-  if (!b || !S.open) return;
-  const p = S.open.path;
-  const acts: Record<string, () => unknown> = {
-    accept, reject, unstage: unstageHunk,
-    acceptFile: () => guarded('stagePath', () => git.stagePath(p)),
-    rejectFile: () => rejectFile(p),
-    unstageFile: () => guarded('unstagePath', () => git.unstagePath(p)),
-    viewChanges: () => openRow({ section: 'unstaged', path: p, letter: 'M', untracked: false, conflicted: false }),
-    reload: async () => {
-      await S.flushing; // an in-flight write would otherwise land its own text in the baseline set below
-      const o = S.open;
-      if (!o) return;
-      // read first, mutate only on success: a failed read must not leave the record
-      // clean with a null baseline, which would make the next reject discard the file
-      try {
-        const disk = await git.readFile(o.path);
-        if (S.open !== o) return;
-        clearTimeout(S.saveTimer);
-        replaceDoc(view, disk.text);
-        o.baseline = disk.exists ? disk.text : null;
-        o.eol = disk.eol;
-        o.dirty = false;
-        o.badge = null;
-      } catch (e) {
-        toast(errText(e), 'err');
-      }
-      renderAll();
-    },
-    keepMine: () => { const o = S.open!; if (!o.badge) return; o.baseline = o.badge.exists ? o.badge.text : null; o.badge = null; void flush(); },
-  };
-  void acts[b.dataset.act!]?.();
-});
+export const view = new EditorView({ state: EditorState.create({ doc: '' }) });
 
 // ---------- refresh ----------
 export async function refresh(): Promise<void> {
@@ -216,7 +25,7 @@ export async function refresh(): Promise<void> {
     S.status = await git.status();
     if (S.tab === 'files') S.files = visibleFiles(await git.listFiles(), S.status);
     await refreshOpen();
-    renderAll();
+    notify();
   } catch (e) {
     if (errKind(e) === 'NotARepo') { toast('That folder is not a git repository', 'err'); await pickRepo(); }
     else toast(errText(e), 'err');
@@ -302,12 +111,12 @@ function markDirty(): void {
   const o = S.open;
   if (!o || o.view === 'staged') return;
   o.dirty = true;
-  renderFoot();
+  notify();
   clearTimeout(S.saveTimer);
   S.saveTimer = setTimeout(() => void flush(), 300);
 }
 
-async function flush(): Promise<boolean> {
+export async function flush(): Promise<boolean> {
   const inFlight = S.flushing;
   if (inFlight) return inFlight;
   const o = S.open;
@@ -327,12 +136,11 @@ async function flush(): Promise<boolean> {
       clearTimeout(S.saveTimer);
       o.dirty = false;
       o.badge = null;
-      renderFoot();
-      renderTitle();
+      notify();
       return true;
     } catch (e) {
       const stale = staleText(e);
-      if (stale) { o.badge = stale; renderTitle(); return false; }
+      if (stale) { o.badge = stale; notify(); return false; }
       toast(`not saved: ${errText(e)}`, 'err');
       return false;
     } finally {
@@ -364,7 +172,7 @@ export async function openRow(row: Row): Promise<void> {
   clearTimeout(S.saveTimer);
   const epoch = ++S.openEpoch;
   S.selected = rowKey(row);
-  if (row.conflicted) { await openConflict(row.path); renderAll(); return; }
+  if (row.conflicted) { await openConflict(row.path); notify(); return; }
   const kind: ViewKind = row.section;
   try {
     const orig = await git.readBlob(kind === 'unstaged' ? 'index' : 'head', row.path);
@@ -394,10 +202,10 @@ export async function openRow(row: Row): Promise<void> {
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
-  renderAll();
+  notify();
 }
 
-async function openPlain(path: string): Promise<void> {
+export async function openPlain(path: string): Promise<void> {
   if (!(await flush())) return;
   clearTimeout(S.saveTimer);
   const epoch = ++S.openEpoch;
@@ -415,7 +223,7 @@ async function openPlain(path: string): Promise<void> {
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
-  renderAll();
+  notify();
 }
 
 async function openConflict(path: string): Promise<void> {
@@ -442,8 +250,44 @@ function selectChunk(i: number): void {
   if (c) view.dispatch({ selection: { anchor: c.fromB }, scrollIntoView: true });
 }
 
+export function hasUnstaged(path: string): boolean {
+  return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
+}
+
+export const viewChanges = (path: string): Promise<void> => openRow({ section: 'unstaged', path, letter: 'M', untracked: false, conflicted: false });
+
+export async function reload(): Promise<void> {
+  await S.flushing; // an in-flight write would otherwise land its own text in the baseline set below
+  const o = S.open;
+  if (!o) return;
+  // read first, mutate only on success: a failed read must not leave the record
+  // clean with a null baseline, which would make the next reject discard the file
+  try {
+    const disk = await git.readFile(o.path);
+    if (S.open !== o) return;
+    clearTimeout(S.saveTimer);
+    replaceDoc(view, disk.text);
+    o.baseline = disk.exists ? disk.text : null;
+    o.eol = disk.eol;
+    o.dirty = false;
+    o.badge = null;
+  } catch (e) {
+    toast(errText(e), 'err');
+  }
+  notify();
+}
+
+export function keepMine(): void {
+  const o = S.open;
+  if (!o?.badge) return;
+  o.baseline = o.badge.exists ? o.badge.text : null;
+  o.badge = null;
+  notify();
+  void flush();
+}
+
 // ---------- hunk actions ----------
-async function accept(): Promise<void> {
+export async function accept(): Promise<void> {
   const o = S.open;
   if (!o || o.view !== 'unstaged' || o.panel || o.conflicted) return;
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
@@ -473,7 +317,9 @@ export async function reject(): Promise<void> {
     return;
   }
   if (special === 'removeConfirm') {
-    if (!confirmDialog(`Delete ${o.path}?\nIts content is not in git and cannot be recovered.`)) return;
+    if (!(await confirmDialog(`Delete ${o.path}?\nIts content is not in git and cannot be recovered.`))) return;
+    // a refresh can replace the record while the dialog is open; the blocking confirm() never let that happen
+    if (S.open !== o) return;
     try { await git.revertPath(o.path); o.baseline = null; o.dirty = false; } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
@@ -484,7 +330,7 @@ export async function reject(): Promise<void> {
   await refresh();
 }
 
-async function unstageHunk(): Promise<void> {
+export async function unstageHunk(): Promise<void> {
   const o = S.open;
   if (!o || o.view !== 'staged' || o.panel) return;
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
@@ -502,21 +348,26 @@ async function unstageHunk(): Promise<void> {
   await refresh();
 }
 
-async function rejectFile(path: string): Promise<void> {
-  if (!confirmDialog(`Discard unstaged changes in ${path}?\nAccepted hunks stay staged.`)) return;
+export const acceptFile = (path: string): Promise<void | undefined> => guarded('stagePath', () => git.stagePath(path));
+export const unstageFile = (path: string): Promise<void | undefined> => guarded('unstagePath', () => git.unstagePath(path));
+export const stageAll = (): Promise<void | undefined> => guarded('stageAll', () => git.stageAll());
+export const unstageAll = (): Promise<void | undefined> => guarded('unstageAll', () => git.unstageAll());
+
+export async function rejectFile(path: string): Promise<void> {
+  if (!(await confirmDialog(`Discard unstaged changes in ${path}?\nAccepted hunks stay staged.`))) return;
   await guarded('revertPath', () => git.revertPath(path));
 }
 
 function nextHunk(dir: 1 | -1): void {
   const o = S.open;
   const moved = o && o.view === 'unstaged' && !o.panel && !o.conflicted && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
-  if (moved) { renderTitle(); return; }
+  if (moved) { notify(); return; }
   const rows = S.status ? buildQueue(S.status).unstaged : [];
   if (!rows.length) { toast('Nothing left to review', 'info'); return; }
   const i = rows.findIndex((r) => rowKey(r) === S.selected);
   const idx = i === -1 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length;
   const next = rows[idx]!;
-  void openRow(next).then(() => { if (dir < 0) selectChunk(chunkCount(view.state) - 1); renderTitle(); });
+  void openRow(next).then(() => { if (dir < 0) selectChunk(chunkCount(view.state) - 1); notify(); });
 }
 
 function nextFile(dir: 1 | -1): void {
@@ -530,11 +381,13 @@ function nextFile(dir: 1 | -1): void {
 }
 
 // ---------- git operations ----------
-async function commit(msg: string): Promise<void> {
-  if (!msg) { toast('Type a commit message first', 'err'); queue.focusCommit(); return; }
+export async function commit(): Promise<void> {
+  const msg = S.commitMessage.trim();
+  if (!msg) { toast('Type a commit message first', 'err'); refs.commit?.focus(); return; }
   try {
     await git.commit(msg);
-    queue.clearMessage();
+    S.commitMessage = '';
+    notify();
     toast('Committed', 'ok');
   } catch (e) {
     toast(errText(e), 'err');
@@ -542,22 +395,25 @@ async function commit(msg: string): Promise<void> {
   void refresh();
 }
 
-async function aiMessage(): Promise<void> {
-  queue.setAiBusy(true);
+export async function aiMessage(): Promise<void> {
+  S.aiBusy = true;
+  notify();
   try {
-    queue.setMessage(await git.aiCommitMessage());
-    queue.focusCommit();
+    S.commitMessage = await git.aiCommitMessage();
+    notify();
+    refs.commit?.focus();
   } catch (e) {
     toast(errText(e), 'err');
   } finally {
-    queue.setAiBusy(false);
+    S.aiBusy = false;
+    notify();
   }
 }
 
 async function network(name: 'push' | 'pull'): Promise<void> {
   if (name === 'pull' && !(await flush())) return;
-  $('spin').classList.add('on');
-  $('cancel-btn').hidden = false;
+  S.busy = true;
+  notify();
   try {
     await (name === 'push' ? git.push() : git.pull());
     toast(name === 'push' ? 'Pushed' : 'Pulled', 'ok');
@@ -565,8 +421,8 @@ async function network(name: 'push' | 'pull'): Promise<void> {
     if (errKind(e) === 'Cancelled') toast('Cancelled', 'info');
     else toast(errText(e), 'err');
   } finally {
-    $('spin').classList.remove('on');
-    $('cancel-btn').hidden = true;
+    S.busy = false;
+    notify();
     await refresh();
     const st = await git.status().catch(() => null);
     const conflicts = st?.files.filter((f) => f.conflicted).map((f) => f.path) ?? [];
@@ -587,31 +443,40 @@ async function discardAll(): Promise<void> {
   try { preview = await git.discardPreview(); } catch (e) { toast(errText(e), 'err'); return; }
   const changed = S.status ? buildQueue(S.status).unstaged.filter((r) => !r.untracked && !r.conflicted).length : 0;
   const list = preview.length ? `\nUntracked entries removed:\n  ${preview.join('\n  ')}` : '';
-  if (!confirmDialog(`Discard unstaged changes in ${changed} file${changed === 1 ? '' : 's'}?${list}`)) return;
+  if (!(await confirmDialog(`Discard unstaged changes in ${changed} file${changed === 1 ? '' : 's'}?${list}`))) return;
   await guarded('discardAll', () => git.discardAll());
 }
 
-async function checkout(): Promise<void> {
+export async function checkout(): Promise<void> {
   let bs: Branch[] = [];
   try { bs = await git.branches(); } catch (e) { toast(errText(e), 'err'); return; }
   const b = await pick(bs.map((br) => ({ label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br })), 'Select a branch to checkout');
   if (b) await guarded('switchBranch', () => git.switchBranch(b));
 }
 
-async function palette(): Promise<void> {
+export const cancel = (): Promise<void> => git.cancel();
+
+export function focusCommit(): void {
+  S.tab = 'changes';
+  notify();
+  // React applies the tab change in a microtask queued by notify(); the focus has to land after it
+  queueMicrotask(() => refs.commit?.focus());
+}
+
+export async function palette(): Promise<void> {
   const cmds: { label: string; hint?: string; run: () => unknown }[] = [
-    { label: 'Git: Commit', hint: '⌘↩', run: () => { S.tab = 'changes'; renderQueue(); queue.focusCommit(); } },
+    { label: 'Git: Commit', hint: '⌘↩', run: focusCommit },
     { label: 'Git: Push', run: () => network('push') },
     { label: 'Git: Pull', run: () => network('pull') },
     { label: 'Git: Checkout to…', run: checkout },
     { label: 'Git: Stash', run: () => guarded('stashPush', () => git.stashPush()) },
     { label: 'Git: Pop Stash', run: stashPop },
-    { label: 'Git: Stage All Changes', hint: '⌘⌥Y', run: () => guarded('stageAll', () => git.stageAll()) },
-    { label: 'Git: Unstage All Changes', run: () => guarded('unstageAll', () => git.unstageAll()) },
+    { label: 'Git: Stage All Changes', hint: '⌘⌥Y', run: stageAll },
+    { label: 'Git: Unstage All Changes', run: unstageAll },
     { label: 'Git: Discard All Changes', run: discardAll },
-    { label: 'Git: Stage File', hint: '⌘⇧Y', run: () => S.open && guarded('stagePath', () => git.stagePath(S.open!.path)) },
+    { label: 'Git: Stage File', hint: '⌘⇧Y', run: () => S.open && acceptFile(S.open.path) },
     { label: 'Git: Discard File', hint: '⌘⇧N', run: () => S.open && rejectFile(S.open.path) },
-    { label: 'Git: Unstage File', run: () => S.open && guarded('unstagePath', () => git.unstagePath(S.open!.path)) },
+    { label: 'Git: Unstage File', run: () => S.open && unstageFile(S.open.path) },
     { label: 'Open Repository…', run: pickRepo },
   ];
   const unborn = S.status?.head === null;
@@ -630,12 +495,12 @@ async function quickOpen(): Promise<void> {
   }
 }
 
-async function setTab(tab: Tab): Promise<void> {
+export async function setTab(tab: Tab): Promise<void> {
   S.tab = tab;
   if (tab === 'files' && S.status) {
     try { S.files = visibleFiles(await git.listFiles(), S.status); } catch (e) { toast(errText(e), 'err'); }
   }
-  renderQueue();
+  notify();
 }
 
 // ---------- startup and repo switching ----------
@@ -650,7 +515,7 @@ async function openRepo(path: string): Promise<void> {
     await refresh();
     const first = S.status ? buildQueue(S.status).unstaged[0] : undefined;
     if (first) await openRow(first);
-    else renderAll();
+    else notify();
   } catch (e) {
     toast(errText(e), 'err');
     await pickRepo();
@@ -662,46 +527,47 @@ async function pickRepo(): Promise<void> {
   if (typeof dir === 'string') await openRepo(dir);
 }
 
-function dispatch(a: Action): void {
+export function dispatch(a: Action): void {
+  // an open overlay owns the keyboard; Radix handles its own Escape
+  if (S.palette || S.confirm) return;
   const map: Record<Action, () => unknown> = {
     nextHunk: () => nextHunk(1), prevHunk: () => nextHunk(-1),
     accept, reject, unstage: unstageHunk,
-    acceptFile: () => S.open && guarded('stagePath', () => git.stagePath(S.open!.path)),
+    acceptFile: () => S.open && acceptFile(S.open.path),
     rejectFile: () => S.open && rejectFile(S.open.path),
-    stageAll: () => guarded('stageAll', () => git.stageAll()),
+    stageAll,
     nextFile: () => nextFile(1), prevFile: () => nextFile(-1),
     quickOpen, palette,
     save: () => { if (S.open?.dirty) void flush(); },
-    toggleSidebar: () => localStorage.setItem('codebaer.sidebarHidden', String($('shell').classList.toggle('nosidebar'))),
-    focusList: () => queue.focusList(),
+    toggleSidebar: () => {
+      S.sidebarHidden = !S.sidebarHidden;
+      localStorage.setItem('codebaer.sidebarHidden', String(S.sidebarHidden));
+      notify();
+    },
+    focusList: () => refs.list?.focus(),
     focusEditor: () => view.focus(),
-    focusCommit: () => { S.tab = 'changes'; renderQueue(); queue.focusCommit(); },
-    filesTab: () => { void setTab('files').then(() => queue.focusList()); },
-    escape: () => { if (S.open?.badge) { S.open.badge = null; renderTitle(); } },
+    focusCommit,
+    filesTab: () => { void setTab('files').then(() => refs.list?.focus()); },
+    escape: () => { if (S.open?.badge) { S.open.badge = null; notify(); } },
   };
   void map[a]();
 }
 
-async function start(): Promise<void> {
+export async function start(): Promise<void> {
   try {
     await git.gitVersion();
   } catch (e) {
-    document.getElementById('app')!.innerHTML = `<div class="fatal">CodeBär needs git on this machine. ${esc(errText(e))}</div>`;
+    S.fatal = errText(e);
+    notify();
     return;
   }
-  installKeys(dispatch);
-  $('branch-btn').onclick = () => void checkout();
-  $('palette-btn').onclick = () => void palette();
-  $('cancel-btn').onclick = () => void git.cancel();
+  installKeys(dispatch, (visible) => { S.chord = visible; notify(); });
   globalThis.addEventListener('blur', () => void flush());
-  view.dom.addEventListener('keyup', renderTitle);
-  view.dom.addEventListener('mouseup', renderTitle);
+  view.dom.addEventListener('keyup', notify);
+  view.dom.addEventListener('mouseup', notify);
   await listen('repo-changed', () => void refresh());
   await listen<string>('open-repo', (e) => void openRepo(e.payload));
   const initial = (await git.initialRepo()) ?? localStorage.getItem('codebaer.lastRepo');
   if (initial) await openRepo(initial);
   else await pickRepo();
 }
-
-// vitest imports this module for its side effects and drives the exported functions itself
-if (!import.meta.env.VITEST) void start();
