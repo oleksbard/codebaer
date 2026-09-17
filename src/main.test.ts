@@ -265,7 +265,25 @@ describe('the blank panel', () => {
   });
 });
 
-describe('the title bar and the header', () => {
+describe('a failed commit', () => {
+  it('reports in a dialog rather than a toast, and stops the button spinning', async () => {
+    S.toasts = [];
+    S.commitMessage = 'a message';
+    g.commit!.mockRejectedValue({ kind: 'Git', detail: 'pre-commit hook failed' });
+
+    await m.commit();
+
+    expect(S.toasts).toEqual([]);
+    expect(S.confirm?.message).toBe('Commit failed\npre-commit hook failed');
+    expect(S.confirm?.error).toBe(true);
+    expect(S.committing).toBe(false);
+    expect(S.commitMessage).toBe('a message');
+    S.confirm!.resolve(false);
+    S.confirm = null;
+  });
+});
+
+describe('the title bar and the status bar', () => {
   const pillButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.tbar .pill.warn button')];
 
   it('shows the changed-on-disk pill, reloads from disk, and writes the buffer on Keep mine', async () => {
@@ -305,21 +323,68 @@ describe('the title bar and the header', () => {
     await vi.waitFor(() => expect(g.stageContent!).toHaveBeenCalledTimes(1));
   });
 
-  it('shows a spinner and a Cancel button while busy, and Cancel reaches git', async () => {
+  it('withBusy keeps a fast operation off the spinner', async () => {
+    await m.withBusy(() => Promise.resolve());
+    await new Promise((r) => setTimeout(r, 200));
+    expect(S.busy).toBe(false);
+  });
+
+  it('withBusy shows the spinner once an operation outlives the delay', async () => {
+    let release!: () => void;
+    const slow = m.withBusy(() => new Promise<void>((r) => { release = r; }));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(S.busy).toBe(true);
+    release();
+    await slow;
+    expect(S.busy).toBe(false);
+  });
+
+  it('marks the ahead and behind counts only when there is something to push or pull', async () => {
+    const { notify } = await import('./app/store');
+    const tracked = (ahead: number, behind: number) => ({ ...status('a.txt'), upstream: 'origin/main', ahead, behind });
+
+    S.status = tracked(2, 0);
+    notify();
+    await tick();
+    let counts = [...document.querySelectorAll('.foot .ab span')];
+    expect(counts.map((c) => c.textContent)).toEqual(['↑2', '↓0']);
+    expect(counts.map((c) => c.className)).toEqual(['on', '']);
+
+    S.status = tracked(0, 3);
+    notify();
+    await tick();
+    counts = [...document.querySelectorAll('.foot .ab span')];
+    expect(counts.map((c) => c.textContent)).toEqual(['↑0', '↓3']);
+    expect(counts.map((c) => c.className)).toEqual(['', 'on']);
+
+    S.status = status('a.txt');
+    notify();
+    await tick();
+    expect(document.querySelector('.foot .ab')).toBeNull();
+    expect(document.querySelector('.foot .branch button')!.textContent).toBe('mainno upstream');
+  });
+
+  it('shows a spinner while busy, and Cancel only when the operation can be cancelled', async () => {
     const { notify } = await import('./app/store');
     S.busy = true;
     notify();
     await tick();
-    expect(document.querySelector('.head .spinner')).not.toBeNull();
-    const cancel = document.querySelector<HTMLButtonElement>('.head .branch .btn')!;
+    expect(document.querySelector('.foot .spinner')).not.toBeNull();
+    expect(document.querySelector('.foot .branch .btn')).toBeNull();
+
+    S.cancellable = true;
+    notify();
+    await tick();
+    const cancel = document.querySelector<HTMLButtonElement>('.foot .branch .btn')!;
     expect(cancel.textContent).toBe('Cancel');
 
     cancel.click();
 
     expect(g.cancel!).toHaveBeenCalledTimes(1);
     S.busy = false;
+    S.cancellable = false;
     notify();
     await tick();
-    expect(document.querySelector('.head .spinner')).toBeNull();
+    expect(document.querySelector('.foot .spinner')).toBeNull();
   });
 });

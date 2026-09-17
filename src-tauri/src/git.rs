@@ -313,7 +313,7 @@ pub fn status_impl(root: &Path) -> Result<Status, AppError> {
     Ok(status::parse(&out.stdout))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<String, AppError> {
     let repo = discover(Path::new(&path))?;
     let handle = crate::watcher::start(&app, &repo.root, &repo.git_dir, &repo.common_dir)?;
@@ -326,7 +326,7 @@ pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) ->
     Ok(root)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn status(state: State<AppState>) -> Result<Status, AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -401,13 +401,13 @@ pub fn write_file_impl(root: &Path, rel: &str, text: &str, e: Eol, expected: Opt
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file(state: State<AppState>, path: String) -> Result<FileText, AppError> {
     let root = state.root()?;
     read_file_at(&resolve(&root, &path)?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_file(state: State<AppState>, path: String, text: String, eol: Eol, expected: Option<String>) -> Result<(), AppError> {
     let root = state.root()?;
     write_file_impl(&root, &path, &text, eol, expected.as_deref())
@@ -497,7 +497,7 @@ pub fn read_blob_impl(root: &Path, rev: Rev, rel: &str) -> Result<Blob, AppError
     Ok(Blob { text: ft.text, eol: ft.eol, oid: Some(oid), exists: true })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_blob(state: State<AppState>, rev: Rev, path: String) -> Result<Blob, AppError> {
     let root = state.root()?;
     resolve(&root, &path)?;
@@ -558,7 +558,7 @@ pub fn stage_content_impl(root: &Path, rel: &str, text: Option<&str>, e: Eol, ex
     Ok(StageResult { oid: Some(oid) })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn stage_content(state: State<AppState>, path: String, text: Option<String>, eol: Eol, expected_oid: Option<String>) -> Result<StageResult, AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -617,9 +617,14 @@ pub fn discard_all_impl(root: &Path) -> Result<(), AppError> {
     run_locked(root, &["clean", "-fd"], None, Some(LOCAL)).map(|_| ())
 }
 
+// Every command below runs git through `run_child`, which sleep-polls the child; on the main
+// thread that freezes the window for the whole call. `(async)` moves the sync body onto the
+// async runtime instead.
+// ponytail: that occupies a tokio worker for the duration; spawn_blocking (as in ai.rs) needs an
+// Arc'd AppState, worth it only if these ever outnumber the workers
 macro_rules! locked_path_cmd {
     ($name:ident, $imp:ident) => {
-        #[tauri::command]
+        #[tauri::command(async)]
         pub fn $name(state: State<AppState>, path: String) -> Result<(), AppError> {
             let root = state.root()?;
             let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -629,7 +634,7 @@ macro_rules! locked_path_cmd {
 }
 macro_rules! locked_cmd {
     ($name:ident, $imp:ident, $ret:ty) => {
-        #[tauri::command]
+        #[tauri::command(async)]
         pub fn $name(state: State<AppState>) -> Result<$ret, AppError> {
             let root = state.root()?;
             let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -644,7 +649,7 @@ locked_cmd!(stage_all, stage_all_impl, ());
 locked_cmd!(unstage_all, unstage_all_impl, ());
 locked_cmd!(discard_all, discard_all_impl, ());
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn discard_preview(state: State<AppState>) -> Result<Vec<String>, AppError> {
     discard_preview_impl(&state.root()?)
 }
@@ -718,6 +723,11 @@ pub fn switch_branch_impl(root: &Path, b: &Branch) -> Result<(), AppError> {
     }
 }
 
+pub fn create_branch_impl(root: &Path, name: &str) -> Result<(), AppError> {
+    valid_ref_part(name)?;
+    run_locked(root, &["switch", "-c", name], None, Some(LOCAL)).map(|_| ())
+}
+
 pub fn stash_push_impl(root: &Path) -> Result<(), AppError> {
     run_locked(root, &["stash", "push", "--include-untracked"], None, Some(LOCAL)).map(|_| ())
 }
@@ -731,31 +741,78 @@ pub fn list_files_impl(root: &Path) -> Result<Vec<String>, AppError> {
     Ok(out.stdout.split(|&b| b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn commit(state: State<AppState>, message: String) -> Result<(), AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     commit_impl(&root, &message)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn branches(state: State<AppState>) -> Result<Vec<Branch>, AppError> {
     branches_impl(&state.root()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn switch_branch(state: State<AppState>, branch: Branch) -> Result<(), AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     switch_branch_impl(&root, &branch)
 }
 
+#[tauri::command(async)]
+pub fn create_branch(state: State<AppState>, name: String) -> Result<(), AppError> {
+    let root = state.root()?;
+    let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    create_branch_impl(&root, &name)
+}
+
 locked_cmd!(stash_push, stash_push_impl, ());
 locked_cmd!(stash_pop, stash_pop_impl, ());
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_files(state: State<AppState>) -> Result<Vec<String>, AppError> {
     list_files_impl(&state.root()?)
+}
+
+fn default_push_remote(root: &Path) -> Result<String, AppError> {
+    let cfg = run_raw(root, &["config", "--get", "remote.pushDefault"], None, Some(LOCAL), None)?;
+    let configured = String::from_utf8_lossy(&cfg.stdout).trim().to_string();
+    if !configured.is_empty() {
+        return Ok(configured);
+    }
+    let out = run(root, &["remote"], None, Some(LOCAL))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let remotes: Vec<&str> = text.lines().collect();
+    if remotes.contains(&"origin") {
+        return Ok("origin".to_string());
+    }
+    match remotes.as_slice() {
+        [only] => Ok((*only).to_string()),
+        [] => Err(AppError::Git("this repository has no remote to push to".to_string())),
+        _ => Err(AppError::Git(format!("no default push remote; set remote.pushDefault (remotes: {})", remotes.join(", ")))),
+    }
+}
+
+/// A branch created from a local branch under `branch.autoSetupMerge = always` tracks that
+/// local branch, with `branch.<name>.remote = .`. Bare `git push` resolves its remote from
+/// that setting, so it pushes into this same repository and exits 0 while nothing reaches a
+/// remote. Such branches, and branches with no upstream, get an explicit remote instead.
+pub fn push_args(root: &Path) -> Result<Vec<String>, AppError> {
+    let head = run_raw(root, &["symbolic-ref", "--quiet", "--short", "HEAD"], None, Some(LOCAL), None)?;
+    if head.code != 0 {
+        return Ok(vec!["push".to_string()]);
+    }
+    let branch = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    let cfg = run_raw(root, &["config", "--get", &format!("branch.{branch}.remote")], None, Some(LOCAL), None)?;
+    let remote = String::from_utf8_lossy(&cfg.stdout).trim().to_string();
+    if !remote.is_empty() && remote != "." {
+        return Ok(vec!["push".to_string()]);
+    }
+    let target = default_push_remote(root)?;
+    valid_ref_part(&target)?;
+    valid_ref_part(&branch)?;
+    Ok(vec!["push".to_string(), "--set-upstream".to_string(), target, branch])
 }
 
 pub fn run_net(state: &AppState, args: &[&str]) -> Result<(), AppError> {
@@ -785,17 +842,18 @@ pub fn cancel_impl(state: &AppState) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn push(state: State<AppState>) -> Result<(), AppError> {
-    run_net(&state, &["push"])
+    let args = push_args(&state.root()?)?;
+    run_net(&state, &args.iter().map(String::as_str).collect::<Vec<_>>())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pull(state: State<AppState>) -> Result<(), AppError> {
     run_net(&state, &["pull"])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cancel(state: State<AppState>) {
     cancel_impl(&state)
 }

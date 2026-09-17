@@ -38,7 +38,7 @@ let side: HTMLElement;
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
-  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.aiBusy = false; S.commitMessage = '';
+  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.aiBusy = false; S.committing = false; S.commitMessage = '';
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -216,6 +216,26 @@ describe('context menu', () => {
     expect(items.map((i) => i.textContent)).toEqual(['Mark resolved', 'Open file']);
     items[0]!.click();
     expect(h.acceptFile).toHaveBeenCalledWith('c.ts');
+  });
+});
+
+describe('commit button', () => {
+  const btn = () => side.querySelector<HTMLButtonElement>('#commit-btn')!;
+
+  it('swaps to a spinner while committing and refuses a second click', async () => {
+    await render([], [row('a.ts', 'M', 'staged')]);
+    expect(btn().textContent).toBe('Commit ⌘↩');
+    expect(btn().disabled).toBe(false);
+
+    S.committing = true; notify(); await tick();
+    expect(btn().disabled).toBe(true);
+    expect(btn().classList.contains('busy')).toBe(true);
+    expect(btn().textContent).toBe('Committing…');
+    expect(btn().querySelector('.spinner')).not.toBeNull();
+
+    S.committing = false; notify(); await tick();
+    expect(btn().textContent).toBe('Commit ⌘↩');
+    expect(btn().disabled).toBe(false);
   });
 });
 

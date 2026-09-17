@@ -10,7 +10,7 @@ pub use error::AppError;
 use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
-#[tauri::command]
+#[tauri::command(async)]
 fn git_version() -> Result<String, error::AppError> {
     let out = std::process::Command::new("git")
         .arg("--version")
@@ -69,13 +69,24 @@ pub fn run_app() {
                 &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::quit(app, None)?,
             ])?;
+            // macOS delivers Cut/Copy/Paste/Select All/Undo to the webview only through these
+            // menu items' key equivalents; without an Edit menu the shortcuts are dead in every input
+            let edit = Submenu::with_items(app, "Edit", true, &[
+                &PredefinedMenuItem::undo(app, None)?,
+                &PredefinedMenuItem::redo(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::cut(app, None)?,
+                &PredefinedMenuItem::copy(app, None)?,
+                &PredefinedMenuItem::paste(app, None)?,
+                &PredefinedMenuItem::select_all(app, None)?,
+            ])?;
             let window = Submenu::with_items(app, "Window", true, &[
                 &PredefinedMenuItem::minimize(app, None)?,
                 &PredefinedMenuItem::close_window(app, None)?,
             ])?;
-            Menu::with_items(app, &[&app_menu, &window])
+            Menu::with_items(app, &[&app_menu, &edit, &window])
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::cancel, ai::ai_commit_message])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::cancel, ai::ai_commit_message])
         .run(tauri::generate_context!())
         .expect("error while running CodeBär");
 }

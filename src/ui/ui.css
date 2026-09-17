@@ -20,6 +20,10 @@
     &:disabled { opacity: .45; cursor: default; }
   }
 
+  &.busy:disabled { opacity: 1; }
+
+  .spinner { border-color: currentColor; border-top-color: transparent; }
+
   &.ghost {
     padding: 3px 8px;
     border-color: transparent;
@@ -148,6 +152,13 @@ kbd {
   color: var(--muted);
   font-size: var(--fs-2);
   white-space: pre-wrap;
+}
+
+.dialog.error .dialog-body {
+  font: var(--fs-2)/1.5 var(--mono);
+  color: var(--text);
+  max-height: 40vh;
+  overflow: auto;
 }
 
 .dialog-actions {

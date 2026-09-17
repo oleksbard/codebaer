@@ -1,5 +1,4 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { buildQueue } from '../model';
 import { Button } from '../ui/Button';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
@@ -8,18 +7,10 @@ import { notify, S, useApp } from './store';
 
 export function Header() {
   useApp();
-  const st = S.status;
-  const branch = !st ? '…' : st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
-  const ab = !st ? '' : st.upstream ? `↑${st.ahead} ↓${st.behind}` : 'no upstream';
   return (
     <header className="head">
       <div className="brand"><img src="/icon.png" alt="" />CodeBär</div>
-      <div className="branch">
-        <button type="button" title="Checkout to…" onClick={() => void checkout()}><span>{branch}</span><span>{ab}</span></button>
-        {S.busy && <Spinner />}
-        {S.busy && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
-        <span>{S.root ?? ''}</span>
-      </div>
+      <span className="repo">{S.root ?? ''}</span>
       <div className="right"><Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button></div>
     </header>
   );
@@ -27,12 +18,21 @@ export function Header() {
 
 export function Footer() {
   useApp();
-  const n = S.status ? buildQueue(S.status).unstaged.length : 0;
-  const o = S.open;
+  const st = S.status;
+  const branch = !st ? '…' : st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
+  const ab = !st ? null : st.upstream
+    ? <span className="ab">
+        <span className={st.ahead ? 'on' : ''}>↑{st.ahead}</span>
+        <span className={st.behind ? 'on' : ''}>↓{st.behind}</span>
+      </span>
+    : <span>no upstream</span>;
   return (
     <footer className="foot">
-      <span>{S.status ? (n ? `${n} file${n > 1 ? 's' : ''} to review` : 'nothing left to review') : ''}</span>
-      <span className={`save${o?.dirty ? ' dirty' : ''}`}>{o?.dirty ? 'unsaved' : ''}</span>
+      <div className="branch">
+        <button type="button" title="Checkout to…" onClick={() => void checkout()}><span>{branch}</span>{ab}</button>
+        {S.busy && <Spinner />}
+        {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
+      </div>
     </footer>
   );
 }

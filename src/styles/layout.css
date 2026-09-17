@@ -1,7 +1,7 @@
 .app {
   height: 100%;
   display: grid;
-  grid-template-rows: 38px minmax(0,1fr) 26px;
+  grid-template-rows: 38px minmax(0,1fr) 30px;
   grid-template-columns: min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);
   grid-template-areas: "head head" "side main" "foot foot";
 
@@ -45,6 +45,15 @@
   img { width: 22px; height: 22px; border-radius: var(--r-3); }
 }
 
+.repo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--fs-2) var(--mono);
+  color: var(--muted);
+}
+
 .branch {
   display: flex;
   align-items: center;
@@ -60,6 +69,14 @@
     display: flex;
     gap: 6px;
     align-items: center;
+  }
+
+  .ab {
+    display: flex;
+    gap: 6px;
+    color: var(--faint);
+
+    .on { color: var(--accent); font-weight: 600; }
   }
 }
 
@@ -81,6 +98,4 @@
   background: var(--panel);
   font-size: var(--fs-1);
   color: var(--muted);
-
-  .save.dirty { color: var(--warn); }
 }

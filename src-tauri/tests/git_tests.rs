@@ -1,8 +1,8 @@
 use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
-use codebaer_lib::git::{branches_impl, commit_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
-use codebaer_lib::git::{cancel_impl, run_net, AppState};
+use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{cancel_impl, push_args, run_net, AppState};
 use codebaer_lib::AppError;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -646,6 +646,55 @@ fn switch_branch_rejects_option_shaped_names() {
     assert_eq!(sh(r, &["branch", "--show-current"]).trim(), "main");
     assert!(switch_branch_impl(r, &Branch::Remote { remote: "-x".into(), branch: "y".into() }).is_err());
     assert!(sh(r, &["branch", "--list", "y"]).trim().is_empty());
+}
+
+#[test]
+fn create_branch_forks_head_keeps_the_worktree_and_rejects_bad_names() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "edited\n").unwrap();
+    create_branch_impl(r, "feat/x").unwrap();
+    assert_eq!(sh(r, &["branch", "--show-current"]).trim(), "feat/x");
+    assert_eq!(sh(r, &["rev-parse", "feat/x"]).trim(), sh(r, &["rev-parse", "main"]).trim());
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "edited\n");
+    assert!(create_branch_impl(r, "--orphan=boom").is_err());
+    assert!(create_branch_impl(r, "feat/x").is_err());
+    assert!(sh(r, &["branch", "--list", "boom"]).trim().is_empty());
+    assert_eq!(sh(r, &["branch", "--show-current"]).trim(), "feat/x");
+}
+
+/// `main` tracks `origin/main`; the bare repo is returned so it outlives the work tree.
+fn repo_with_remote() -> (TempDir, TempDir) {
+    let bare = tempfile::tempdir().unwrap();
+    sh(bare.path(), &["init", "-q", "--bare", "."]);
+    let d = repo();
+    sh(d.path(), &["remote", "add", "origin", bare.path().to_str().unwrap()]);
+    sh(d.path(), &["push", "-q", "-u", "origin", "main"]);
+    (d, bare)
+}
+
+#[test]
+fn push_names_the_remote_when_the_branch_tracks_a_local_one() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["config", "branch.autoSetupMerge", "always"]);
+    sh(r, &["switch", "-q", "-c", "feat"]);
+    // the shape that made a bare push a silent no-op: the upstream is this repository
+    assert_eq!(sh(r, &["config", "--get", "branch.feat.remote"]).trim(), ".");
+    assert_eq!(push_args(r).unwrap(), vec!["push", "--set-upstream", "origin", "feat"]);
+}
+
+#[test]
+fn push_stays_bare_when_the_branch_already_tracks_a_remote() {
+    let (d, _bare) = repo_with_remote();
+    assert_eq!(sh(d.path(), &["config", "--get", "branch.main.remote"]).trim(), "origin");
+    assert_eq!(push_args(d.path()).unwrap(), vec!["push"]);
+}
+
+#[test]
+fn push_refuses_a_repository_with_no_remote() {
+    let d = repo();
+    assert!(push_args(d.path()).is_err());
 }
 
 #[test]

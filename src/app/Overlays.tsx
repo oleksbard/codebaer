@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { fuzzy } from '../palette';
 import { removeToast } from '../toast';
 import { AlertDialog } from '../ui/AlertDialog';
+import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { notify, S, useApp, type ConfirmRequest, type PaletteRequest } from './store';
+import { notify, S, useApp, type ConfirmRequest, type PaletteRequest, type PromptRequest } from './store';
 
 export function Overlays() {
   useApp();
@@ -11,6 +12,7 @@ export function Overlays() {
     <>
       {S.palette && <CommandPalette key={S.palette.id} req={S.palette} />}
       {S.confirm && <ConfirmDialog req={S.confirm} />}
+      {S.prompt && <PromptDialog req={S.prompt} />}
       <div className="toasts">
         {S.toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`} onClick={() => removeToast(t.id)}>{t.message}</div>
@@ -57,6 +59,28 @@ function CommandPalette({ req }: { req: PaletteRequest }) {
   );
 }
 
+function PromptDialog({ req }: { req: PromptRequest }) {
+  const [value, setValue] = useState('');
+  const name = value.trim();
+  const close = (v: string | null) => {
+    if (S.prompt !== req) return;
+    S.prompt = null;
+    notify();
+    req.resolve(v);
+  };
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) close(null); }} title={req.placeholder} className="prompt">
+      <input autoFocus type="text" autoComplete="off" spellCheck={false} placeholder={req.placeholder} value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (name) close(name); } }} />
+      <div className="dialog-actions">
+        <Button onClick={() => close(null)}>Cancel</Button>
+        <Button variant="primary" disabled={!name} onClick={() => close(name)}>Create</Button>
+      </div>
+    </Dialog>
+  );
+}
+
 function ConfirmDialog({ req }: { req: ConfirmRequest }) {
   const i = req.message.indexOf('\n');
   const title = i < 0 ? req.message : req.message.slice(0, i);
@@ -68,5 +92,5 @@ function ConfirmDialog({ req }: { req: ConfirmRequest }) {
     notify();
     req.resolve(ok);
   };
-  return <AlertDialog title={title} body={body} confirmLabel="OK" onResult={close} />;
+  return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : 'OK'} error={req.error} onResult={close} />;
 }

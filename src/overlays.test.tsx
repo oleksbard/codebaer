@@ -10,7 +10,7 @@ vi.mock('./git', async () => {
 
 const { S } = await import('./app/store');
 const { pick } = await import('./palette');
-const { confirmDialog, toast } = await import('./toast');
+const { confirmDialog, errorDialog, promptDialog, toast } = await import('./toast');
 const { dispatch } = await import('./app/controller');
 const { Overlays } = await import('./app/Overlays');
 
@@ -18,7 +18,7 @@ let root: Root;
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="host"></div>';
-  S.palette = null; S.confirm = null; S.toasts = []; S.chord = false; S.sidebarHidden = false;
+  S.palette = null; S.confirm = null; S.prompt = null; S.toasts = []; S.chord = false; S.sidebarHidden = false;
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Overlays />));
 });
@@ -111,6 +111,47 @@ describe('confirm dialog', () => {
     await tick();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await expect(p).resolves.toBe(false);
+  });
+});
+
+describe('error dialog', () => {
+  it('shows the failure with no Cancel, and Close resolves it', async () => {
+    const p = errorDialog('Push failed\nrejected: non-fast-forward');
+    await tick();
+    expect(document.querySelector('.dialog.error')).not.toBeNull();
+    expect(document.querySelector('.dialog-title')!.textContent).toBe('Push failed');
+    expect(document.querySelector('.dialog-body')!.textContent).toBe('rejected: non-fast-forward');
+    expect(document.querySelector('.dialog-actions .btn:not(.primary)')).toBeNull();
+    const close = document.querySelector<HTMLButtonElement>('.dialog-actions .btn.primary')!;
+    expect(close.textContent).toBe('Close');
+    close.click();
+    await expect(p).resolves.toBeUndefined();
+    await tick();
+    expect(document.querySelector('.dialog')).toBeNull();
+  });
+});
+
+describe('prompt dialog', () => {
+  it('Create resolves the trimmed value and an empty one cannot be submitted', async () => {
+    const p = promptDialog('New branch name');
+    await tick();
+    const input = document.querySelector<HTMLInputElement>('.dialog.prompt input')!;
+    expect(input.placeholder).toBe('New branch name');
+    const create = () => document.querySelector<HTMLButtonElement>('.prompt .btn.primary')!;
+    expect(create().disabled).toBe(true);
+    setValue(input, '  feat/x  ');
+    await tick();
+    create().click();
+    await expect(p).resolves.toBe('feat/x');
+    await tick();
+    expect(document.querySelector('.prompt')).toBeNull();
+  });
+
+  it('Escape resolves null', async () => {
+    const p = promptDialog('New branch name');
+    await tick();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(p).resolves.toBeNull();
   });
 });
 

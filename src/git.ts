@@ -78,6 +78,7 @@ export const git = {
   aiCommitMessage: () => invoke<string>('ai_commit_message'),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
+  createBranch: (name: string) => invoke<void>('create_branch', { name }),
   push: () => invoke<void>('push'),
   pull: () => invoke<void>('pull'),
   cancel: () => invoke<void>('cancel'),

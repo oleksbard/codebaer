@@ -9,7 +9,7 @@ import {
   acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
 import { pick } from '../palette';
-import { confirmDialog, toast } from '../toast';
+import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
 import { notify, refs, S, type Open, type Tab } from './store';
 
@@ -151,13 +151,30 @@ export async function flush(): Promise<boolean> {
   return p;
 }
 
+let busyDepth = 0;
+let busyTimer: ReturnType<typeof setTimeout> | 0 = 0;
+
+/** Staging a file finishes in milliseconds; the delay keeps those off the spinner entirely. */
+export async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
+  if (++busyDepth === 1) busyTimer = setTimeout(() => { S.busy = true; notify(); }, 150);
+  try {
+    return await fn();
+  } finally {
+    if (--busyDepth === 0) {
+      clearTimeout(busyTimer);
+      busyTimer = 0;
+      if (S.busy) { S.busy = false; notify(); }
+    }
+  }
+}
+
 export async function guarded<T>(name: keyof typeof git, fn: () => Promise<T>): Promise<T | undefined> {
   if (FLUSH_SET.has(name) && !(await flush())) {
     toast(S.open?.badge ? 'This file changed on disk. Reload or Keep mine first.' : 'not saved, see the error above', 'warn');
     return undefined;
   }
   try {
-    return await fn();
+    return await withBusy(fn);
   } catch (e) {
     toast(errText(e), 'err');
     return undefined;
@@ -382,15 +399,20 @@ function nextFile(dir: 1 | -1): void {
 
 // ---------- git operations ----------
 export async function commit(): Promise<void> {
+  if (S.committing) return;
   const msg = S.commitMessage.trim();
   if (!msg) { toast('Type a commit message first', 'err'); refs.commit?.focus(); return; }
+  S.committing = true;
+  notify();
   try {
     await git.commit(msg);
     S.commitMessage = '';
-    notify();
     toast('Committed', 'ok');
   } catch (e) {
-    toast(errText(e), 'err');
+    void errorDialog(`Commit failed\n${errText(e)}`);
+  } finally {
+    S.committing = false;
+    notify();
   }
   void refresh();
 }
@@ -412,16 +434,15 @@ export async function aiMessage(): Promise<void> {
 
 async function network(name: 'push' | 'pull'): Promise<void> {
   if (name === 'pull' && !(await flush())) return;
-  S.busy = true;
-  notify();
+  S.cancellable = true;
   try {
-    await (name === 'push' ? git.push() : git.pull());
+    await withBusy(() => (name === 'push' ? git.push() : git.pull()));
     toast(name === 'push' ? 'Pushed' : 'Pulled', 'ok');
   } catch (e) {
     if (errKind(e) === 'Cancelled') toast('Cancelled', 'info');
-    else toast(errText(e), 'err');
+    else void errorDialog(`${name === 'push' ? 'Push' : 'Pull'} failed\n${errText(e)}`);
   } finally {
-    S.busy = false;
+    S.cancellable = false;
     notify();
     await refresh();
     const st = await git.status().catch(() => null);
@@ -454,6 +475,11 @@ export async function checkout(): Promise<void> {
   if (b) await guarded('switchBranch', () => git.switchBranch(b));
 }
 
+export async function createBranch(): Promise<void> {
+  const name = await promptDialog('New branch name');
+  if (name) await guarded('createBranch', () => git.createBranch(name));
+}
+
 export const cancel = (): Promise<void> => git.cancel();
 
 export function focusCommit(): void {
@@ -469,6 +495,7 @@ export async function palette(): Promise<void> {
     { label: 'Git: Push', run: () => network('push') },
     { label: 'Git: Pull', run: () => network('pull') },
     { label: 'Git: Checkout to…', run: checkout },
+    { label: 'Git: Create Branch…', run: createBranch },
     { label: 'Git: Stash', run: () => guarded('stashPush', () => git.stashPush()) },
     { label: 'Git: Pop Stash', run: stashPop },
     { label: 'Git: Stage All Changes', hint: '⌘⌥Y', run: stageAll },
@@ -529,7 +556,7 @@ async function pickRepo(): Promise<void> {
 
 export function dispatch(a: Action): void {
   // an open overlay owns the keyboard; Radix handles its own Escape
-  if (S.palette || S.confirm) return;
+  if (S.palette || S.confirm || S.prompt) return;
   const map: Record<Action, () => unknown> = {
     nextHunk: () => nextHunk(1), prevHunk: () => nextHunk(-1),
     accept, reject, unstage: unstageHunk,

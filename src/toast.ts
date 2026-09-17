@@ -22,3 +22,20 @@ export function confirmDialog(message: string): Promise<boolean> {
     notify();
   });
 }
+
+/** Git failures are long and worth reading; a dialog blocks until it is dismissed, a toast does not. */
+export function errorDialog(message: string): Promise<void> {
+  S.confirm?.resolve(false);
+  return new Promise((resolve) => {
+    S.confirm = { message, error: true, resolve: () => resolve() };
+    notify();
+  });
+}
+
+export function promptDialog(placeholder: string): Promise<string | null> {
+  S.prompt?.resolve(null);
+  return new Promise((resolve) => {
+    S.prompt = { placeholder, resolve };
+    notify();
+  });
+}

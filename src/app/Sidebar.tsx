@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
+import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import { acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, unstageAll, unstageFile } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
@@ -169,7 +170,9 @@ function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
         <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
         <span className="r">
           <IconButton id="ai-btn" label="Write the commit message with Claude" busy={S.aiBusy} disabled={staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
-          <Button variant="primary" id="commit-btn" disabled={staged === 0} onClick={() => void commit()}>Commit <Kbd>⌘↩</Kbd></Button>
+          <Button variant="primary" id="commit-btn" busy={S.committing} disabled={staged === 0 || S.committing} onClick={() => void commit()}>
+            {S.committing ? <><Spinner />Committing…</> : <>Commit <Kbd>⌘↩</Kbd></>}
+          </Button>
         </span>
       </div>
     </div>

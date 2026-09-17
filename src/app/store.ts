@@ -23,7 +23,8 @@ export type ToastKind = 'info' | 'ok' | 'warn' | 'err';
 export type Toast = { id: number; message: string; kind: ToastKind };
 /** `id` keys the palette component so a request that replaces an open one starts with an empty filter. */
 export type PaletteRequest = { id: number; items: Item<unknown>[]; placeholder: string; resolve(v: unknown): void };
-export type ConfirmRequest = { message: string; resolve(ok: boolean): void };
+export type ConfirmRequest = { message: string; error?: boolean; resolve(ok: boolean): void };
+export type PromptRequest = { placeholder: string; resolve(value: string | null): void };
 
 const storedWidth = localStorage.getItem('codebaer.sideWidth');
 
@@ -41,11 +42,14 @@ export const S = {
   openEpoch: 0,
   fatal: null as string | null,
   busy: false,
+  cancellable: false,
+  committing: false,
   sidebarHidden: localStorage.getItem('codebaer.sidebarHidden') === 'true',
   sideWidth: storedWidth ? Math.max(180, Number(storedWidth)) : null,
   chord: false,
   palette: null as PaletteRequest | null,
   confirm: null as ConfirmRequest | null,
+  prompt: null as PromptRequest | null,
   toasts: [] as Toast[],
   aiBusy: false,
   commitMessage: '',
