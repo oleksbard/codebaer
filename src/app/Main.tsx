@@ -3,6 +3,7 @@ import { chunkCount, chunkIndexAtCursor } from '../editor';
 import { buildQueue, split } from '../model';
 import { Button } from '../ui/Button';
 import { Kbd } from '../ui/Kbd';
+import { FileIcon } from '../ui/FileIcon';
 import { IconButton } from '../ui/IconButton';
 import { Pill } from '../ui/Pill';
 import { accept, acceptFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload, toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges } from './controller';
@@ -48,7 +49,7 @@ function TitleBar() {
   const o = S.open;
   if (!o) return <div className="tbar" />;
   const [dir, name] = split(o.path);
-  const title = <span className="file"><span className="dir">{dir}</span>{name}</span>;
+  const title = <span className="file"><FileIcon name={name} /><span className="txt"><span className="dir">{dir}</span>{name}</span></span>;
   const badge = o.badge
     ? <Pill tone="warn">changed on disk<button type="button" onClick={() => void reload()}>Reload</button><button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
     : null;

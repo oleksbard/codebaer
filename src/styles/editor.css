@@ -8,11 +8,13 @@
   background: var(--panel);
 
   .file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
     font: var(--fs-2) var(--mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 
+    .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dir { color: var(--muted); }
   }
 

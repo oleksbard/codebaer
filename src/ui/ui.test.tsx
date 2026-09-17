@@ -13,6 +13,7 @@ import { Tabs } from './Tabs';
 import { Dialog } from './Dialog';
 import { AlertDialog } from './AlertDialog';
 import { ContextMenu } from './ContextMenu';
+import { FileIcon } from './FileIcon';
 
 const roots: Root[] = [];
 function mount(el: ReactElement): HTMLElement {
@@ -117,5 +118,14 @@ describe('primitives', () => {
     expect(items.map((i) => i.textContent)).toEqual(['One', 'Two']);
     items[0]!.click();
     expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('FileIcon resolves a per-extension glyph and a theme colour, and falls back for unknown names', () => {
+    const h = mount(<><FileIcon name="model.ts" /><FileIcon name="notes.md" /><FileIcon name="whatever.qqq" /></>);
+    const icons = [...h.querySelectorAll<HTMLElement>('.ficon')];
+    expect(icons.map((i) => i.querySelector('svg') !== null)).toEqual([true, true, true]);
+    const paths = icons.map((i) => i.querySelector('path')!.getAttribute('d'));
+    expect(new Set(paths).size).toBe(3);
+    expect(icons.every((i) => i.style.color.startsWith('var(--'))).toBe(true);
   });
 });

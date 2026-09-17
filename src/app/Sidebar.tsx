@@ -3,6 +3,7 @@ import { buildQueue, rowKey, split, type Row, type Section } from '../model';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
+import { FileIcon } from '../ui/FileIcon';
 import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
@@ -13,6 +14,11 @@ import { notify, refs, S, useApp, type Tab } from './store';
 const TABS = [{ value: 'changes', label: 'Changes' }, { value: 'files', label: 'Files' }];
 
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
+
+// the status is a bare colour dot now, so the letter it replaced becomes its tooltip
+const ST_LABEL: Record<string, string> = {
+  A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type changed', U: 'Untracked', '!': 'Conflict',
+};
 
 export function Sidebar() {
   useApp();
@@ -111,11 +117,12 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
   return (
     <ContextMenu items={menuFor(r)}>
       <div className={`row${selected ? ' sel' : ''}`} data-key={rowKey(r)} data-st={r.letter} role="button" title={r.path} onClick={() => void openRow(r)}>
+        <FileIcon name={name} />
         <span className="path"><span className="name">{name}</span><span className="dir">{dirSlash.slice(0, -1)}</span></span>
         <span className="tail">
           {r.conflicted && <Badge>conflict</Badge>}
           <span className="acts">{acts}</span>
-          <span className="st">{r.letter}</span>
+          <span className="st" title={ST_LABEL[r.letter] ?? r.letter}>{r.letter}</span>
         </span>
       </div>
     </ContextMenu>
@@ -132,6 +139,7 @@ function FilesList({ files, selected }: { files: string[]; selected: string | nu
           <summary className="sec d"><span className="l">{d || '/'}</span></summary>
           {dirs.get(d)!.map((p) => (
             <div key={p} className={`row f${selected === `plain:${p}` ? ' sel' : ''}`} data-key={`plain:${p}`} onClick={() => void openPlain(p)}>
+              <FileIcon name={split(p)[1]} />
               <span className="path"><span className="name">{split(p)[1]}</span></span>
             </div>
           ))}
