@@ -81,6 +81,7 @@ export const git = {
   createBranch: (name: string) => invoke<void>('create_branch', { name }),
   push: () => invoke<void>('push'),
   pull: () => invoke<void>('pull'),
+  fetch: () => invoke<void>('fetch'),
   cancel: () => invoke<void>('cancel'),
   stashPush: () => invoke<void>('stash_push'),
   stashPop: () => invoke<void>('stash_pop'),

@@ -856,6 +856,13 @@ pub fn pull(state: State<AppState>) -> Result<(), AppError> {
     run_net(&state, &["pull"])
 }
 
+/// Refresh only: this moves the remote-tracking refs, so ahead/behind in the next status
+/// are current, and leaves HEAD and the working tree alone.
+#[tauri::command(async)]
+pub fn fetch(state: State<AppState>) -> Result<(), AppError> {
+    run_net(&state, &["fetch", "--prune"])
+}
+
 #[tauri::command(async)]
 pub fn cancel(state: State<AppState>) {
     cancel_impl(&state)

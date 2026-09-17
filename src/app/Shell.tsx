@@ -1,8 +1,9 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
-import { cancel, checkout, palette } from './controller';
+import { cancel, checkout, network, palette } from './controller';
 import { notify, S, useApp } from './store';
 
 export function Header() {
@@ -13,6 +14,27 @@ export function Header() {
       <span className="repo">{S.root ?? ''}</span>
       <div className="right"><Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button></div>
     </header>
+  );
+}
+
+const commits = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+
+function RemoteActions() {
+  const st = S.status;
+  if (!st) return null;
+  // git reports no ahead count without an upstream, and push is the thing that creates one,
+  // so an untracked branch offers push rather than hiding it until it can be counted
+  const push = st.upstream === null ? st.head !== null : st.ahead > 0 && st.behind === 0;
+  return (
+    <span className="remote">
+      {st.upstream !== null &&
+        <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>↻</IconButton>}
+      {st.behind > 0 &&
+        <IconButton label={`Pull ${commits(st.behind)}`} disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
+      {push &&
+        <IconButton label={st.upstream === null ? 'Push and set upstream' : `Push ${commits(st.ahead)}`}
+          disabled={S.busy} onClick={() => void network('push')}>⤒</IconButton>}
+    </span>
   );
 }
 
@@ -30,6 +52,7 @@ export function Footer() {
     <footer className="foot">
       <div className="branch">
         <button type="button" title="Checkout to…" onClick={() => void checkout()}><span>{branch}</span>{ab}</button>
+        <RemoteActions />
         {S.busy && <Spinner />}
         {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
       </div>

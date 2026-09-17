@@ -464,15 +464,23 @@ export async function aiMessage(): Promise<void> {
   }
 }
 
-async function network(name: 'push' | 'pull'): Promise<void> {
+const NET: Record<Net, { verb: string; done: string; run: () => Promise<void> }> = {
+  push: { verb: 'Push', done: 'Pushed', run: () => git.push() },
+  pull: { verb: 'Pull', done: 'Pulled', run: () => git.pull() },
+  fetch: { verb: 'Fetch', done: 'Fetched', run: () => git.fetch() },
+};
+
+export type Net = 'push' | 'pull' | 'fetch';
+
+export async function network(name: Net): Promise<void> {
   if (name === 'pull' && !(await flush())) return;
   S.cancellable = true;
   try {
-    await withBusy(() => (name === 'push' ? git.push() : git.pull()));
-    toast(name === 'push' ? 'Pushed' : 'Pulled', 'ok');
+    await withBusy(NET[name].run);
+    toast(NET[name].done, 'ok');
   } catch (e) {
     if (errKind(e) === 'Cancelled') toast('Cancelled', 'info');
-    else void errorDialog(`${name === 'push' ? 'Push' : 'Pull'} failed\n${errText(e)}`);
+    else void errorDialog(`${NET[name].verb} failed\n${errText(e)}`);
   } finally {
     S.cancellable = false;
     notify();
@@ -526,6 +534,7 @@ export async function palette(): Promise<void> {
     { label: 'Git: Commit', hint: '⌘↩', run: focusCommit },
     { label: 'Git: Push', run: () => network('push') },
     { label: 'Git: Pull', run: () => network('pull') },
+    { label: 'Git: Fetch', run: () => network('fetch') },
     { label: 'Git: Checkout to…', run: checkout },
     { label: 'Git: Create Branch…', run: createBranch },
     { label: 'Git: Stash', run: () => guarded('stashPush', () => git.stashPush()) },

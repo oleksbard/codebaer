@@ -61,7 +61,8 @@
   font: var(--fs-2) var(--mono);
   color: var(--muted);
 
-  button {
+  /* direct child only: the remote actions below are .ico buttons, not pills */
+  > button {
     padding: 3px 8px;
     border-radius: var(--r-3);
     border: 1px solid var(--line);
@@ -70,6 +71,10 @@
     gap: 6px;
     align-items: center;
   }
+
+  /* ⤓ and ⤒ carry the meaning here, so they run larger than the 12px .ico default */
+  .remote { display: flex; gap: 2px; }
+  .remote .ico { font-size: var(--fs-4); }
 
   .ab {
     display: flex;
