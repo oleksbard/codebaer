@@ -2,7 +2,7 @@ import { ChangeSet, EditorState, Transaction, type Extension } from '@codemirror
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { LanguageDescription, syntaxHighlighting } from '@codemirror/language';
+import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { editorHighlight, editorTheme } from './editor-theme';
 import {
@@ -32,8 +32,23 @@ export async function buildState(
     highlightSelectionMatches(),
     editorTheme,
     syntaxHighlighting(editorHighlight),
+    codeFolding({
+      preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number + 1,
+      placeholderDOM: (_view, onclick, lines: number) => {
+        // a button, not CodeMirror's default span: expanding a gap is the only way to see the
+        // hidden lines, so it has to be reachable by keyboard and announced as an action
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'cm-foldPlaceholder';
+        el.title = 'unfold';
+        el.setAttribute('aria-label', `expand ${lines} hidden line${lines === 1 ? '' : 's'}`);
+        el.textContent = `⋯ ${lines} line${lines === 1 ? '' : 's'}`;
+        el.onclick = onclick;
+        return el;
+      },
+    }),
     await languageFor(path),
-    keymap.of([...defaultKeymap, ...searchKeymap, { key: 'Ctrl-g', run: gotoLine }]),
+    keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap, { key: 'Ctrl-g', run: gotoLine }]),
     EditorView.editable.of(kind !== 'staged'),
     EditorView.updateListener.of((u) => {
       // a refresh's replaceDoc annotates addToHistory:false; only real edits should arm autosave
@@ -51,7 +66,10 @@ export async function buildState(
             b.name = type; // matches the library's own [name=accept]/[name=reject] baseTheme styling
             b.onclick = (e) => {
               e.preventDefault();
-              const v = EditorView.findFromDOM(b);
+              // findFromDOM looks for .cm-content *below* what it is given, so the button itself
+              // always resolves to null and leaves the cursor on whichever chunk it was already on
+              const root = b.closest<HTMLElement>('.cm-editor');
+              const v = root && EditorView.findFromDOM(root);
               if (v) v.dispatch({ selection: { anchor: v.posAtDOM(b) } });
               (type === 'accept' ? controls.accept : controls.reject)();
             };

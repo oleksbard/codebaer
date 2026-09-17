@@ -45,6 +45,7 @@ export const S = {
   cancellable: false,
   committing: false,
   sidebarHidden: localStorage.getItem('codebaer.sidebarHidden') === 'true',
+  changesOnly: localStorage.getItem('codebaer.changesOnly') === 'true',
   sideWidth: storedWidth ? Math.max(180, Number(storedWidth)) : null,
   chord: false,
   palette: null as PaletteRequest | null,

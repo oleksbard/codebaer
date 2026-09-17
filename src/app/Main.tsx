@@ -3,8 +3,9 @@ import { chunkCount, chunkIndexAtCursor } from '../editor';
 import { buildQueue, split } from '../model';
 import { Button } from '../ui/Button';
 import { Kbd } from '../ui/Kbd';
+import { IconButton } from '../ui/IconButton';
 import { Pill } from '../ui/Pill';
-import { accept, acceptFile, hasUnstaged, keepMine, reject, rejectFile, reload, unstageFile, unstageHunk, view, viewChanges } from './controller';
+import { accept, acceptFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload, toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges } from './controller';
 import { S, useApp } from './store';
 
 const PANEL_TEXT: Record<string, string> = {
@@ -72,9 +73,16 @@ function TitleBar() {
       : o.view === 'plain' && hasUnstaged(o.path)
         ? <Button onClick={() => void viewChanges(o.path)}>View changes</Button>
         : null;
+  const nav = o.view === 'plain' || !chunks ? null : (
+    <>
+      <IconButton label="Previous change (⇧F7)" onClick={() => nextHunk(-1)}>↑</IconButton>
+      <IconButton label="Next change (F7)" onClick={() => nextHunk(1)}>↓</IconButton>
+      <IconButton label="Show changes only" aria-pressed={S.changesOnly} onClick={() => toggleChangesOnly()}>⊟</IconButton>
+    </>
+  );
   return (
     <div className="tbar">{title}<span className="pos">{pos}</span>
-      <div className="right">{badge}<Pill>{pill}</Pill>{btns}</div>
+      <div className="right">{badge}{nav}<Pill>{pill}</Pill>{btns}</div>
     </div>
   );
 }

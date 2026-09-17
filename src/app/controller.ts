@@ -3,11 +3,13 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
+import { unfoldAll } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
 import { acceptText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from '../model';
 import {
   acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
+import { foldToChanges } from '../context-view';
 import { pick } from '../palette';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
@@ -25,6 +27,9 @@ export async function refresh(): Promise<void> {
     S.status = await git.status();
     if (S.tab === 'files') S.files = visibleFiles(await git.listFiles(), S.status);
     await refreshOpen();
+    // refreshOpen's replaceDoc/replaceOriginal map every fold away, and this is the path an agent
+    // editing the open file takes
+    refold();
     notify();
   } catch (e) {
     if (errKind(e) === 'NotARepo') { toast('That folder is not a git repository', 'err'); await pickRepo(); }
@@ -219,6 +224,9 @@ export async function openRow(row: Row): Promise<void> {
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
+  // outside the try: openRow's catch maps anything thrown to a failed-open panel and blanks the
+  // document, so a fold bug in here would read as an unopenable file
+  refold();
   notify();
 }
 
@@ -267,6 +275,21 @@ function selectChunk(i: number): void {
   if (c) view.dispatch({ selection: { anchor: c.fromB }, scrollIntoView: true });
 }
 
+function refold(): void {
+  if (!S.changesOnly) return;
+  // every caller treats a throw as a failed read of the file, so a fold bug would surface as an
+  // unopenable file or a dead refresh rather than as itself
+  try { foldToChanges(view); } catch (e) { toast(`could not collapse unchanged lines: ${String(e)}`, 'err'); }
+}
+
+export function toggleChangesOnly(): void {
+  S.changesOnly = !S.changesOnly;
+  localStorage.setItem('codebaer.changesOnly', String(S.changesOnly));
+  if (S.changesOnly) foldToChanges(view);
+  else unfoldAll(view);
+  notify();
+}
+
 export function hasUnstaged(path: string): boolean {
   return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
 }
@@ -288,6 +311,7 @@ export async function reload(): Promise<void> {
     o.eol = disk.eol;
     o.dirty = false;
     o.badge = null;
+    refold();
   } catch (e) {
     toast(errText(e), 'err');
   }
@@ -311,17 +335,25 @@ export async function accept(): Promise<void> {
   if (!(await flush())) return;
   acceptChunk(view);
   const text = acceptText(getOriginalDoc(view.state).toString(), o.baseline);
+  let ok = true;
   try {
     const r = await git.stageContent(o.path, text, o.eol, o.originalOid);
     o.originalOid = r.oid;
     o.originalExists = r.oid !== null;
   } catch (e) {
+    ok = false;
     const idx = await git.readBlob('index', o.path).catch(() => null);
     if (idx) { replaceOriginal(view, idx.text); o.originalOid = idx.oid; o.originalExists = idx.exists; }
     if (errKind(e) === 'StaleIndex') toast('index changed under you, your accept was dropped, re-diffed', 'warn');
     else toast(errText(e), 'err');
   }
   await refresh();
+  // a dropped accept leaves its hunk on screen, and a file opened while this was in flight owns
+  // the view now, so neither one may move the cursor
+  if (!ok || S.open !== o) return;
+  // goToNextChunk wraps, so any hunk still in this file wins over moving to the next one
+  if (chunkCount(view.state)) { if (!goToNextChunk(view)) selectChunk(0); notify(); }
+  else nextHunk(1);
 }
 
 export async function reject(): Promise<void> {
@@ -375,9 +407,9 @@ export async function rejectFile(path: string): Promise<void> {
   await guarded('revertPath', () => git.revertPath(path));
 }
 
-function nextHunk(dir: 1 | -1): void {
+export function nextHunk(dir: 1 | -1): void {
   const o = S.open;
-  const moved = o && o.view === 'unstaged' && !o.panel && !o.conflicted && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
+  const moved = o && o.view !== 'plain' && !o.panel && !o.conflicted && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
   if (moved) { notify(); return; }
   const rows = S.status ? buildQueue(S.status).unstaged : [];
   if (!rows.length) { toast('Nothing left to review', 'info'); return; }

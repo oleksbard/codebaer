@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Blob, FileText, Status } from './git';
 import { tick } from './test-setup';
 
@@ -386,5 +386,85 @@ describe('the title bar and the status bar', () => {
     notify();
     await tick();
     expect(document.querySelector('.foot .spinner')).toBeNull();
+  });
+});
+
+describe('accept moves on to the next change', () => {
+  const INDEX = 'a\nb\nc\nd\ne\nf\ng\n';
+  const line = (): number => m.view.state.doc.lineAt(m.view.state.selection.main.head).number;
+
+  beforeEach(() => {
+    g.stageContent!.mockResolvedValue({ oid: 'oid2' });
+  });
+
+  it('scrolls to the next hunk while this file still has one', async () => {
+    await openUnstaged('a.txt', blob(INDEX), file('A\nb\nc\nd\ne\nf\nG\n'));
+    g.status!.mockResolvedValue(S.status);
+    // the refresh after a stage re-reads the index, so it has to hold the accepted hunk
+    g.readBlob!.mockResolvedValue(blob('A\nb\nc\nd\ne\nf\ng\n', 'oid2'));
+    expect(line()).toBe(1);
+
+    await m.accept();
+    await tick();
+
+    expect(line()).toBe(7);
+  });
+
+  it('opens the next file with changes once this one has none left', async () => {
+    await openUnstaged('a.txt', blob(INDEX), file('A\nb\nc\nd\ne\nf\ng\n'));
+    g.status!.mockResolvedValue(status('b.txt'));
+    g.readBlob!.mockResolvedValue(blob('A\nb\nc\nd\ne\nf\ng\n', 'oid2'));
+
+    await m.accept();
+    await tick();
+    await tick();
+
+    expect(S.open?.path).toBe('b.txt');
+  });
+});
+
+describe('the inline hunk buttons act on their own chunk', () => {
+  it('accepts the second chunk when the second chunk button is clicked', async () => {
+    await openUnstaged('a.txt', blob('a\nb\nc\nd\ne\nf\ng\n'), file('A\nb\nc\nd\ne\nf\nG\n'));
+    g.stageContent!.mockResolvedValue({ oid: 'oid2' });
+    g.status!.mockResolvedValue(S.status);
+    g.readBlob!.mockResolvedValue(blob('a\nb\nc\nd\ne\nf\nG\n', 'oid2'));
+
+    const widgets = m.view.dom.querySelectorAll('.cm-deletedChunk');
+    expect(widgets).toHaveLength(2);
+    widgets[1]!.querySelector<HTMLButtonElement>('button[name=accept]')!.click();
+    await tick();
+
+    // the cursor opens on chunk one, so a button that fails to move it stages 'A\n...\ng\n' instead
+    expect(g.stageContent!.mock.calls[0]?.[1]).toBe('a\nb\nc\nd\ne\nf\nG\n');
+  });
+});
+
+describe('changes-only survives the refresh path', () => {
+  const lines = (mod: Record<number, string>): string =>
+    Array.from({ length: 30 }, (_, i) => mod[i + 1] ?? `line ${i + 1}`).join('\n') + '\n';
+  const INDEXED = lines({});
+  const folds = async (): Promise<number> => {
+    const { foldedRanges } = await import('@codemirror/language');
+    let n = 0;
+    foldedRanges(m.view.state).between(0, m.view.state.doc.length, () => { n++; });
+    return n;
+  };
+
+  afterEach(() => { S.changesOnly = false; });
+
+  it('re-folds after a refresh replaces the document under it', async () => {
+    S.changesOnly = true;
+    await openUnstaged('a.txt', blob(INDEXED), file(lines({ 2: 'two changed', 28: 'twentyeight changed' })));
+    expect(await folds()).toBeGreaterThan(0);
+
+    // an agent writing the open file is the path that reaches replaceDoc
+    g.readFile!.mockResolvedValue(file(lines({ 2: 'two CHANGED', 28: 'twentyeight changed' })));
+    g.readBlob!.mockResolvedValue(blob(INDEXED));
+    g.status!.mockResolvedValue(S.status);
+    await m.refresh();
+    await tick();
+
+    expect(await folds()).toBeGreaterThan(0);
   });
 });

@@ -18,6 +18,22 @@
 
   .pos { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; }
   .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .right .ico { width: 24px; height: 24px; }
+  .right .ico[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  /* the pressed rule outranks .ico:hover, so the toggle needs its own hover state to keep one */
+  .right .ico[aria-pressed="true"]:hover { background: var(--accent); color: var(--panel); }
+}
+
+/* ties @codemirror/language's own two-class base theme rule; StyleModule injects that one at low
+   priority, so the tie breaks this way round */
+.cm-editor .cm-foldPlaceholder {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  color: var(--muted);
+  font-size: var(--fs-2);
+  padding: 0 8px;
+  margin: 0 2px;
 }
 
 .banner {
