@@ -12,6 +12,10 @@ import {
 export type ViewKind = 'unstaged' | 'staged' | 'plain';
 export { acceptChunk, rejectChunk, goToNextChunk, goToPreviousChunk, getOriginalDoc };
 
+/** The controller registers its cursor handler here: every state built below reports selection
+ *  and document changes through it, and editor.ts cannot import the controller (cycle). */
+export const onCursor = { run: () => {} };
+
 async function languageFor(path: string): Promise<Extension> {
   const desc = LanguageDescription.matchFilename(languages, path);
   return desc ? await desc.load() : [];
@@ -53,6 +57,7 @@ export async function buildState(
     EditorView.updateListener.of((u) => {
       // a refresh's replaceDoc annotates addToHistory:false; only real edits should arm autosave
       if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.addToHistory) === false)) onDocChange();
+      if (u.selectionSet || u.docChanged) onCursor.run();
     }),
   ];
   if (kind !== 'staged') ext.push(history(), keymap.of(historyKeymap));

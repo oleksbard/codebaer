@@ -1,13 +1,13 @@
 import { listen } from '@tauri-apps/api/event';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
 import { unfoldAll } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
-import { acceptText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from '../model';
+import { acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from '../model';
 import {
-  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
+  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, onCursor, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
 import { foldToChanges } from '../context-view';
 import { pick } from '../palette';
@@ -30,6 +30,8 @@ export async function refresh(): Promise<void> {
     // refreshOpen's replaceDoc/replaceOriginal map every fold away, and this is the path an agent
     // editing the open file takes
     refold();
+    // a commit or a pull re-attributes the line under the cursor without the document changing
+    cursorMoved();
     notify();
   } catch (e) {
     if (errKind(e) === 'NotARepo') { toast('That folder is not a git repository', 'err'); await pickRepo(); }
@@ -188,13 +190,67 @@ export async function guarded<T>(name: keyof typeof git, fn: () => Promise<T>): 
   }
 }
 
+// ---------- blame ----------
+/** `doc` is CodeMirror's immutable Text, so comparing it by identity catches every edit,
+ *  including one that keeps the length; `head` catches a commit or a pull that re-attributes the
+ *  line without the document moving at all. */
+type Asked = { open: Open; line: number; doc: Text; head: string | null };
+let asked: Asked | null = null;
+let blameTimer: ReturnType<typeof setTimeout> | 0 = 0;
+
+const sameAsk = (a: Asked, b: Asked | null): boolean =>
+  !!b && a.open === b.open && a.line === b.line && a.doc === b.doc && a.head === b.head;
+
+function setBlame(text: string | null): void {
+  if (S.blame === text) return;
+  S.blame = text;
+  notify();
+}
+
+/** Runs on every selection change and every document change, so it debounces the git call and
+ *  drops the one it has already asked for. */
+export function cursorMoved(): void {
+  const o = S.open;
+  clearTimeout(blameTimer);
+  if (!o || o.panel) { asked = null; setBlame(null); return; }
+  const doc = view.state.doc;
+  const ask: Asked = { open: o, line: doc.lineAt(view.state.selection.main.head).number, doc, head: S.status?.head ?? null };
+  if (sameAsk(ask, asked)) return;
+  asked = ask;
+  setBlame(null);
+  blameTimer = setTimeout(() => void loadBlame(ask), 150);
+}
+
+// wired on import, not in start(): every consumer of the controller drives the same editor
+onCursor.run = cursorMoved;
+
+// ponytail: one git process per line the cursor rests on, and nothing caps the ones still in
+// flight; a per-open line cache and a single-flight queue if that ever shows up in the profile
+async function loadBlame(ask: Asked): Promise<void> {
+  const o = ask.open;
+  // an open that lands inside the debounce has not reached its own cursorMoved yet, so the ask
+  // still looks current while the user is already looking at another file
+  if (S.open !== o) return;
+  // the document is blamed, never the file on disk: the staged view's doc is the index blob, a
+  // dirty buffer is ahead of disk, and the agent can rewrite the file between two cursor moves
+  try {
+    const b = await git.blame(o.path, ask.line, ask.doc.toString(), o.eol);
+    if (S.open === o && sameAsk(ask, asked)) setBlame(blameText(b));
+  } catch {
+    // an untracked path and an unborn HEAD have nothing to blame, and this runs on every cursor
+    // move: a toast per keystroke would bury the ones that matter. Rust logs every git call it
+    // makes, so the failure is still on the record
+    if (S.open === o && sameAsk(ask, asked)) setBlame(null);
+  }
+}
+
 // ---------- open ----------
 export async function openRow(row: Row): Promise<void> {
   if (!(await flush())) return;
   clearTimeout(S.saveTimer);
   const epoch = ++S.openEpoch;
   S.selected = rowKey(row);
-  if (row.conflicted) { await openConflict(row.path); notify(); return; }
+  if (row.conflicted) { await openConflict(row.path); cursorMoved(); notify(); return; }
   const kind: ViewKind = row.section;
   try {
     const orig = await git.readBlob(kind === 'unstaged' ? 'index' : 'head', row.path);
@@ -227,6 +283,8 @@ export async function openRow(row: Row): Promise<void> {
   // outside the try: openRow's catch maps anything thrown to a failed-open panel and blanks the
   // document, so a fold bug in here would read as an unopenable file
   refold();
+  // setState alone fires no update, so a file whose cursor lands on line 1 needs the nudge
+  cursorMoved();
   notify();
 }
 
@@ -248,6 +306,7 @@ export async function openPlain(path: string): Promise<void> {
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
+  cursorMoved();
   notify();
 }
 

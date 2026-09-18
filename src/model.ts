@@ -1,4 +1,4 @@
-import type { FileEntry, FileText, Status } from './git';
+import type { BlameLine, FileEntry, FileText, Status } from './git';
 
 export type Section = 'unstaged' | 'staged';
 export type Row = { section: Section; path: string; letter: string; untracked: boolean; conflicted: boolean };
@@ -56,3 +56,13 @@ export const acceptText = (text: string, baseline: string | null): string | null
   text === '' && baseline === null ? null : text;
 export const unstageText = (text: string, headExists: boolean): string | null =>
   text === '' && !headExists ? null : text;
+
+const ZERO_OID = /^0+$/;
+
+/** A line that is not in HEAD blames to the zero oid, where git's own author and summary read
+ *  "External file (--contents)" and "Version of <file> from standard input". */
+export function blameText(b: BlameLine): string {
+  if (ZERO_OID.test(b.oid)) return 'uncommitted';
+  const date = new Date(b.time * 1000).toISOString().slice(0, 10);
+  return [b.oid.slice(0, 7), b.author, date, b.summary].filter(Boolean).join(' · ');
+}

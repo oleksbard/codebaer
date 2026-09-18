@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Blob, FileText, Status } from './git';
+import type { BlameLine, Blob, FileText, Status } from './git';
 import { tick } from './test-setup';
 
 vi.mock('./git', async () => {
@@ -466,5 +466,47 @@ describe('changes-only survives the refresh path', () => {
     await tick();
 
     expect(await folds()).toBeGreaterThan(0);
+  });
+});
+
+describe('blame in the status bar', () => {
+  const line = (oid: string, summary: string): BlameLine => ({ oid, author: 'Ada', time: 1789629173, summary });
+  /** Longer than the 150 ms debounce, so the queued git call has gone out. */
+  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 200));
+  const moveTo = (lineNo: number): void =>
+    m.view.dispatch({ selection: { anchor: m.view.state.doc.line(lineNo).from } });
+
+  it('blames the cursor line and ignores an answer for a line the cursor has left', async () => {
+    await openUnstaged('a.txt', blob('a\nb\nc\n'), file('a\nb\nc\n'));
+    g.blame!.mockResolvedValue(line('9081303b08673ef3d8b67ebd7250f199e248a0db', 'second'));
+    let late: (b: BlameLine) => void = () => {};
+    g.blame!.mockImplementationOnce(() => new Promise<BlameLine>((r) => { late = r; }));
+
+    moveTo(2);
+    await settle();
+    // the buffer on screen is always what gets blamed, never the file on disk
+    expect(g.blame!).toHaveBeenLastCalledWith('a.txt', 2, 'a\nb\nc\n', 'lf');
+
+    moveTo(3);
+    await settle();
+    expect(S.blame).toBe('9081303 · Ada · 2026-09-17 · second');
+
+    late(line('1111111111111111111111111111111111111111', 'first'));
+    await tick();
+    expect(S.blame).toBe('9081303 · Ada · 2026-09-17 · second');
+  });
+
+  it('blames the edited buffer and shows nothing when git cannot blame', async () => {
+    await openUnstaged('a.txt', blob('a\nb\nc\n'), file('a\nb\nc\n'));
+    g.blame!.mockResolvedValue(line('9081303b08673ef3d8b67ebd7250f199e248a0db', 'x'));
+    type('mine\nyours\n');
+    moveTo(2);
+    await settle();
+    expect(g.blame!).toHaveBeenLastCalledWith('a.txt', 2, 'mine\nyours\n', 'lf');
+
+    g.blame!.mockRejectedValue({ kind: 'Git', detail: "fatal: no such path 'a.txt' in HEAD" });
+    moveTo(1);
+    await settle();
+    expect(S.blame).toBe(null);
   });
 });

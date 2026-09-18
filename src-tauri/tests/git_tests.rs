@@ -1,5 +1,5 @@
 use codebaer_lib::eol::Eol;
-use codebaer_lib::git::{discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
+use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{cancel_impl, push_args, run_net, AppState};
@@ -798,4 +798,39 @@ fn run_net_refuses_a_second_concurrent_network_command() {
 fn ai_commit_message_needs_staged_changes() {
     let d = repo();
     assert!(matches!(codebaer_lib::ai::commit_message_impl(d.path()), Err(AppError::Ai(_))));
+}
+
+#[test]
+fn blame_attributes_one_line_and_marks_uncommitted_ones() {
+    let d = repo();
+    let r = d.path();
+    let committed = "a\nb\nc\nd\n";
+    let b = blame_impl(r, "a.txt", 2, committed, Eol::Lf).unwrap();
+    assert_eq!(b.oid.len(), 40);
+    assert_eq!(b.author, "t");
+    assert_eq!(b.summary, "init");
+    assert!(b.time > 0);
+    // a dirty buffer is piped in, so the inserted line falls outside HEAD and the
+    // line below it keeps its commit despite having moved
+    let edited = "a\nnew\nb\nc\nd\n";
+    assert_eq!(blame_impl(r, "a.txt", 2, edited, Eol::Lf).unwrap().oid, "0".repeat(40));
+    assert_eq!(blame_impl(r, "a.txt", 3, edited, Eol::Lf).unwrap().summary, "init");
+    // nothing to blame on a path that never reached HEAD, nor past the end of the buffer
+    fs::write(r.join("u.txt"), "x\n").unwrap();
+    assert!(matches!(blame_impl(r, "u.txt", 1, "x\n", Eol::Lf), Err(AppError::Git(_))));
+    assert!(matches!(blame_impl(r, "a.txt", 99, committed, Eol::Lf), Err(AppError::Git(_))));
+}
+
+/// The editor's document is always LF, so a CRLF file reaches git re-encoded or every one of its
+/// committed lines comes back as the zero oid.
+#[test]
+fn blame_re_encodes_the_buffer_to_the_files_line_endings() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("w.txt"), "a\r\nb\r\n").unwrap();
+    sh(r, &["add", "w.txt"]);
+    sh(r, &["commit", "-qm", "crlf"]);
+    let doc = "a\nb\n";
+    assert_eq!(blame_impl(r, "w.txt", 2, doc, Eol::Crlf).unwrap().summary, "crlf");
+    assert_eq!(blame_impl(r, "w.txt", 2, doc, Eol::Lf).unwrap().oid, "0".repeat(40));
 }

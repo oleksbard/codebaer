@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceptText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles } from './model';
+import { acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles } from './model';
 import type { FileEntry, Status } from './git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
@@ -59,5 +59,14 @@ describe('special cases', () => {
     expect(acceptText('x', null)).toBe('x');
     expect(unstageText('', false)).toBe(null);
     expect(unstageText('', true)).toBe('');
+  });
+});
+
+describe('blameText', () => {
+  it('formats a commit and collapses the zero oid', () => {
+    expect(blameText({ oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173, summary: 'Rebuild the UI' }))
+      .toBe('9081303 · Ada · 2026-09-17 · Rebuild the UI');
+    expect(blameText({ oid: '0'.repeat(40), author: 'External file (--contents)', time: 0, summary: 'from standard input' }))
+      .toBe('uncommitted');
   });
 });

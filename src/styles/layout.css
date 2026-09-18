@@ -103,4 +103,14 @@
   background: var(--panel);
   font-size: var(--fs-1);
   color: var(--muted);
+
+  .blame {
+    margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    color: var(--faint);
+  }
 }

@@ -6,6 +6,7 @@ export type Rev = 'index' | 'head';
 export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
+export type BlameLine = { oid: string; author: string; time: number; summary: string };
 
 export type FileEntry = {
   path: string;
@@ -63,6 +64,7 @@ export const git = {
   status: () => invoke<Status>('status'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
   readFile: (path: string) => invoke<FileText>('read_file', { path }),
+  blame: (path: string, line: number, contents: string, eol: Eol) => invoke<BlameLine>('blame', { path, line, contents, eol }),
   writeFile: (path: string, text: string, eol: Eol, expected: string | null) =>
     invoke<void>('write_file', { path, text, eol, expected }),
   stageContent: (path: string, text: string | null, eol: Eol, expectedOid: string | null) =>

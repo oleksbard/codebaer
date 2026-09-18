@@ -56,6 +56,7 @@ export function Footer() {
         {S.busy && <Spinner />}
         {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
       </div>
+      {S.open && S.blame && <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
     </footer>
   );
 }

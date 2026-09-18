@@ -54,6 +54,7 @@ export const S = {
   toasts: [] as Toast[],
   aiBusy: false,
   commitMessage: '',
+  blame: null as string | null,
 };
 
 /** DOM nodes the controller focuses; components register them in ref callbacks. */

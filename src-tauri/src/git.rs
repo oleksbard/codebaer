@@ -867,3 +867,43 @@ pub fn fetch(state: State<AppState>) -> Result<(), AppError> {
 pub fn cancel(state: State<AppState>) {
     cancel_impl(&state)
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BlameLine {
+    pub oid: String,
+    pub author: String,
+    pub time: i64,
+    pub summary: String,
+}
+
+pub fn blame_impl(root: &Path, rel: &str, line: u32, contents: &str, e: Eol) -> Result<BlameLine, AppError> {
+    let spec = format!("{line},{line}");
+    let args = ["blame", "--porcelain", "-L", &spec, "--contents", "-", "--", rel];
+    // git runs the piped text through the same clean filter it would apply to the working file,
+    // so a CRLF file has to arrive as CRLF: an LF copy of a committed line differs from its blob
+    // and blames to the zero oid, which would read as "uncommitted" for the whole file
+    let bytes = eol::apply(&eol::normalize(contents), e);
+    let out = run(root, &args, Some(bytes.as_bytes()), Some(LOCAL))?;
+    let s = String::from_utf8_lossy(&out.stdout);
+    // length is not checked: sha1 prints 40 hex digits and an --object-format=sha256 repo 64
+    let oid = s
+        .lines()
+        .next()
+        .and_then(|l| l.split(' ').next())
+        .filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_hexdigit()))
+        .ok_or_else(|| AppError::Git("unparsable blame output".to_string()))?;
+    let field = |k: &str| s.lines().find_map(|l| l.strip_prefix(k)).unwrap_or("").to_string();
+    Ok(BlameLine {
+        oid: oid.to_string(),
+        author: field("author "),
+        time: field("author-time ").parse().unwrap_or(0),
+        summary: field("summary "),
+    })
+}
+
+#[tauri::command(async)]
+pub fn blame(state: State<AppState>, path: String, line: u32, contents: String, eol: Eol) -> Result<BlameLine, AppError> {
+    let root = state.root()?;
+    resolve(&root, &path)?;
+    blame_impl(&root, &path, line, &contents, eol)
+}
