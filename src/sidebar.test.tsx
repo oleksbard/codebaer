@@ -7,7 +7,7 @@ import type { Row } from './model';
 
 vi.mock('./app/controller', () => ({
   openRow: vi.fn(), openPlain: vi.fn(), acceptFile: vi.fn(), rejectFile: vi.fn(), unstageFile: vi.fn(),
-  stageAll: vi.fn(), unstageAll: vi.fn(), commit: vi.fn(), aiMessage: vi.fn(), setTab: vi.fn(),
+  stageAll: vi.fn(), unstageAll: vi.fn(), commit: vi.fn(), aiMessage: vi.fn(), setTab: vi.fn(), toggleDir: vi.fn(),
 }));
 
 const c = await import('./app/controller');
@@ -38,7 +38,7 @@ let side: HTMLElement;
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
-  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.aiBusy = false; S.committing = false; S.commitMessage = '';
+  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -57,9 +57,10 @@ async function render(unstaged: Row[], staged: Row[] = [], selected: string | nu
   await tick();
 }
 
-async function renderFiles(files: string[], selected: string | null = null): Promise<void> {
+async function renderFiles(files: string[], selected: string | null = null, open: string[] = []): Promise<void> {
   S.files = files;
   S.selected = selected;
+  S.filesOpen = new Set(open);
   S.tab = 'files';
   notify();
   await tick();
@@ -93,8 +94,40 @@ describe('row layout', () => {
   });
 
   it('Files tab rows wrap the name in .name', async () => {
-    await renderFiles(['src/a.ts']);
+    await renderFiles(['src/a.ts'], null, ['src']);
     expect(side.querySelector('.row.f .path .name')!.textContent).toBe('a.ts');
+  });
+
+  it('Files tab nests a directory per segment and indents by depth', async () => {
+    await renderFiles(['src/app/a.ts', 'README.md'], null, ['src', 'src/app']);
+    const dirs = [...side.querySelectorAll<HTMLDetailsElement>('details[data-dir]')];
+    expect(dirs.map((d) => d.dataset.dir)).toEqual(['src', 'src/app']);
+    expect(dirs[1]!.parentElement).toBe(dirs[0]!);
+    expect(dirs.map((d) => d.querySelector<HTMLElement>('summary')!.style.getPropertyValue('--depth'))).toEqual(['0', '1']);
+    const deep = side.querySelector<HTMLElement>('[data-key="plain:src/app/a.ts"]')!;
+    expect(deep.style.getPropertyValue('--depth')).toBe('2');
+    expect(side.querySelector<HTMLElement>('[data-key="plain:README.md"]')!.style.getPropertyValue('--depth')).toBe('0');
+  });
+
+  it('renders nothing below a collapsed directory, and the whole subtree once it is open', async () => {
+    await renderFiles(['src/app/a.ts', 'src/app/b.ts', 'README.md']);
+    expect([...side.querySelectorAll('details[data-dir]')].map((d) => (d as HTMLElement).dataset.dir)).toEqual(['src']);
+    expect(side.querySelectorAll('.row.f').length).toBe(1);
+
+    side.querySelector<HTMLElement>('details[data-dir="src"] > summary')!.click();
+    await tick();
+    expect(h.toggleDir).toHaveBeenCalledWith('src', true);
+
+    await renderFiles(['src/app/a.ts', 'src/app/b.ts', 'README.md'], null, ['src', 'src/app']);
+    expect(side.querySelectorAll('.row.f').length).toBe(3);
+  });
+
+  it('scrolls the selected file into view', async () => {
+    const seen: Element[] = [];
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { seen.push(this); });
+    await renderFiles(['src/app/a.ts', 'README.md'], 'plain:src/app/a.ts', ['src', 'src/app']);
+    expect((seen.at(-1) as HTMLElement | undefined)?.dataset.key).toBe('plain:src/app/a.ts');
+    spy.mockRestore();
   });
 
   it('a path with quotes and angle brackets renders as text in the name, the directory, the title and the key', async () => {

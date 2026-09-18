@@ -1,10 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles } from './model';
+import { acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles } from './model';
 import type { FileEntry, Status } from './git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
 const status = (files: FileEntry[]): Status => ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files });
+
+describe('buildTree', () => {
+  it('nests every path segment, keeps root files at the top level, and orders both by name', () => {
+    const t = buildTree(['src/app/z.ts', 'README.md', 'src/a.ts', 'src/app/api/q.ts', 'docs/g.md']);
+    expect(t.files).toEqual(['README.md']);
+    expect(t.dirs.map((d) => d.name)).toEqual(['docs', 'src']);
+    const src = t.dirs.find((d) => d.name === 'src')!;
+    expect(src.files).toEqual(['src/a.ts']);
+    expect(src.dirs.map((d) => d.path)).toEqual(['src/app']);
+    const app = src.dirs[0]!;
+    expect(app.files).toEqual(['src/app/z.ts']);
+    expect(app.dirs[0]!.path).toBe('src/app/api');
+    expect(app.dirs[0]!.files).toEqual(['src/app/api/q.ts']);
+  });
+});
 
 describe('buildQueue', () => {
   it('splits MM into both sections and keeps conflicts out of staged', () => {

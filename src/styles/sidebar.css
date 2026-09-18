@@ -30,7 +30,13 @@ summary.sec {
   list-style: none;
   user-select: none;
 
-  &.d { text-transform: none; letter-spacing: 0; font-size: var(--fs-2); }
+  /* the tree indents by nesting level; the change queue has no --depth and stays at 16px */
+  &.d {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: var(--fs-2);
+    padding-left: calc(8px + var(--depth, 0) * 12px);
+  }
 }
 
 summary::-webkit-details-marker {
@@ -91,7 +97,7 @@ details:not([open])>.sec .l::before {
 
   &:hover { background: var(--panel2); }
   &.sel { background: var(--sel); border-left-color: var(--accent); }
-  &.f { grid-template-columns: auto minmax(0,1fr); padding-left: 24px; }
+  &.f { grid-template-columns: auto minmax(0,1fr); padding-left: calc(20px + var(--depth, 0) * 12px); }
 
   &[data-st="D"] .name { text-decoration: line-through; color: var(--muted); }
   &[data-st="M"] .st,

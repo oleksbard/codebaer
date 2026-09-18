@@ -65,7 +65,7 @@ describe('CodeMirror merge contract', () => {
   it('the merge chunk rules name the merge root, so they outrank @codemirror/merge own base theme', async () => {
     await mount('unstaged');
     const css = [...document.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
-    expect(css).toMatch(/\.cm-merge-b \.cm-changedText\s*\{[^}]*var\(--diff-changed\)/);
+    expect(css).toMatch(/\.cm-merge-b \.cm-changedText[^{]*\{[^}]*background: none/);
     expect(css).toMatch(/\.cm-merge-b \.cm-changedLine\s*\{[^}]*var\(--add-bg\)/);
     expect(css).toMatch(/\.cm-merge-b \.cm-changedLineGutter\s*\{[^}]*var\(--add\)/);
   });

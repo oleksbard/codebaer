@@ -22,10 +22,12 @@ export const editorTheme = EditorView.theme(
     '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--sel)' },
     '.cm-tooltip': { backgroundColor: 'var(--panel)', border: '1px solid var(--line)' },
     '.cm-deletedChunk': { backgroundColor: 'var(--del-bg)' },
-    '.cm-deletedChunk .cm-deletedText': { background: 'var(--del-bg)' },
     '.cm-insertedLine': { backgroundColor: 'var(--add-bg)' },
     '&.cm-merge-b .cm-changedLine': { backgroundColor: 'var(--add-bg)' },
-    '&.cm-merge-b .cm-changedText': { background: 'var(--diff-changed)' },
+    // the line tint already marks the change; @codemirror/merge's own word-level fill on top of it
+    // reads as a second highlight per token, so both word rules are cleared rather than recoloured
+    '&.cm-merge-b .cm-changedText, &.cm-merge-a .cm-changedText': { background: 'none' },
+    '.cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': { background: 'none' },
     '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--add)' },
     '.cm-deletedLineGutter': { background: 'var(--del)' },
   },

@@ -245,11 +245,23 @@ async function loadBlame(ask: Asked): Promise<void> {
 }
 
 // ---------- open ----------
+/** Expands every directory above `path` so the Files tree shows the file that just opened. */
+function reveal(path: string): void {
+  for (let i = path.indexOf('/'); i >= 0; i = path.indexOf('/', i + 1)) S.filesOpen.add(path.slice(0, i));
+}
+
+export function toggleDir(path: string, open: boolean): void {
+  if (open) S.filesOpen.add(path);
+  else S.filesOpen.delete(path);
+  notify();
+}
+
 export async function openRow(row: Row): Promise<void> {
   if (!(await flush())) return;
   clearTimeout(S.saveTimer);
   const epoch = ++S.openEpoch;
   S.selected = rowKey(row);
+  reveal(row.path);
   if (row.conflicted) { await openConflict(row.path); cursorMoved(); notify(); return; }
   const kind: ViewKind = row.section;
   try {
@@ -293,6 +305,7 @@ export async function openPlain(path: string): Promise<void> {
   clearTimeout(S.saveTimer);
   const epoch = ++S.openEpoch;
   S.selected = `plain:${path}`;
+  reveal(path);
   try {
     const f = await git.readFile(path);
     const opened: Open = { path, view: 'plain', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: false };
@@ -651,6 +664,7 @@ async function openRepo(path: string): Promise<void> {
     clearTimeout(S.saveTimer);
     S.open = null;
     S.selected = null;
+    S.filesOpen.clear();
     await refresh();
     const first = S.status ? buildQueue(S.status).unstaged[0] : undefined;
     if (first) await openRow(first);

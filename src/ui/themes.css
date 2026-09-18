@@ -21,7 +21,6 @@
   --add-bg: oklch(0.683 0.130 153 / 0.13);
   --del: var(--red);
   --del-bg: oklch(0.656 0.155 25 / 0.13);
-  --diff-changed: oklch(0.683 0.130 153 / 0.30);
 
   --warn: var(--amber-2);
   --info: var(--blue);

@@ -270,6 +270,20 @@ describe('the blank panel', () => {
   });
 });
 
+describe('the Files tree', () => {
+  it('expands every directory above a file it opens, and closes one on demand', async () => {
+    g.readFile!.mockResolvedValue(file('x\n'));
+    await m.openPlain('src/app/api/q.ts');
+
+    expect([...S.filesOpen]).toEqual(['src', 'src/app', 'src/app/api']);
+    expect(S.selected).toBe('plain:src/app/api/q.ts');
+
+    S.filesOpen.add('docs');
+    m.toggleDir('docs', false);
+    expect(S.filesOpen.has('docs')).toBe(false);
+  });
+});
+
 describe('closing the open file', () => {
   it('writes a pending edit, clears the record, and blanks the editor', async () => {
     await openUnstaged('a.txt', blob('index\n'), file('disk\n'));

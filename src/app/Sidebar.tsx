@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { buildQueue, rowKey, split, type Row, type Section } from '../model';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { buildQueue, buildTree, rowKey, split, type Row, type Section, type TreeDir } from '../model';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
@@ -8,7 +8,7 @@ import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
-import { acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, unstageAll, unstageFile } from './controller';
+import { acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, toggleDir, unstageAll, unstageFile } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
 
 function ChangesIcon() {
@@ -71,8 +71,8 @@ function List({ children }: { children: ReactNode }) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     const list = e.currentTarget;
-    const sel = list.querySelector<HTMLElement>('details[open] .row.sel');
-    const all = [...list.querySelectorAll<HTMLElement>('details[open] .row')];
+    const all = [...list.querySelectorAll<HTMLElement>('.row')].filter((r) => !r.closest('details:not([open])'));
+    const sel = all.find((r) => r.classList.contains('sel')) ?? null;
     const i = sel ? all.indexOf(sel) : -1;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       all[Math.max(0, Math.min(all.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]?.click();
@@ -162,22 +162,38 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
 }
 
 function FilesList({ files, selected }: { files: string[]; selected: string | null }) {
-  const dirs = new Map<string, string[]>();
-  for (const p of files) { const [d] = split(p); (dirs.get(d) ?? dirs.set(d, []).get(d)!).push(p); }
+  const tree = useMemo(() => buildTree(files), [files]);
+  // the row only exists once reveal() has opened its ancestors, so this waits on the same render
+  useEffect(() => {
+    const rows = refs.list?.querySelectorAll<HTMLElement>('.row.f') ?? [];
+    [...rows].find((r) => r.dataset.key === selected)?.scrollIntoView({ block: 'nearest' });
+  }, [selected, tree]);
+  return <List><TreeLevel node={tree} depth={0} selected={selected} /></List>;
+}
+
+function TreeLevel({ node, depth, selected }: { node: TreeDir; depth: number; selected: string | null }) {
+  const indent = { '--depth': depth } as CSSProperties;
   return (
-    <List>
-      {[...dirs.keys()].sort().map((d) => (
-        <details key={d}>
-          <summary className="sec d"><span className="l">{d || '/'}</span></summary>
-          {dirs.get(d)!.map((p) => (
-            <div key={p} className={`row f${selected === `plain:${p}` ? ' sel' : ''}`} data-key={`plain:${p}`} onClick={() => void openPlain(p)}>
-              <FileIcon name={split(p)[1]} />
-              <span className="path"><span className="name">{split(p)[1]}</span></span>
-            </div>
-          ))}
-        </details>
+    <>
+      {node.dirs.map((d) => {
+        const open = S.filesOpen.has(d.path);
+        return (
+          // a closed directory renders no children at all: the tree holds every file in the repo,
+          // and this is what keeps a render proportional to what is on screen
+          <details key={d.path} data-dir={d.path} open={open} onToggle={(e) => toggleDir(d.path, e.currentTarget.open)}>
+            <summary className="sec d" style={indent} title={d.path}><span className="l">{d.name}</span></summary>
+            {open && <TreeLevel node={d} depth={depth + 1} selected={selected} />}
+          </details>
+        );
+      })}
+      {node.files.map((p) => (
+        <div key={p} className={`row f${selected === `plain:${p}` ? ' sel' : ''}`} data-key={`plain:${p}`} style={indent}
+          role="button" title={p} onClick={() => void openPlain(p)}>
+          <FileIcon name={split(p)[1]} />
+          <span className="path"><span className="name">{split(p)[1]}</span></span>
+        </div>
       ))}
-    </List>
+    </>
   );
 }
 

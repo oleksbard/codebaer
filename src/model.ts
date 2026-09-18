@@ -30,6 +30,29 @@ export function buildQueue(s: Status): { unstaged: Row[]; staged: Row[] } {
   return { unstaged, staged };
 }
 
+export type TreeDir = { name: string; path: string; dirs: TreeDir[]; files: string[] };
+
+/** Groups paths into a directory tree. Sorting the paths first is what puts both the directories
+ *  and the files of every node in name order, so no node needs a second sort. */
+export function buildTree(files: string[]): TreeDir {
+  const root: TreeDir = { name: '', path: '', dirs: [], files: [] };
+  const seen = new Map<string, TreeDir>([['', root]]);
+  const dirAt = (path: string): TreeDir => {
+    const hit = seen.get(path);
+    if (hit) return hit;
+    const i = path.lastIndexOf('/');
+    const node: TreeDir = { name: path.slice(i + 1), path, dirs: [], files: [] };
+    dirAt(i < 0 ? '' : path.slice(0, i)).dirs.push(node);
+    seen.set(path, node);
+    return node;
+  };
+  for (const p of [...files].sort()) {
+    const i = p.lastIndexOf('/');
+    dirAt(i < 0 ? '' : p.slice(0, i)).files.push(p);
+  }
+  return root;
+}
+
 export function decideRefresh(disk: FileText, baseline: string | null, dirty: boolean): 'none' | 'replace' | 'badge' {
   const diskText = disk.exists ? disk.text : null;
   if (diskText === baseline) return 'none';
