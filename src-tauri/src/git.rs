@@ -269,6 +269,8 @@ pub struct AppState {
 }
 
 impl AppState {
+    // Tauri builds this once in setup; a Default impl would have no caller.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         AppState {
             repo: Mutex::new(None),

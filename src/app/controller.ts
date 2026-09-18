@@ -159,7 +159,7 @@ export async function flush(): Promise<boolean> {
 }
 
 let busyDepth = 0;
-let busyTimer: ReturnType<typeof setTimeout> | 0 = 0;
+let busyTimer: ReturnType<typeof setTimeout> = 0;
 
 /** Staging a file finishes in milliseconds; the delay keeps those off the spinner entirely. */
 export async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
@@ -196,7 +196,7 @@ export async function guarded<T>(name: keyof typeof git, fn: () => Promise<T>): 
  *  line without the document moving at all. */
 type Asked = { open: Open; line: number; doc: Text; head: string | null };
 let asked: Asked | null = null;
-let blameTimer: ReturnType<typeof setTimeout> | 0 = 0;
+let blameTimer: ReturnType<typeof setTimeout> = 0;
 
 const sameAsk = (a: Asked, b: Asked | null): boolean =>
   !!b && a.open === b.open && a.line === b.line && a.doc === b.doc && a.head === b.head;

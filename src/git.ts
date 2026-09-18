@@ -31,7 +31,7 @@ export type AppError =
   | { kind: 'Timeout' | 'Cancelled' | 'NotARepo' | 'StaleIndex' | 'NotUtf8' | 'Binary' | 'TooLarge' | 'Special' | 'Conflicted' };
 
 export function errKind(e: unknown): string {
-  return typeof e === 'object' && e !== null && 'kind' in e ? String((e as { kind: unknown }).kind) : 'Unknown';
+  return typeof e === 'object' && e !== null && 'kind' in e ? String(e.kind) : 'Unknown';
 }
 const KIND_TEXT: Record<string, string> = {
   Timeout: 'git took too long and was stopped',
@@ -47,7 +47,7 @@ const KIND_TEXT: Record<string, string> = {
 
 export function errText(e: unknown): string {
   if (typeof e === 'object' && e !== null && 'detail' in e) {
-    const d = (e as { detail: unknown }).detail;
+    const d = e.detail;
     return typeof d === 'string' ? d : JSON.stringify(d);
   }
   const kind = errKind(e);

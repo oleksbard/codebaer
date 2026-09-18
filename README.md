@@ -37,4 +37,5 @@ pnpm tauri build
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm test
+pnpm lint
 ```

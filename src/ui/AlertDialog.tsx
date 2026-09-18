@@ -3,9 +3,9 @@ import { Button } from './Button';
 
 export function AlertDialog({ title, body, confirmLabel = 'OK', error = false, onResult }: {
   title: string;
-  body?: string;
-  confirmLabel?: string;
-  error?: boolean;
+  body?: string | undefined;
+  confirmLabel?: string | undefined;
+  error?: boolean | undefined;
   onResult(ok: boolean): void;
 }) {
   return (

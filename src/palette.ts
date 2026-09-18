@@ -1,6 +1,6 @@
 import { notify, S } from './app/store';
 
-export type Item<T> = { label: string; detail?: string; hint?: string; value: T };
+export type Item<T> = { label: string; detail?: string | undefined; hint?: string | undefined; value: T };
 
 export function fuzzy(label: string, q: string): boolean {
   let i = 0;

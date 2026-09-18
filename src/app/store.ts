@@ -39,7 +39,7 @@ export const S = {
   selected: null as string | null,
   refreshing: false,
   refreshAgain: false,
-  saveTimer: 0 as ReturnType<typeof setTimeout> | 0,
+  saveTimer: 0 as ReturnType<typeof setTimeout>,
   flushing: null as Promise<boolean> | null,
   openEpoch: 0,
   fatal: null as string | null,

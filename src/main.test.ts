@@ -16,7 +16,7 @@ vi.mock('./toast', async () => {
 
 const { git } = await import('./git');
 const { confirmDialog } = await import('./toast');
-const g = git as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const g = git as unknown as Record<string, ReturnType<typeof vi.fn<(...args: never[]) => Promise<unknown>>>>;
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
 
 const blob = (text: string, oid: string | null = 'oid1'): Blob => ({ text, eol: 'lf', oid, exists: oid !== null });
@@ -200,7 +200,7 @@ describe('sidebar resize', () => {
   const raf = globalThis.requestAnimationFrame;
   const caf = globalThis.cancelAnimationFrame;
   beforeAll(() => {
-    globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0)) as unknown as number;
+    globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0));
     globalThis.cancelAnimationFrame = (h) => clearTimeout(h);
   });
   afterAll(() => {
@@ -263,7 +263,7 @@ describe('the blank panel', () => {
     expect(document.querySelector('.blank h2')!.textContent).toBe('binary file');
     expect(document.querySelector('.blank p')).toBeNull();
 
-    S.open = { ...S.open!, view: 'unstaged' };
+    S.open = { ...S.open, view: 'unstaged' };
     notify();
     await tick();
     expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent)).toEqual(['Whole-file actions only.', 'Reject file Accept file']);
