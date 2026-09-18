@@ -60,7 +60,7 @@ export function Sidebar() {
   return (
     <aside className="side">
       {S.tab === 'files'
-        ? <FilesList files={S.files} selected={S.selected} />
+        ? <FilesList files={S.files} active={S.open?.path ?? null} />
         : <QueueList q={q} selected={S.selected} open={open} onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
       <CommitBox staged={q.staged.length} hidden={S.tab !== 'changes'} />
     </aside>
@@ -161,17 +161,19 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
   );
 }
 
-function FilesList({ files, selected }: { files: string[]; selected: string | null }) {
+/** `active` is the open file's path rather than S.selected, so a file opened from the Changes
+ *  view is marked here too. */
+function FilesList({ files, active }: { files: string[]; active: string | null }) {
   const tree = useMemo(() => buildTree(files), [files]);
   // the row only exists once reveal() has opened its ancestors, so this waits on the same render
   useEffect(() => {
     const rows = refs.list?.querySelectorAll<HTMLElement>('.row.f') ?? [];
-    [...rows].find((r) => r.dataset.key === selected)?.scrollIntoView({ block: 'nearest' });
-  }, [selected, tree]);
-  return <List><TreeLevel node={tree} depth={0} selected={selected} /></List>;
+    [...rows].find((r) => r.dataset.path === active)?.scrollIntoView({ block: 'nearest' });
+  }, [active, tree]);
+  return <List><TreeLevel node={tree} depth={0} active={active} /></List>;
 }
 
-function TreeLevel({ node, depth, selected }: { node: TreeDir; depth: number; selected: string | null }) {
+function TreeLevel({ node, depth, active }: { node: TreeDir; depth: number; active: string | null }) {
   const indent = { '--depth': depth } as CSSProperties;
   return (
     <>
@@ -182,13 +184,13 @@ function TreeLevel({ node, depth, selected }: { node: TreeDir; depth: number; se
           // and this is what keeps a render proportional to what is on screen
           <details key={d.path} data-dir={d.path} open={open} onToggle={(e) => toggleDir(d.path, e.currentTarget.open)}>
             <summary className="sec d" style={indent} title={d.path}><span className="l">{d.name}</span></summary>
-            {open && <TreeLevel node={d} depth={depth + 1} selected={selected} />}
+            {open && <TreeLevel node={d} depth={depth + 1} active={active} />}
           </details>
         );
       })}
       {node.files.map((p) => (
-        <div key={p} className={`row f${selected === `plain:${p}` ? ' sel' : ''}`} data-key={`plain:${p}`} style={indent}
-          role="button" title={p} onClick={() => void openPlain(p)}>
+        <div key={p} className={`row f${p === active ? ' sel' : ''}`} data-key={`plain:${p}`} data-path={p} style={indent}
+          role="button" aria-current={p === active || undefined} title={p} onClick={() => void openPlain(p)}>
           <FileIcon name={split(p)[1]} />
           <span className="path"><span className="name">{split(p)[1]}</span></span>
         </div>

@@ -99,6 +99,14 @@ details:not([open])>.sec .l::before {
   &.sel { background: var(--sel); border-left-color: var(--accent); }
   &.f { grid-template-columns: auto minmax(0,1fr); padding-left: calc(20px + var(--depth, 0) * 12px); }
 
+  /* the accent bar is drawn at x=0, too far from an indented row to read as marking it, so the
+     tree marks the open file on the name instead */
+  &.f.sel {
+    border-left-color: transparent;
+
+    .name { color: var(--accent); font-weight: 500; }
+  }
+
   &[data-st="D"] .name { text-decoration: line-through; color: var(--muted); }
   &[data-st="M"] .st,
   &[data-st="T"] .st { color: var(--mod); }

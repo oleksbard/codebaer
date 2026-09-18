@@ -38,7 +38,7 @@ let side: HTMLElement;
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
-  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
+  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null; S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -57,9 +57,14 @@ async function render(unstaged: Row[], staged: Row[] = [], selected: string | nu
   await tick();
 }
 
-async function renderFiles(files: string[], selected: string | null = null, open: string[] = []): Promise<void> {
+const openFile = (path: string) => ({
+  path, view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false,
+  docOid: null, dirty: false, badge: null, panel: null, conflicted: false,
+}) as NonNullable<typeof S.open>;
+
+async function renderFiles(files: string[], active: string | null = null, open: string[] = []): Promise<void> {
   S.files = files;
-  S.selected = selected;
+  S.open = active ? openFile(active) : null;
   S.filesOpen = new Set(open);
   S.tab = 'files';
   notify();
@@ -122,11 +127,15 @@ describe('row layout', () => {
     expect(side.querySelectorAll('.row.f').length).toBe(3);
   });
 
-  it('scrolls the selected file into view', async () => {
+  it('marks the open file and scrolls it into view, whichever view opened it', async () => {
     const seen: Element[] = [];
     const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { seen.push(this); });
-    await renderFiles(['src/app/a.ts', 'README.md'], 'plain:src/app/a.ts', ['src', 'src/app']);
-    expect((seen.at(-1) as HTMLElement | undefined)?.dataset.key).toBe('plain:src/app/a.ts');
+    // S.selected is the Changes-view key, so only S.open.path can mark the row here
+    S.selected = 'unstaged:src/app/a.ts';
+    await renderFiles(['src/app/a.ts', 'README.md'], 'src/app/a.ts', ['src', 'src/app']);
+    const sel = [...side.querySelectorAll<HTMLElement>('.row.f.sel')];
+    expect(sel.map((r) => r.dataset.path)).toEqual(['src/app/a.ts']);
+    expect((seen.at(-1) as HTMLElement | undefined)?.dataset.path).toBe('src/app/a.ts');
     spy.mockRestore();
   });
 
