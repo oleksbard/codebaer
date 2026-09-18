@@ -310,6 +310,18 @@ export async function openPlain(path: string): Promise<void> {
   notify();
 }
 
+export async function closeFile(): Promise<void> {
+  if (!(await flush())) return;
+  clearTimeout(S.saveTimer);
+  // bumping the epoch drops an open still in flight, which would otherwise land on the blank state
+  S.openEpoch++;
+  S.open = null;
+  S.selected = null;
+  view.setState(EditorState.create({ doc: '' }));
+  cursorMoved();
+  notify();
+}
+
 async function openConflict(path: string): Promise<void> {
   const epoch = ++S.openEpoch;
   try {

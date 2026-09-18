@@ -2,15 +2,23 @@
   height: 100%;
   display: grid;
   grid-template-rows: 38px minmax(0,1fr) 30px;
-  grid-template-columns: min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);
-  grid-template-areas: "head head" "side main" "foot foot";
+  grid-template-columns: 44px min(var(--side-w,272px),calc(100% - 444px)) minmax(0,1fr);
+  grid-template-areas: "head head head" "act side main" "foot foot foot";
 
-  &.nosidebar { grid-template-columns: 0 minmax(0,1fr); }
+  &.nosidebar { grid-template-columns: 0 0 minmax(0,1fr); }
 }
 
+.app.nosidebar .act,
 .app.nosidebar .side,
 .app.nosidebar .gutter {
   display: none;
+}
+
+.act {
+  grid-area: act;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
 }
 
 .gutter {

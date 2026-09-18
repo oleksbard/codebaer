@@ -6,7 +6,7 @@ import { Kbd } from '../ui/Kbd';
 import { FileIcon } from '../ui/FileIcon';
 import { IconButton } from '../ui/IconButton';
 import { Pill } from '../ui/Pill';
-import { accept, acceptFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload, toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges } from './controller';
+import { accept, acceptFile, closeFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload, toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges } from './controller';
 import { S, useApp } from './store';
 
 const PANEL_TEXT: Record<string, string> = {
@@ -53,13 +53,14 @@ function TitleBar() {
   const badge = o.badge
     ? <Pill tone="warn">changed on disk<button type="button" onClick={() => void reload()}>Reload</button><button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
     : null;
+  const close = <IconButton label="Close file" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
-    return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span><div className="right">{badge}</div></div>;
+    return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span><div className="right">{badge}{close}</div></div>;
   }
   if (o.conflicted) {
     return (
       <div className="tbar">{title}<span className="pos">conflict</span>
-        <div className="right">{badge}<Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button></div>
+        <div className="right">{badge}<Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
       </div>
     );
   }
@@ -83,7 +84,7 @@ function TitleBar() {
   );
   return (
     <div className="tbar">{title}<span className="pos">{pos}</span>
-      <div className="right">{badge}{nav}<Pill>{pill}</Pill>{btns}</div>
+      <div className="right">{badge}{nav}<Pill>{pill}</Pill>{btns}{close}</div>
     </div>
   );
 }

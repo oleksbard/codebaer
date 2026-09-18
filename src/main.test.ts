@@ -208,25 +208,30 @@ describe('sidebar resize', () => {
     globalThis.cancelAnimationFrame = caf;
   });
 
-  it('follows the pointer between 180px and window width minus 400px and stores the width on release', async () => {
+  // the activity bar occupies the first 44px of the shell, so a pointer at clientX sizes the
+  // sidebar to clientX - 44
+  const ACT_W = 44;
+  const maxWidth = globalThis.innerWidth - 400 - ACT_W;
+
+  it('follows the pointer between 180px and window width minus the rails, and stores the width on release', async () => {
     const gutter = document.getElementById('gutter')!;
     const shell = document.getElementById('shell')!;
     const ev = (kind: string, clientX = 0) => gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
     ev('pointerdown', 272);
     ev('pointermove', 340);
     await tick();
-    expect(shell.style.getPropertyValue('--side-w')).toBe('340px');
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${340 - ACT_W}px`);
     ev('pointermove', 20);
     await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe('180px');
     ev('pointermove', 5000);
     await tick();
-    expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${maxWidth}px`);
     ev('pointerup');
-    expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(globalThis.innerWidth - 400));
+    expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(maxWidth));
     ev('pointermove', 300);
     await tick();
-    expect(shell.style.getPropertyValue('--side-w')).toBe(`${globalThis.innerWidth - 400}px`);
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${maxWidth}px`);
   });
 
   it('coalesces the moves inside one frame into a single render of the last width', async () => {
@@ -243,9 +248,9 @@ describe('sidebar resize', () => {
     off();
 
     expect(notifies).toBe(1);
-    expect(shell.style.getPropertyValue('--side-w')).toBe('420px');
+    expect(shell.style.getPropertyValue('--side-w')).toBe(`${420 - ACT_W}px`);
     ev('pointerup');
-    expect(localStorage.getItem('codebaer.sideWidth')).toBe('420');
+    expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(420 - ACT_W));
   });
 });
 
@@ -262,6 +267,22 @@ describe('the blank panel', () => {
     notify();
     await tick();
     expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent)).toEqual(['Whole-file actions only.', 'Reject file Accept file']);
+  });
+});
+
+describe('closing the open file', () => {
+  it('writes a pending edit, clears the record, and blanks the editor', async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+    type('mine\n');
+
+    document.querySelector<HTMLButtonElement>('.tbar [aria-label="Close file"]')!.click();
+    await vi.waitFor(() => expect(S.open).toBeNull());
+    await tick();
+
+    expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
+    expect(S.selected).toBeNull();
+    expect(m.view.state.doc.toString()).toBe('');
+    expect(document.querySelector('.blank')).not.toBeNull();
   });
 });
 

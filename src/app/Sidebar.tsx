@@ -11,7 +11,40 @@ import { Tabs } from '../ui/Tabs';
 import { acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, unstageAll, unstageFile } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
 
-const TABS = [{ value: 'changes', label: 'Changes' }, { value: 'files', label: 'Files' }];
+function ChangesIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="4.5" cy="3" r="1.75" />
+      <circle cx="4.5" cy="13" r="1.75" />
+      <circle cx="11.5" cy="3" r="1.75" />
+      <path d="M4.5 4.75v6.5M11.5 4.75v1.25a3 3 0 0 1-3 3h-4" />
+    </svg>
+  );
+}
+
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
+      <path d="M9.5 1.75V5h3.25" />
+      <path d="M10 14.25H4.75A.75.75 0 0 1 4 13.5V4.5" />
+    </svg>
+  );
+}
+
+const TABS = [
+  { value: 'changes', label: 'Changes', icon: <ChangesIcon /> },
+  { value: 'files', label: 'Files', icon: <FilesIcon /> },
+];
+
+export function ActivityBar() {
+  useApp();
+  return (
+    <div className="act">
+      <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={TABS} />
+    </div>
+  );
+}
 
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
 
@@ -26,7 +59,6 @@ export function Sidebar() {
   const q = S.status ? buildQueue(S.status) : { unstaged: [], staged: [] };
   return (
     <aside className="side">
-      <Tabs value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={TABS} />
       {S.tab === 'files'
         ? <FilesList files={S.files} selected={S.selected} />
         : <QueueList q={q} selected={S.selected} open={open} onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}

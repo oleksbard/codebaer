@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { Main } from './Main';
 import { Overlays } from './Overlays';
 import { Footer, Gutter, Header } from './Shell';
-import { Sidebar } from './Sidebar';
+import { ActivityBar, Sidebar } from './Sidebar';
 import { S, useApp } from './store';
 
 export function App() {
@@ -13,6 +13,7 @@ export function App() {
     <>
       <div className={`app${S.sidebarHidden ? ' nosidebar' : ''}`} id="shell" style={style}>
         <Header />
+        <ActivityBar />
         <Sidebar />
         <Gutter />
         <Main />

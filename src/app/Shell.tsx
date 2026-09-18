@@ -61,6 +61,9 @@ export function Footer() {
   );
 }
 
+// mirrors the activity-bar column in layout.css: clientX counts it, --side-w does not
+const ACT_W = 44;
+
 export function Gutter() {
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -70,7 +73,7 @@ export function Gutter() {
     let w = 0;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      w = Math.max(180, Math.min(globalThis.innerWidth - 400, Math.round(ev.clientX)));
+      w = Math.max(180, Math.min(globalThis.innerWidth - 400 - ACT_W, Math.round(ev.clientX) - ACT_W));
       S.sideWidth = w;
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; notify(); });
     };
