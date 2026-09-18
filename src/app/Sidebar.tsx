@@ -167,7 +167,7 @@ function FilesList({ files, selected }: { files: string[]; selected: string | nu
   return (
     <List>
       {[...dirs.keys()].sort().map((d) => (
-        <details key={d} open>
+        <details key={d}>
           <summary className="sec d"><span className="l">{d || '/'}</span></summary>
           {dirs.get(d)!.map((p) => (
             <div key={p} className={`row f${selected === `plain:${p}` ? ' sel' : ''}`} data-key={`plain:${p}`} onClick={() => void openPlain(p)}>
