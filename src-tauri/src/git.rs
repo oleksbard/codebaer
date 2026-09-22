@@ -315,11 +315,53 @@ pub fn status_impl(root: &Path) -> Result<Status, AppError> {
     Ok(status::parse(&out.stdout))
 }
 
+#[derive(Debug, Serialize)]
+pub struct Opened {
+    /// Display only, `~`-shortened; the real root stays in `AppState`.
+    pub root: String,
+    pub title: Option<String>,
+}
+
+/// Enough of a file to reach a README's first heading or to hold a whole package.json.
+const TITLE_BYTES: u64 = 64 * 1024;
+
+fn head_of(path: &Path, cap: u64) -> Option<String> {
+    let mut buf = Vec::new();
+    std::fs::File::open(path).ok()?.take(cap).read_to_end(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn readme_title(root: &Path) -> Option<String> {
+    let readme = std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()).find(|p| {
+        p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("readme.md"))
+    })?;
+    let text = head_of(&readme, TITLE_BYTES)?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("# "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+}
+
+fn package_name(root: &Path) -> Option<String> {
+    let text = head_of(&root.join("package.json"), TITLE_BYTES)?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let name = json.get("name")?.as_str()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// A human name for the repo, for the header. The remote's basename is deliberately not consulted:
+/// it is the folder name in everything but `git clone <url> <other-dir>`, and it costs a subprocess.
+fn repo_title(root: &Path) -> Option<String> {
+    readme_title(root).or_else(|| package_name(root))
+}
+
 #[tauri::command(async)]
-pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<String, AppError> {
+pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<Opened, AppError> {
     let repo = discover(Path::new(&path))?;
     let handle = crate::watcher::start(&app, &repo.root, &repo.git_dir, &repo.common_dir)?;
     let root = repo.root.to_string_lossy().to_string();
+    let title = repo_title(&repo.root);
     // The watcher is created first, so a failure to start it leaves state
     // untouched; once it succeeds, the repo is stored before the new
     // watcher's handle becomes live.
@@ -328,7 +370,7 @@ pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) ->
     // every way in (dialog, launch argument, second instance, File menu) lands here
     crate::recents::push(&app, &root);
     crate::refresh_recent_menu(&app);
-    Ok(root)
+    Ok(Opened { root: crate::recents::label(&root), title })
 }
 
 #[tauri::command(async)]
@@ -908,4 +950,22 @@ pub fn blame(state: State<AppState>, path: String, line: u32, contents: String, 
     let root = state.root()?;
     resolve(&root, &path)?;
     blame_impl(&root, &path, line, &contents, eol)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repo_title_prefers_the_readme_heading_over_the_package_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        assert_eq!(repo_title(root), None);
+
+        std::fs::write(root.join("package.json"), r#"{"name": "codebaer"}"#).unwrap();
+        assert_eq!(repo_title(root).as_deref(), Some("codebaer"));
+
+        std::fs::write(root.join("ReadMe.md"), "<p>badge</p>\n\n#  CodeB\u{e4}r \n\n# Later\n").unwrap();
+        assert_eq!(repo_title(root).as_deref(), Some("CodeB\u{e4}r"));
+    }
 }

@@ -31,6 +31,7 @@ const storedWidth = localStorage.getItem('codebaer.sideWidth');
 
 export const S = {
   root: null as string | null,
+  title: null as string | null,
   status: null as Status | null,
   files: [] as string[],
   /** Directory paths expanded in the Files tree; outlives the tab switch that unmounts the tree. */

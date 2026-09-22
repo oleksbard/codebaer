@@ -8,13 +8,21 @@ import { Kbd } from '../ui/Kbd';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './controller';
 import { S, useApp } from './store';
 
-function ClaudeIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7"
-      strokeLinecap="round" aria-hidden="true">
-      <path d="M8 2.2v11.6M3 4.9l10 6.2M13 4.9 3 11.1" />
-    </svg>
-  );
+const STILL = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
+
+/** Claude Code's own six marks. The variation selector keeps macOS from serving U+2733 as an emoji. */
+const MARK = '✻';
+const MARKS = ['·', '✢', '✳\ufe0e', '✶', MARK, '✽'];
+const FRAMES = [...MARKS, ...[...MARKS].reverse()];
+
+/** The CLI runs these at 120ms, which reads as a flicker at this size. */
+const FRAME_MS = 160;
+
+/** The spinner the agent itself draws while it works: out to the heavy mark and back. */
+function ClaudeMark({ busy }: { busy: boolean }) {
+  const spin = busy && !STILL.matches;
+  const n = useTick(spin, FRAME_MS);
+  return <span className="mark" aria-hidden="true">{(spin ? FRAMES[n % FRAMES.length] : MARK) ?? MARK}</span>;
 }
 
 function CodexIcon() {
@@ -27,16 +35,17 @@ function CodexIcon() {
   );
 }
 
-const ICONS: Record<Agent, () => ReactElement> = { claude: ClaudeIcon, codex: CodexIcon };
+const ICONS: Record<Agent, (p: { busy: boolean }) => ReactElement> = { claude: ClaudeMark, codex: CodexIcon };
 
 /** A running session's elapsed time is only true while it is being redrawn. */
-function useTick(active: boolean): void {
-  const [, set] = useState(0);
+function useTick(active: boolean, ms = 1000): number {
+  const [n, set] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => set((n) => n + 1), 1000);
+    const t = setInterval(() => set((x) => x + 1), ms);
     return () => clearInterval(t);
-  }, [active]);
+  }, [active, ms]);
+  return n;
 }
 
 export function Terminals() {
@@ -139,7 +148,7 @@ function Glyph({ session }: { session: term.Info }) {
   const agent = agentOf(session);
   if (!agent) return <span className="num" aria-hidden="true">{session.id}</span>;
   const Icon = ICONS[agent];
-  return <span className={`agent ${agent}`}><Icon /></span>;
+  return <span className={`agent ${agent}`}><Icon busy={term.working(session.id)} /></span>;
 }
 
 function NewMenu() {

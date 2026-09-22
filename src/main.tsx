@@ -1,8 +1,10 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { start } from './app/controller';
+import { installErrorLog } from './log';
 import { initTheme } from './ui/theme';
 
+installErrorLog();
 initTheme();
 createRoot(document.getElementById('app')!).render(<App />);
 

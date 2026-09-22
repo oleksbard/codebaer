@@ -101,11 +101,12 @@
   .agent { display: grid; }
   .agent.claude { color: var(--whiskey); }
   .agent.codex { color: var(--sage); }
+  .mark { font-size: 21px; line-height: 1; }
 
   .term-dot { position: absolute; right: 3px; bottom: 3px; }
 
   /* a session producing output is thinking; one at its prompt is silent */
-  &.busy .agent,
+  &.busy .agent:not(.claude),
   &.busy .num { animation: term-work 1.2s ease-in-out infinite; }
 
   .bell {

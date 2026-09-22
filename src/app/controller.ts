@@ -15,6 +15,7 @@ import {
 } from '../editor';
 import { foldToChanges } from '../context-view';
 import { pick } from '../palette';
+import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
 import * as term from '../terminal';
@@ -724,42 +725,52 @@ export async function setTab(tab: Tab): Promise<void> {
 let awaitingSpawn = 0;
 let connecting: Promise<void> | null = null;
 
+/** Nothing in here may throw. Tauri advances a channel's message index only once onmessage
+ *  returns, so one escaping error parks every later event in its pending queue for the life
+ *  of the connection: the sessions go on running with no way left to hear about them. */
 export function onTermEvent(m: term.ServerMsg): void {
-  switch (m.t) {
-    case 'Hello':
-      S.terminals = m.sessions;
-      if (!m.sessions.some((t) => t.id === S.activeTerm)) S.activeTerm = m.sessions.at(-1)?.id ?? null;
-      break;
-    case 'Spawned':
-      S.terminals = [...S.terminals.filter((t) => t.id !== m.info.id), m.info];
-      if (m.req === awaitingSpawn) {
-        S.activeTerm = m.info.id;
-        awaitingSpawn = 0;
-      }
-      break;
-    case 'Status':
-      S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: m.state, tier: m.tier } : t));
-      break;
-    case 'Command':
-      if (m.code !== null && m.code !== 0) flag(m.id);
-      break;
-    case 'Exit':
-      S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: { t: 'Exited', code: m.code } } : t));
-      flag(m.id);
-      break;
-    case 'Bell':
-      flag(m.id);
-      break;
-    case 'Closed':
-      S.terminals = S.terminals.filter((t) => t.id !== m.id);
-      S.termAttention.delete(m.id);
-      term.dispose(m.id);
-      if (S.activeTerm === m.id) S.activeTerm = S.terminals.at(-1)?.id ?? null;
-      break;
-    case 'Error':
-      S.termError = m.message;
-      toast(m.message, 'err');
-      break;
+  try {
+    switch (m.t) {
+      case 'Hello':
+        S.terminals = m.sessions;
+        if (!m.sessions.some((t) => t.id === S.activeTerm)) S.activeTerm = m.sessions.at(-1)?.id ?? null;
+        break;
+      case 'Spawned':
+        S.terminals = [...S.terminals.filter((t) => t.id !== m.info.id), m.info];
+        if (m.req === awaitingSpawn) {
+          S.activeTerm = m.info.id;
+          awaitingSpawn = 0;
+        }
+        break;
+      case 'Status':
+        S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: m.state, tier: m.tier } : t));
+        break;
+      case 'Command':
+        if (m.code !== null && m.code !== 0) flag(m.id);
+        break;
+      case 'Exit':
+        S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: { t: 'Exited', code: m.code } } : t));
+        flag(m.id);
+        break;
+      case 'Bell':
+        flag(m.id);
+        break;
+      case 'Closed':
+        S.terminals = S.terminals.filter((t) => t.id !== m.id);
+        S.termAttention.delete(m.id);
+        if (S.activeTerm === m.id) S.activeTerm = S.terminals.at(-1)?.id ?? null;
+        // last, because it is the one step here that reaches into xterm: a teardown that
+        // fails must not leave the view pointing at a session that is already gone
+        term.dispose(m.id);
+        break;
+      case 'Error':
+        S.termError = m.message;
+        toast(m.message, 'err');
+        break;
+    }
+  } catch (e) {
+    logError(e, `terminal event ${m.t}`);
+    toast(errText(e), 'err');
   }
   notify();
 }
@@ -829,7 +840,9 @@ async function openRepo(path: string): Promise<void> {
     return;
   }
   try {
-    S.root = await git.openRepo(path);
+    const opened = await git.openRepo(path);
+    S.root = opened.root;
+    S.title = opened.title;
     localStorage.setItem('codebaer.lastRepo', path);
     clearTimeout(S.saveTimer);
     S.open = null;

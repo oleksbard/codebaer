@@ -1,4 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
+import { split } from '../model';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
@@ -7,12 +8,23 @@ import { cancel, checkout, network, palette } from './controller';
 import { notify, S, useApp } from './store';
 import { TermStatus } from './Terminals';
 
+function RepoLabel() {
+  if (!S.root) return null;
+  return (
+    <span className="repo">
+      <span className="name">{S.title ?? split(S.root)[1]}</span>
+      <span className="dash">-</span>
+      <span className="path">{S.root}</span>
+    </span>
+  );
+}
+
 export function Header() {
   useApp();
   return (
     <header className="head">
-      <div className="brand"><img src="/icon.png" alt="" />CodeBär</div>
-      <span className="repo">{S.root ?? ''}</span>
+      <img className="brand" src="/icon.png" alt="" />
+      <RepoLabel />
       <div className="right">
         <Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button>
       </div>

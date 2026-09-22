@@ -139,7 +139,14 @@ fn ensure<R: Runtime>(app: &AppHandle<R>) -> Result<(), AppError> {
         Ok(s) => s,
         Err(_) => {
             let exe = std::env::current_exe()?;
-            let mut child = std::process::Command::new(exe).arg("--pty-host").arg(&sock).spawn()?;
+            let mut cmd = std::process::Command::new(exe);
+            cmd.arg("--pty-host").arg(&sock);
+            // the host outlives the app that started it, and its warnings are the record of why
+            // a session went away; without this they have nowhere to go
+            if let Ok(dir) = app.path().app_log_dir() {
+                cmd.env(crate::logs::DIR_ENV, dir);
+            }
+            let mut child = cmd.spawn()?;
             // the host forks and this parent exits at once, so the wait is immediate and
             // leaves no zombie behind
             let _ = child.wait();

@@ -6,6 +6,7 @@ export type Rev = 'index' | 'head';
 export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
+export type Opened = { root: string; title: string | null };
 export type BlameLine = { oid: string; author: string; time: number; summary: string };
 
 export type FileEntry = {
@@ -61,7 +62,7 @@ export function staleText(e: unknown): FileText | null {
 export const git = {
   gitVersion: () => invoke<string>('git_version'),
   initialRepo: () => invoke<string | null>('initial_repo'),
-  openRepo: (path: string) => invoke<string>('open_repo', { path }),
+  openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
   status: () => invoke<Status>('status'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
   readFile: (path: string) => invoke<FileText>('read_file', { path }),

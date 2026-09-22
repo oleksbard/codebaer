@@ -16,6 +16,19 @@ globalThis.ResizeObserver ??= class {
   disconnect(): void {}
 } as unknown as typeof ResizeObserver;
 
+// nor matchMedia, which the terminal rail asks for its reduced-motion check. It has to carry the
+// listener methods too: CodeMirror tests for matchMedia and then subscribes to the one it gets back.
+globalThis.matchMedia ??= ((media: string) => ({
+  media,
+  matches: false,
+  onchange: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+})) as unknown as typeof matchMedia;
+
 /** React flushes store-driven renders in a microtask; one macrotask covers it. */
 export const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
