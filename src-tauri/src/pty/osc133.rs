@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn an_unterminated_payload_is_abandoned_and_the_scanner_recovers() {
         let mut long = b"\x1b]133;C;".to_vec();
-        long.extend(std::iter::repeat(b'x').take(MAX_PAYLOAD * 2));
+        long.extend(std::iter::repeat_n(b'x', MAX_PAYLOAD * 2));
         assert_eq!(scan(&[&long, b"\x1b]133;A\x07"]), vec![Mark::PromptStart]);
     }
 
