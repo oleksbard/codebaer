@@ -476,7 +476,9 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
 /// Folds the marks a read produced into the session and returns what the client must be told.
 fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
     let mut out = Vec::new();
-    let before = s.info.state.clone();
+    // one message per transition, not per read: a command quick enough to start and finish
+    // inside a single read would otherwise report nothing but the prompt that followed it
+    let mut sent = s.info.state.clone();
     for mark in marks {
         match mark {
             Mark::PromptStart => {
@@ -497,6 +499,10 @@ fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
             }
             Mark::Bell => out.push(ServerMsg::Bell { id: s.info.id }),
         }
+        if s.info.state != sent {
+            sent = s.info.state.clone();
+            out.push(ServerMsg::Status { id: s.info.id, state: sent.clone(), tier: s.info.tier });
+        }
     }
     if matches!(s.info.state, State::Starting) && !s.saw_mark {
         s.info.state = State::Running { command: None, since_ms: now_ms() };
@@ -504,7 +510,7 @@ fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
     if s.info.tier == Tier::Marks && !s.saw_mark && s.started.elapsed() > MARK_GRACE {
         s.info.tier = Tier::Process;
     }
-    if s.info.state != before || out.iter().any(|m| matches!(m, ServerMsg::Command { .. })) {
+    if s.info.state != sent {
         out.push(ServerMsg::Status { id: s.info.id, state: s.info.state.clone(), tier: s.info.tier });
     }
     out
