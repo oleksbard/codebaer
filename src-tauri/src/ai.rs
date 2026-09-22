@@ -5,7 +5,7 @@ use std::process::Command;
 use std::time::Duration;
 use tauri::State;
 
-const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 short lines with the reason or the key consequence. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
+const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 sentences with the reason or the key consequence. Write the body as one paragraph on a single line, however long it gets; never break a sentence across lines. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
 const TIMEOUT: Duration = Duration::from_secs(60);
 // ponytail: the summary needs the shape of the change, not a whole lockfile churn; raise if messages miss real edits
 const MAX_DIFF: usize = 200 * 1024;
