@@ -231,7 +231,7 @@ function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
         <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
         <span className="r">
           <IconButton id="ai-btn" label="Write the commit message with Claude" busy={S.aiBusy} disabled={staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
-          <Button variant="primary" id="commit-btn" busy={S.committing} disabled={staged === 0 || S.committing} onClick={() => void commit()}>
+          <Button variant="primary" id="commit-btn" busy={S.committing} disabled={staged === 0 || !message.trim() || S.committing} onClick={() => void commit()}>
             {S.committing ? <><Spinner />Committing…</> : <>Commit <Kbd>⌘↩</Kbd></>}
           </Button>
         </span>

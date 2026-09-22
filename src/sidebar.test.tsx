@@ -264,8 +264,18 @@ describe('context menu', () => {
 describe('commit button', () => {
   const btn = () => side.querySelector<HTMLButtonElement>('#commit-btn')!;
 
+  it('stays disabled until the message box holds more than whitespace', async () => {
+    await render([], [row('a.ts', 'M', 'staged')]);
+    expect(btn().disabled).toBe(true);
+    S.commitMessage = '   '; notify(); await tick();
+    expect(btn().disabled).toBe(true);
+    S.commitMessage = 'Fix the thing'; notify(); await tick();
+    expect(btn().disabled).toBe(false);
+  });
+
   it('swaps to a spinner while committing and refuses a second click', async () => {
     await render([], [row('a.ts', 'M', 'staged')]);
+    S.commitMessage = 'Fix the thing'; notify(); await tick();
     expect(btn().textContent).toBe('Commit ⌘↩');
     expect(btn().disabled).toBe(false);
 
