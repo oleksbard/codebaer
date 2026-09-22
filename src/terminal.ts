@@ -116,6 +116,17 @@ function create(id: number, el: HTMLDivElement): Term {
   // canvas, not webgl: there is an open corruption bug for the webgl renderer reproduced
   // under Tauri on macOS, and canvas renders the same content correctly
   term.loadAddon(new CanvasAddon());
+  // the agent CLIs read ESC CR as "insert a newline"; xterm sends a bare CR for shift-enter,
+  // which they read as submit. This is what a terminal's own Claude Code setup binds.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown' || e.key !== 'Enter' || e.isComposing) return true;
+    if (!e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return true;
+    // refusing the event returns before xterm's own cancel(), and an Enter whose default still
+    // runs produces a keypress that sends the bare CR this exists to replace
+    e.preventDefault();
+    void invoke('term_input', { id, data: '\x1b\r' });
+    return false;
+  });
   term.onData((data) => void invoke('term_input', { id, data }));
   // legacy X10 and 1005 mouse reports are not UTF-8 and arrive here instead of onData
   term.onBinary((data) => {
@@ -165,6 +176,38 @@ export function dispose(id: number): void {
   t.term.dispose();
   t.el.remove();
   terms.delete(id);
+  lastOut.delete(id);
+}
+
+// ponytail: output is the only tell a Command session gives. An agent repaints its spinner while
+// it thinks and is silent at its prompt; a shell running `top` reads as busy, which is honest.
+const BUSY_MS = 700;
+const TICK = 300;
+const REPLAY_MS = 1500;
+const lastOut = new Map<number, number>();
+let sweep: ReturnType<typeof setInterval> | null = null;
+let busySet = '';
+let onBusyChange: (() => void) | null = null;
+/** Attaching replays every session's ring at once, which is not a session doing work. */
+let replayUntil = 0;
+
+export const working = (id: number): boolean => Date.now() - (lastOut.get(id) ?? -Infinity) < BUSY_MS;
+
+/** Called when a session starts or stops producing output; nothing runs while every session is quiet. */
+export function watchOutput(fn: () => void): void {
+  onBusyChange = fn;
+}
+
+function sweepBusy(): void {
+  const now = [...lastOut.keys()].filter(working).join();
+  if (now !== busySet) {
+    busySet = now;
+    onBusyChange?.();
+  }
+  if (!now && sweep) {
+    clearInterval(sweep);
+    sweep = null;
+  }
 }
 
 export function setFontSize(px: number): void {
@@ -207,6 +250,10 @@ function write(id: number, bytes: Uint8Array): void {
   while (queued.size > MAX_PENDING && queued.chunks.length > 1) {
     queued.size -= queued.chunks.shift()!.length;
   }
+  if (Date.now() >= replayUntil) {
+    lastOut.set(id, Date.now());
+    sweep ??= setInterval(sweepBusy, TICK);
+  }
   if (!frame) frame = requestAnimationFrame(flush);
 }
 
@@ -239,6 +286,7 @@ export function route(message: ArrayBuffer | number[]): void {
 /** Called on every mount: a reload destroys these channels without telling Rust, and
  *  re-subscribing is what makes the host replay each ring into a fresh instance. */
 export async function subscribe(onEvent: (m: ServerMsg) => void): Promise<void> {
+  replayUntil = Date.now() + REPLAY_MS;
   const out = new Channel<ArrayBuffer | number[]>();
   out.onmessage = route;
   const ev = new Channel<ServerMsg>();

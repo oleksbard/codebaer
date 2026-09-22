@@ -127,8 +127,8 @@ fn control(conn: &mut Conn, msg: &ClientMsg) -> Result<(), AppError> {
     send(conn, &Frame::Control(json))
 }
 
-/// Connects to the host, starting one if nothing answers. Lazy: an app run that never opens a
-/// terminal never spawns it.
+/// Connects to the host, starting one if nothing answers. The app subscribes at startup, so this
+/// is also what reattaches to the sessions a previous run left running.
 fn ensure<R: Runtime>(app: &AppHandle<R>) -> Result<(), AppError> {
     let state = app.state::<PtyState>();
     if state.0.lock().unwrap().write.is_some() {

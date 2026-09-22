@@ -5,6 +5,7 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { cancel, checkout, network, palette } from './controller';
 import { notify, S, useApp } from './store';
+import { TermStatus } from './Terminals';
 
 export function Header() {
   useApp();
@@ -59,8 +60,10 @@ export function Footer() {
         {S.busy && <Spinner />}
         {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
       </div>
-      {S.open && S.blame &&
-        <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
+      {S.tab === 'terminals'
+        ? <TermStatus />
+        : S.open && S.blame &&
+          <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
     </footer>
   );
 }

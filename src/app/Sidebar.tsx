@@ -16,7 +16,7 @@ import {
   unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
-import { TerminalsIcon } from './Terminals';
+import { TerminalRail } from './Terminals';
 
 function ChangesIcon() {
   return (
@@ -44,15 +44,14 @@ function FilesIcon() {
 const TABS = [
   { value: 'changes', label: 'Changes', icon: <ChangesIcon /> },
   { value: 'files', label: 'Files', icon: <FilesIcon /> },
-  { value: 'terminals', label: 'Terminals', icon: <TerminalsIcon /> },
 ];
 
 export function ActivityBar() {
   useApp();
-  const wants = S.termAttention.size > 0;
   return (
-    <div className={`act${wants ? ' attention' : ''}`}>
+    <div className="act">
       <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={TABS} />
+      <TerminalRail />
     </div>
   );
 }

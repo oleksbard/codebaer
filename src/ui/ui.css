@@ -115,6 +115,7 @@ kbd {
 }
 
 .tabs.vert {
+  flex: none;
   flex-direction: column;
   border-bottom: 0;
   padding: 6px 0;

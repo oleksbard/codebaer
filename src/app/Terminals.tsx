@@ -1,22 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import * as term from '../terminal';
-import { homeFrom, isExited, statusLabel } from '../terminal-status';
+import { agentOf, homeFrom, isExited, statusLabel, type Agent } from '../terminal-status';
 import { Button } from '../ui/Button';
-import { IconButton } from '../ui/IconButton';
+import { ContextMenu } from '../ui/ContextMenu';
 import { Kbd } from '../ui/Kbd';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './controller';
 import { S, useApp } from './store';
 
-export function TerminalsIcon() {
+function ClaudeIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
-      <path d="M4.5 6.25 6.75 8 4.5 9.75M8.75 10.25h3" />
+    <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7"
+      strokeLinecap="round" aria-hidden="true">
+      <path d="M8 2.2v11.6M3 4.9l10 6.2M13 4.9 3 11.1" />
     </svg>
   );
 }
+
+function CodexIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5"
+      strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5z" />
+      <path d="M8 5.4 10.9 7v2.9L8 11.6 5.1 9.9V7z" />
+    </svg>
+  );
+}
+
+const ICONS: Record<Agent, () => ReactElement> = { claude: ClaudeIcon, codex: CodexIcon };
 
 /** A running session's elapsed time is only true while it is being redrawn. */
 function useTick(active: boolean): void {
@@ -32,8 +43,6 @@ export function Terminals() {
   useApp();
   const host = useRef<HTMLDivElement>(null);
   const id = S.activeTerm;
-  const running = S.terminals.some((t) => t.state.t === 'Running');
-  useTick(running);
 
   useEffect(() => {
     if (id !== null && host.current) {
@@ -52,7 +61,6 @@ export function Terminals() {
 
   return (
     <main className="main">
-      <TitleBar />
       {S.termError && <div className="banner conflict">{S.termError}</div>}
       <div className="term-host" ref={host} hidden={id === null} />
       {id === null && <Empty />}
@@ -82,93 +90,67 @@ function Dot({ session }: { session: term.Info }) {
   return <span className={`term-dot ${tone}`} aria-hidden="true" />;
 }
 
-function TitleBar() {
-  const active = S.terminals.find((t) => t.id === S.activeTerm) ?? null;
-  const home = active ? homeFrom(active.cwd) : null;
+/** What the title bar used to say, in the footer the whole app already has. */
+export function TermStatus() {
+  const s = S.terminals.find((t) => t.id === S.activeTerm);
+  useTick(s?.state.t === 'Running');
+  if (!s) return null;
+  return <span className="tstat">{s.title} · {statusLabel(s, Date.now(), homeFrom(s.cwd))}</span>;
+}
+
+export function TerminalRail() {
+  const active = S.tab === 'terminals' ? S.activeTerm : null;
   return (
-    <div className="tbar">
-      <Picker active={active} home={home} />
-      {active && <span className="pos">{statusLabel(active, Date.now(), home)}</span>}
-      <div className="right">
-        <Find />
-        {active && (
-          <IconButton label="Clear the buffer" onClick={() => term.clear(active.id)}>⌫</IconButton>
-        )}
-        <IconButton label="Smaller text" onClick={() => term.setFontSize(term.fontSize() - 1)}>A−</IconButton>
-        <IconButton label="Larger text" onClick={() => term.setFontSize(term.fontSize() + 1)}>A+</IconButton>
-        {active && (
-          <IconButton
-            label={isExited(active) ? 'Close this session' : 'Kill this session'}
-            onClick={() => void (isExited(active) ? closeTerminal(active.id) : killTerminal(active.id))}
+    <div className="rail">
+      {S.terminals.map((s) => {
+        const wants = S.termAttention.has(s.id);
+        // the number and the glyph are both decorative once the label carries the same words
+        const label = `${s.title} · ${statusLabel(s, Date.now(), homeFrom(s.cwd))}${wants ? ' · wants attention' : ''}`;
+        return (
+          <ContextMenu
+            key={s.id}
+            items={[{
+              label: isExited(s) ? 'Close' : 'Kill',
+              onSelect: () => void (isExited(s) ? closeTerminal(s.id) : killTerminal(s.id)),
+            }]}
           >
-            ✕
-          </IconButton>
-        )}
-      </div>
+            <button
+              type="button"
+              className={`rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`}
+              aria-current={s.id === active || undefined}
+              aria-label={label}
+              title={label}
+              onClick={() => selectTerminal(s.id)}
+            >
+              <Glyph session={s} />
+              <Dot session={s} />
+              {wants && <span className="bell" aria-hidden="true" />}
+            </button>
+          </ContextMenu>
+        );
+      })}
+      <NewMenu />
     </div>
   );
 }
 
-function Find() {
-  const id = S.activeTerm;
-  if (id === null) return null;
-  return (
-    <input
-      className="term-find"
-      type="search"
-      placeholder="Find"
-      aria-label="Find in terminal"
-      defaultValue={S.termFind}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter') return;
-        const q = e.currentTarget.value;
-        S.termFind = q;
-        term.find(id, q, e.shiftKey);
-      }}
-    />
-  );
+/** The session id, not its place in the list: closing one must not renumber the rest. */
+function Glyph({ session }: { session: term.Info }) {
+  const agent = agentOf(session);
+  if (!agent) return <span className="num" aria-hidden="true">{session.id}</span>;
+  const Icon = ICONS[agent];
+  return <span className={`agent ${agent}`}><Icon /></span>;
 }
 
-function Picker({ active, home }: { active: term.Info | null; home: string | null }) {
+function NewMenu() {
   const m = S.termMenu;
-  const label = active ? `${active.title} - ${statusLabel(active, Date.now(), home)}` : 'Terminals';
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="term-pick">
-          {active && <Dot session={active} />}
-          <span className="txt">{label}</span>
-          <span className="caret" aria-hidden="true">▾</span>
-        </button>
+        <button type="button" className="rail-b new" title="New terminal (⌘T)" aria-label="New terminal">+</button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu term-menu" align="start" sideOffset={6}>
-          {S.terminals.length > 0 && <div className="menu-label">Sessions</div>}
-          {S.terminals.map((s) => (
-            <DropdownMenu.Item
-              key={s.id}
-              className="menu-item term-row"
-              onSelect={() => selectTerminal(s.id)}
-            >
-              <Dot session={s} />
-              <span className="name">{s.title}</span>
-              <span className="detail">{statusLabel(s, Date.now(), homeFrom(s.cwd))}</span>
-              {S.termAttention.has(s.id) && <span className="term-bell" aria-label="Wants attention">●</span>}
-              <button
-                type="button"
-                className="term-x"
-                aria-label={isExited(s) ? 'Close' : 'Kill'}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void (isExited(s) ? closeTerminal(s.id) : killTerminal(s.id));
-                }}
-              >
-                ✕
-              </button>
-            </DropdownMenu.Item>
-          ))}
-          {S.terminals.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
+        <DropdownMenu.Content className="menu term-menu" side="right" align="end" sideOffset={6}>
           <div className="menu-label">New terminal</div>
           {(m?.shells ?? []).map((sh) => (
             <DropdownMenu.Item

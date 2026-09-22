@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsed, homeFrom, shortCwd, statusLabel } from './terminal-status';
+import { agentOf, elapsed, homeFrom, shortCwd, statusLabel } from './terminal-status';
 import type { Info } from './terminal';
 
 const base: Info = { id: 1, title: 'zsh', cwd: '/Users/me/projects/x', tier: 'marks', state: { t: 'Idle' } };
@@ -54,5 +54,21 @@ describe('homeFrom', () => {
     expect(homeFrom('/Users/me/projects/x')).toBe('/Users/me');
     expect(homeFrom('/Users/me')).toBe('/Users/me');
     expect(homeFrom('/tmp/x')).toBe(null);
+  });
+});
+
+describe('agentOf', () => {
+  it('names the agent a command session was spawned as', () => {
+    expect(agentOf({ ...base, title: 'claude', tier: 'process' })).toBe('claude');
+    expect(agentOf({ ...base, title: 'codex', tier: 'process' })).toBe('codex');
+  });
+
+  it('names the agent a shell is running right now', () => {
+    expect(agentOf({ ...base, state: { t: 'Running', command: 'claude --resume', since_ms: 0 } })).toBe('claude');
+  });
+
+  it('has nothing to show for a plain shell or an unrelated command', () => {
+    expect(agentOf(base)).toBe(null);
+    expect(agentOf({ ...base, state: { t: 'Running', command: 'pnpm test', since_ms: 0 } })).toBe(null);
   });
 });

@@ -43,3 +43,14 @@ export function homeFrom(cwd: string): string | null {
   const user = rest.split('/')[0];
   return user ? `${HOME}${user}` : null;
 }
+
+const AGENTS = ['claude', 'codex'] as const;
+export type Agent = (typeof AGENTS)[number];
+
+/** Which agent a session is, for the icon on its sidebar button. A `Command` session carries the
+ *  program as its title; a shell only reveals one while it runs it, and only on the marks tier. */
+export function agentOf(s: Info): Agent | null {
+  const running = s.state.t === 'Running' ? s.state.command : null;
+  const name = (running ?? s.title).split(' ')[0]?.split('/').pop()?.toLowerCase() ?? '';
+  return AGENTS.find((a) => a === name) ?? null;
+}

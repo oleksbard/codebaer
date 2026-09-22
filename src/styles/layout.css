@@ -16,6 +16,9 @@
 
 .act {
   grid-area: act;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--line);
   background: var(--panel);
   overflow: hidden;
@@ -112,7 +115,8 @@
   font-size: var(--fs-1);
   color: var(--muted);
 
-  .blame {
+  .blame,
+  .tstat {
     margin-left: auto;
     min-width: 0;
     overflow: hidden;

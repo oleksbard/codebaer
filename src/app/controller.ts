@@ -682,6 +682,14 @@ export async function palette(): Promise<void> {
       label: `Terminal: Run ${c}`,
       run: () => newTerminal({ t: 'Command', argv0: c }),
     })),
+    { label: 'Terminal: Find…', run: findInTerminal },
+    { label: 'Terminal: Find Next', run: () => onTerminal((id) => term.find(id, S.termFind)) },
+    { label: 'Terminal: Find Previous', run: () => onTerminal((id) => term.find(id, S.termFind, true)) },
+    { label: 'Terminal: Clear Buffer', run: () => onTerminal(term.clear) },
+    { label: 'Terminal: Larger Text', run: () => term.setFontSize(term.fontSize() + 1) },
+    { label: 'Terminal: Smaller Text', run: () => term.setFontSize(term.fontSize() - 1) },
+    { label: 'Terminal: Kill Session', run: () => onTerminal(killTerminal) },
+    { label: 'Terminal: Close Session', run: () => onTerminal(closeTerminal) },
   ];
   const unborn = S.status?.head === null;
   const shown = unborn ? cmds.filter((c) => !c.label.includes('Stash')) : cmds;
@@ -765,6 +773,7 @@ async function connectTerminals(): Promise<void> {
   if (connected) return;
   try {
     await term.subscribe(onTermEvent);
+    term.watchOutput(notify);
     connected = true;
     S.termMenu = await term.menu();
     S.termError = null;
@@ -788,6 +797,7 @@ export async function newTerminal(kind?: term.SpawnKind): Promise<void> {
 export function selectTerminal(id: number): void {
   S.activeTerm = id;
   S.termAttention.delete(id);
+  S.tab = 'terminals';
   notify();
 }
 
@@ -797,6 +807,15 @@ export async function killTerminal(id: number): Promise<void> {
 
 export async function closeTerminal(id: number): Promise<void> {
   try { await term.close(id); } catch (e) { toast(errText(e), 'err'); }
+}
+
+const onTerminal = (fn: (id: number) => unknown): void => { if (S.activeTerm !== null) void fn(S.activeTerm); };
+
+async function findInTerminal(): Promise<void> {
+  const q = await promptDialog('Find in terminal');
+  if (q === null) return;
+  S.termFind = q;
+  onTerminal((id) => term.find(id, q));
 }
 
 // ---------- startup and repo switching ----------
@@ -869,6 +888,8 @@ export async function start(): Promise<void> {
     return;
   }
   installKeys(dispatch, (visible) => { S.chord = visible; notify(); });
+  // not deferred to the first visit any more: the activity bar lists every session on every tab
+  void connectTerminals();
   globalThis.addEventListener('blur', () => void flush());
   view.dom.addEventListener('keyup', notify);
   view.dom.addEventListener('mouseup', notify);
