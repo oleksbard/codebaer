@@ -722,7 +722,7 @@ export async function setTab(tab: Tab): Promise<void> {
 /** Set once the spawn we are waiting for is known, so an unprompted session, one restored on
  *  reconnect say, does not steal the view. */
 let awaitingSpawn = 0;
-let connected = false;
+let connecting: Promise<void> | null = null;
 
 export function onTermEvent(m: term.ServerMsg): void {
   switch (m.t) {
@@ -769,15 +769,19 @@ function flag(id: number): void {
   if (id !== S.activeTerm || S.tab !== 'terminals') S.termAttention.add(id);
 }
 
+/** Kept as the in-flight attempt rather than a flag: the menu runs a login shell, and a failed
+ *  connect that left the flag set would leave every ⌘T with no shell to spawn and nothing said. */
 async function connectTerminals(): Promise<void> {
-  if (connected) return;
-  try {
+  connecting ??= (async () => {
     await term.subscribe(onTermEvent);
     term.watchOutput(notify);
-    connected = true;
     S.termMenu = await term.menu();
+  })();
+  try {
+    await connecting;
     S.termError = null;
   } catch (e) {
+    connecting = null;
     S.termError = errText(e);
   }
   notify();

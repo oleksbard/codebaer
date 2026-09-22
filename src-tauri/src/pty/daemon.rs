@@ -26,6 +26,9 @@ const COALESCE: Duration = Duration::from_millis(8);
 /// the tier that only reports liveness.
 const MARK_GRACE: Duration = Duration::from_secs(5);
 const TERM_GRACE: Duration = Duration::from_secs(2);
+/// A shell hangs up its own jobs within single-digit milliseconds. The rest is margin for a
+/// loaded machine, which is the only condition the race was ever seen under.
+const HUP_GRACE: Duration = Duration::from_millis(250);
 const CHUNK: usize = 64 * 1024;
 
 struct Session {
@@ -82,11 +85,13 @@ pub fn login_shell() -> String {
     "/bin/zsh".to_string()
 }
 
-fn emit(hub: &Hub, msg: &ServerMsg) {
-    if let (Some(tx), Ok(json)) = (&hub.out, serde_json::to_vec(msg)) {
-        // a client 256 frames behind is about to be replaced anyway, and the app re-lists on
-        // reconnect, so a dropped status is recoverable where a blocked dispatcher is not
-        let _ = tx.try_send(Frame::Control(json));
+/// Blocking, and called from outside the hub lock for the same reason the reader threads send
+/// their notes from outside it. `Hello`, `Spawned` and `Closed` are the client's whole record of
+/// a session appearing or leaving and it never re-lists, so one dropped message leaves its list
+/// wrong for as long as the connection lives.
+fn emit(tx: Option<&SyncSender<Frame>>, msg: &ServerMsg) {
+    if let (Some(tx), Ok(json)) = (tx, serde_json::to_vec(msg)) {
+        let _ = tx.send(Frame::Control(json));
     }
 }
 
@@ -257,13 +262,16 @@ fn dispatch(frame: Frame, hub: &Shared) -> bool {
 fn control(msg: ClientMsg, hub: &Shared) -> bool {
     match msg {
         ClientMsg::Hello { proto: v, .. } => {
-            let h = hub.lock().unwrap();
+            let (tx, sessions) = {
+                let h = hub.lock().unwrap();
+                (h.out.clone(), h.sessions.values().map(|s| s.info.clone()).collect())
+            };
             if v != proto::PROTO {
-                emit(&h, &ServerMsg::Error { id: None, message: format!("proto {v} != {}", proto::PROTO) });
+                let message = format!("proto {v} != {}", proto::PROTO);
+                emit(tx.as_ref(), &ServerMsg::Error { id: None, message });
                 return true;
             }
-            let sessions = h.sessions.values().map(|s| s.info.clone()).collect();
-            emit(&h, &ServerMsg::Hello { proto: proto::PROTO, sessions });
+            emit(tx.as_ref(), &ServerMsg::Hello { proto: proto::PROTO, sessions });
         }
         ClientMsg::Spawn { req, kind, cwd, cols, rows } => spawn(req, kind, &cwd, cols, rows, hub),
         ClientMsg::Attach { id } => attach(id, hub),
@@ -285,9 +293,12 @@ fn control(msg: ClientMsg, hub: &Shared) -> bool {
             if !exited {
                 kill(id, hub);
             }
-            let mut h = hub.lock().unwrap();
-            if h.sessions.remove(&id).is_some() {
-                emit(&h, &ServerMsg::Closed { id });
+            let (removed, tx) = {
+                let mut h = hub.lock().unwrap();
+                (h.sessions.remove(&id).is_some(), h.out.clone())
+            };
+            if removed {
+                emit(tx.as_ref(), &ServerMsg::Closed { id });
             }
         }
         ClientMsg::Shutdown => {
@@ -330,8 +341,8 @@ fn spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &Share
     match try_spawn(req, kind, cwd, cols, rows, hub) {
         Ok(()) => {}
         Err(e) => {
-            let h = hub.lock().unwrap();
-            emit(&h, &ServerMsg::Error { id: None, message: e });
+            let tx = hub.lock().unwrap().out.clone();
+            emit(tx.as_ref(), &ServerMsg::Error { id: None, message: e });
         }
     }
 }
@@ -402,15 +413,15 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
-    {
+    let info = Info {
+        id,
+        title,
+        cwd: cwd.to_string(),
+        tier,
+        state: State::Starting,
+    };
+    let tx = {
         let mut h = hub.lock().unwrap();
-        let info = Info {
-            id,
-            title,
-            cwd: cwd.to_string(),
-            tier,
-            state: State::Starting,
-        };
         h.sessions.insert(
             id,
             Session {
@@ -426,8 +437,9 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
                 _tmp: tmp,
             },
         );
-        emit(&h, &ServerMsg::Spawned { req, info });
-    }
+        h.out.clone()
+    };
+    emit(tx.as_ref(), &ServerMsg::Spawned { req, info });
 
     let pump = hub.clone();
     std::thread::spawn(move || {
@@ -527,20 +539,32 @@ fn kill(id: u32, hub: &Shared) {
         }
         None => return,
     };
-    hangup(&[pgid]);
-    std::thread::spawn(move || {
-        std::thread::sleep(TERM_GRACE);
-        signal(pgid, libc::SIGKILL);
-    });
+    std::thread::spawn(move || terminate(&[pgid]));
 }
 
 /// SIGHUP first because it is what a closing terminal sends, and a job-control shell responds
 /// to it by hanging up its own jobs, which live in process groups of their own and are
 /// therefore out of killpg's reach from here.
-fn hangup(pgids: &[i32]) {
-    for p in pgids {
+///
+/// Each step is given the floor. A shell answering SIGHUP restores the default handlers on its
+/// way out, so a SIGTERM sent in the same breath lands in that window and kills it before it
+/// reaches its jobs, which then survive with nothing left to signal them.
+fn terminate(pgids: &[i32]) {
+    let groups: Vec<i32> = pgids.iter().copied().filter(|p| *p > 0).collect();
+    // nothing to escalate against, and the sleeps below would hold the caller's own exit up
+    if groups.is_empty() {
+        return;
+    }
+    for p in &groups {
         signal(*p, libc::SIGHUP);
+    }
+    std::thread::sleep(HUP_GRACE);
+    for p in &groups {
         signal(*p, libc::SIGTERM);
+    }
+    std::thread::sleep(TERM_GRACE);
+    for p in &groups {
+        signal(*p, libc::SIGKILL);
     }
 }
 
@@ -562,11 +586,7 @@ pub fn teardown(hub: &Shared) {
         }
         h.sessions.values().map(|s| s.pgid).collect()
     };
-    hangup(&pgids);
-    std::thread::sleep(TERM_GRACE);
-    for p in &pgids {
-        signal(*p, libc::SIGKILL);
-    }
+    terminate(&pgids);
     // dropping the records closes every pty master, and the kernel turns that into a real tty
     // hangup for anything still holding a slave: the last net under a job we never signalled
     hub.lock().unwrap().sessions.clear();
@@ -647,4 +667,23 @@ pub fn run(sock: &Path) -> ! {
     teardown(&hub);
     let _ = std::fs::remove_file(sock);
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emit_waits_for_room_rather_than_dropping() {
+        let (tx, rx) = sync_channel::<Frame>(1);
+        tx.send(Frame::Output(1, b"the one slot".to_vec())).unwrap();
+        let sender = tx.clone();
+        let parked = std::thread::spawn(move || emit(Some(&sender), &ServerMsg::Closed { id: 7 }));
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(matches!(rx.recv().unwrap(), Frame::Output(1, _)));
+        parked.join().unwrap();
+        let frame = rx.recv_timeout(Duration::from_secs(1)).expect("the Closed survived a full queue");
+        let Frame::Control(json) = frame else { panic!("expected a control frame") };
+        assert_eq!(serde_json::from_slice::<ServerMsg>(&json).unwrap(), ServerMsg::Closed { id: 7 });
+    }
 }
