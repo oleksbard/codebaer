@@ -31,7 +31,14 @@ export type ServerMsg =
   | { t: 'Closed'; id: number }
   | { t: 'Error'; id: number | null; message: string };
 
-export type Term = { term: Terminal; fit: FitAddon; search: SearchAddon; el: HTMLDivElement };
+export type Term = {
+  term: Terminal;
+  fit: FitAddon;
+  search: SearchAddon;
+  el: HTMLDivElement;
+  /** Held only so it can be disposed before the terminal is; see dispose(). */
+  canvas: CanvasAddon;
+};
 
 const FONT_KEY = 'codebaer.term.fontSize';
 const SCROLL_KEY = 'codebaer.term.scrollback';
@@ -115,7 +122,8 @@ function create(id: number, el: HTMLDivElement): Term {
   term.open(el);
   // canvas, not webgl: there is an open corruption bug for the webgl renderer reproduced
   // under Tauri on macOS, and canvas renders the same content correctly
-  term.loadAddon(new CanvasAddon());
+  const canvas = new CanvasAddon();
+  term.loadAddon(canvas);
   // the agent CLIs read ESC CR as "insert a newline"; xterm sends a bare CR for shift-enter,
   // which they read as submit. This is what a terminal's own Claude Code setup binds.
   term.attachCustomKeyEventHandler((e) => {
@@ -134,7 +142,7 @@ function create(id: number, el: HTMLDivElement): Term {
     void invoke('term_input_bytes', { id, bytes });
   });
   term.onResize(({ cols, rows }) => void invoke('term_resize', { id, cols, rows }));
-  const t = { term, fit, search, el };
+  const t = { term, fit, search, el, canvas };
   terms.set(id, t);
   return t;
 }
@@ -173,6 +181,10 @@ export function focus(id: number): void {
 export function dispose(id: number): void {
   const t = terms.get(id);
   if (!t) return;
+  // first, and not left to the terminal's own addon teardown: the canvas addon puts the DOM
+  // renderer back as it goes, and that renderer's constructor wants a linkifier the terminal
+  // has already disposed by the time it gets round to its addons
+  t.canvas.dispose();
   t.term.dispose();
   t.el.remove();
   terms.delete(id);
