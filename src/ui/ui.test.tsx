@@ -32,7 +32,8 @@ afterEach(() => {
 
 describe('primitives', () => {
   it('Button variants map to classes and forward native props', () => {
-    const h = mount(<><Button>a</Button><Button variant="primary" disabled>b</Button><Button variant="ghost">c</Button></>);
+    const h = mount(<><Button>a</Button><Button variant="primary" disabled>b</Button>
+      <Button variant="ghost">c</Button></>);
     const bs = [...h.querySelectorAll('button')];
     expect(bs.map((b) => b.className)).toEqual(['btn', 'btn primary', 'btn ghost']);
     expect(bs[1]!.disabled).toBe(true);
@@ -56,7 +57,8 @@ describe('primitives', () => {
 
   it('Tabs marks the active trigger and reports a change on mousedown', () => {
     const onChange = vi.fn();
-    const h = mount(<Tabs value="a" onValueChange={onChange} items={[{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }]} />);
+    const items = [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }];
+    const h = mount(<Tabs value="a" onValueChange={onChange} items={items} />);
     const tabs = [...h.querySelectorAll<HTMLElement>('.tab')];
     expect(tabs.map((t) => t.textContent)).toEqual(['A', 'B']);
     expect(tabs[0]!.dataset.state).toBe('active');
@@ -111,8 +113,11 @@ describe('primitives', () => {
 
   it('ContextMenu opens on right-click and runs the picked item', async () => {
     const onSelect = vi.fn();
-    const h = mount(<ContextMenu items={[{ label: 'One', onSelect }, { label: 'Two', onSelect: () => {} }]}><div className="t">x</div></ContextMenu>);
-    h.querySelector('.t')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    const h = mount(<ContextMenu items={[{ label: 'One', onSelect }, { label: 'Two', onSelect: () => {} }]}>
+      <div className="t">x</div>
+    </ContextMenu>);
+    h.querySelector('.t')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
     await tick();
     const items = [...document.querySelectorAll<HTMLElement>('.menu-item')];
     expect(items.map((i) => i.textContent)).toEqual(['One', 'Two']);

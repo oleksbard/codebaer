@@ -22,7 +22,10 @@ const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
 const blob = (text: string, oid: string | null = 'oid1'): Blob => ({ text, eol: 'lf', oid, exists: oid !== null });
 const file = (text: string, exists = true): FileText => ({ text, eol: 'lf', exists });
 const status = (path: string, x = '.', y = 'M', untracked = false, conflicted = false): Status =>
-  ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }] });
+  ({
+    head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+    files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }],
+  });
 
 let m: typeof import('./app/controller');
 let S: typeof import('./app/store').S;
@@ -213,10 +216,12 @@ describe('sidebar resize', () => {
   const ACT_W = 44;
   const maxWidth = globalThis.innerWidth - 400 - ACT_W;
 
-  it('follows the pointer between 180px and window width minus the rails, and stores the width on release', async () => {
+  it('follows the pointer between 180px and window width minus the rails, and stores the width on release',
+    async () => {
     const gutter = document.getElementById('gutter')!;
     const shell = document.getElementById('shell')!;
-    const ev = (kind: string, clientX = 0) => gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
+    const ev = (kind: string, clientX = 0) =>
+      gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
     ev('pointerdown', 272);
     ev('pointermove', 340);
     await tick();
@@ -238,7 +243,8 @@ describe('sidebar resize', () => {
     const { subscribe } = await import('./app/store');
     const gutter = document.getElementById('gutter')!;
     const shell = document.getElementById('shell')!;
-    const ev = (kind: string, clientX = 0) => gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
+    const ev = (kind: string, clientX = 0) =>
+      gutter.dispatchEvent(new PointerEvent(kind, { pointerId: 1, clientX, bubbles: true }));
     let notifies = 0;
     const off = subscribe(() => { notifies++; });
     ev('pointerdown', 272);
@@ -257,7 +263,10 @@ describe('sidebar resize', () => {
 describe('the blank panel', () => {
   it('offers whole-file actions for a staged or unstaged panel and none in the plain view', async () => {
     const { notify } = await import('./app/store');
-    S.open = { path: 'logo.png', view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: 'Binary', conflicted: false };
+    S.open = {
+      path: 'logo.png', view: 'plain', eol: 'lf', baseline: null, originalOid: null,
+      originalExists: false, docOid: null, dirty: false, badge: null, panel: 'Binary', conflicted: false,
+    };
     notify();
     await tick();
     expect(document.querySelector('.blank h2')!.textContent).toBe('binary file');
@@ -266,7 +275,8 @@ describe('the blank panel', () => {
     S.open = { ...S.open, view: 'unstaged' };
     notify();
     await tick();
-    expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent)).toEqual(['Whole-file actions only.', 'Reject file Accept file']);
+    expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent))
+      .toEqual(['Whole-file actions only.', 'Reject file Accept file']);
   });
 });
 

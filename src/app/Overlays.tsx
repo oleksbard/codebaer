@@ -92,5 +92,6 @@ function ConfirmDialog({ req }: { req: ConfirmRequest }) {
     notify();
     req.resolve(ok);
   };
-  return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : 'OK'} error={req.error} onResult={close} />;
+  return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : 'OK'}
+    error={req.error} onResult={close} />;
 }

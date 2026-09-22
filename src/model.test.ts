@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles } from './model';
+import {
+  acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, rejectSpecialCase,
+  rowKey, unstageText, visibleFiles,
+} from './model';
 import type { FileEntry, Status } from './git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
-const status = (files: FileEntry[]): Status => ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files });
+const status = (files: FileEntry[]): Status =>
+  ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files });
 
 describe('buildTree', () => {
   it('nests every path segment, keeps root files at the top level, and orders both by name', () => {
@@ -23,7 +27,10 @@ describe('buildTree', () => {
 
 describe('buildQueue', () => {
   it('splits MM into both sections and keeps conflicts out of staged', () => {
-    const q = buildQueue(status([f('a', 'M', 'M'), f('b', 'M', '.'), f('c', '.', 'M'), f('n', '.', '.', { untracked: true }), f('u', 'U', 'U', { conflicted: true })]));
+    const q = buildQueue(status([
+      f('a', 'M', 'M'), f('b', 'M', '.'), f('c', '.', 'M'),
+      f('n', '.', '.', { untracked: true }), f('u', 'U', 'U', { conflicted: true }),
+    ]));
     expect(q.unstaged.map((r) => r.path)).toEqual(['a', 'c', 'n', 'u']);
     expect(q.staged.map((r) => r.path)).toEqual(['a', 'b']);
     expect(q.unstaged.find((r) => r.path === 'u')?.conflicted).toBe(true);
@@ -60,8 +67,11 @@ describe('visibleFiles', () => {
 
 describe('special cases', () => {
   it('flush set matches the spec list and excludes commit and reads', () => {
-    for (const k of ['stageContent', 'stagePath', 'unstagePath', 'revertPath', 'stageAll', 'unstageAll', 'discardAll', 'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo']) expect(FLUSH_SET.has(k)).toBe(true);
-    for (const k of ['commit', 'status', 'readBlob', 'readFile', 'push', 'listFiles', 'branches']) expect(FLUSH_SET.has(k)).toBe(false);
+    const flushes = ['stageContent', 'stagePath', 'unstagePath', 'revertPath', 'stageAll', 'unstageAll',
+      'discardAll', 'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo'];
+    for (const k of flushes) expect(FLUSH_SET.has(k)).toBe(true);
+    const skips = ['commit', 'status', 'readBlob', 'readFile', 'push', 'listFiles', 'branches'];
+    for (const k of skips) expect(FLUSH_SET.has(k)).toBe(false);
   });
   it('reject special cases', () => {
     expect(rejectSpecialCase(null, true)).toBe('restore');
@@ -79,9 +89,14 @@ describe('special cases', () => {
 
 describe('blameText', () => {
   it('formats a commit and collapses the zero oid', () => {
-    expect(blameText({ oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173, summary: 'Rebuild the UI' }))
+    expect(blameText({
+      oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173,
+      summary: 'Rebuild the UI',
+    }))
       .toBe('9081303 · Ada · 2026-09-17 · Rebuild the UI');
-    expect(blameText({ oid: '0'.repeat(40), author: 'External file (--contents)', time: 0, summary: 'from standard input' }))
+    expect(blameText({
+      oid: '0'.repeat(40), author: 'External file (--contents)', time: 0, summary: 'from standard input',
+    }))
       .toBe('uncommitted');
   });
 });

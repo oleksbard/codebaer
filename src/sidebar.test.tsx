@@ -21,7 +21,8 @@ const row = (path: string, letter: string, section: Row['section'] = 'unstaged',
 /** Builds the Status whose buildQueue() yields exactly these rows. */
 function statusFor(unstaged: Row[], staged: Row[]): Status {
   const files = new Map<string, FileEntry>();
-  const get = (p: string) => files.get(p) ?? files.set(p, { path: p, indexStatus: '.', worktreeStatus: '.', untracked: false, conflicted: false }).get(p)!;
+  const blank = { indexStatus: '.', worktreeStatus: '.', untracked: false, conflicted: false } as const;
+  const get = (p: string) => files.get(p) ?? files.set(p, { path: p, ...blank }).get(p)!;
   for (const r of unstaged) {
     const f = get(r.path);
     if (r.conflicted) f.conflicted = true;
@@ -38,7 +39,8 @@ let side: HTMLElement;
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
-  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null; S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
+  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
+  S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -108,10 +110,12 @@ describe('row layout', () => {
     const dirs = [...side.querySelectorAll<HTMLDetailsElement>('details[data-dir]')];
     expect(dirs.map((d) => d.dataset.dir)).toEqual(['src', 'src/app']);
     expect(dirs[1]!.parentElement).toBe(dirs[0]!);
-    expect(dirs.map((d) => d.querySelector<HTMLElement>('summary')!.style.getPropertyValue('--depth'))).toEqual(['0', '1']);
+    expect(dirs.map((d) => d.querySelector<HTMLElement>('summary')!.style.getPropertyValue('--depth')))
+      .toEqual(['0', '1']);
     const deep = side.querySelector<HTMLElement>('[data-key="plain:src/app/a.ts"]')!;
     expect(deep.style.getPropertyValue('--depth')).toBe('2');
-    expect(side.querySelector<HTMLElement>('[data-key="plain:README.md"]')!.style.getPropertyValue('--depth')).toBe('0');
+    expect(side.querySelector<HTMLElement>('[data-key="plain:README.md"]')!
+      .style.getPropertyValue('--depth')).toBe('0');
   });
 
   it('renders nothing below a collapsed directory, and the whole subtree once it is open', async () => {
@@ -129,7 +133,8 @@ describe('row layout', () => {
 
   it('marks the open file and scrolls it into view, whichever view opened it', async () => {
     const seen: Element[] = [];
-    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) { seen.push(this); });
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(function (this: Element) { seen.push(this); });
     // S.selected is the Changes-view key, so only S.open.path can mark the row here
     S.selected = 'unstaged:src/app/a.ts';
     await renderFiles(['src/app/a.ts', 'README.md'], 'src/app/a.ts', ['src', 'src/app']);
@@ -139,7 +144,8 @@ describe('row layout', () => {
     spy.mockRestore();
   });
 
-  it('a path with quotes and angle brackets renders as text in the name, the directory, the title and the key', async () => {
+  it('a path with quotes and angle brackets renders as text in the name, the directory, the title and the key',
+    async () => {
     await render([row('a "b"/c&d<e>.ts', 'M')]);
     const r = side.querySelector<HTMLElement>('.row')!;
     expect(r.querySelector('.path .name')!.textContent).toBe('c&d<e>.ts');
@@ -218,20 +224,23 @@ describe('sections', () => {
     details('unstaged').open = false;
     await tick();
     await render([row('a', 'M')], [], 'unstaged:a');
-    side.querySelector<HTMLElement>('.list')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    side.querySelector<HTMLElement>('.list')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(h.openRow).not.toHaveBeenCalled();
   });
 
   it('Enter on a focused header button does not reach the list handler', async () => {
     await render([row('a', 'M')], [], 'unstaged:a');
-    side.querySelector<HTMLButtonElement>('[data-all="stage"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    side.querySelector<HTMLButtonElement>('[data-all="stage"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(h.openRow).not.toHaveBeenCalled();
   });
 });
 
 describe('context menu', () => {
   const open = async (sel: string) => {
-    side.querySelector<HTMLElement>(sel)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    side.querySelector<HTMLElement>(sel)!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
     await tick();
     return [...document.querySelectorAll<HTMLElement>('.menu-item')];
   };

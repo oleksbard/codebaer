@@ -6,7 +6,8 @@ import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from
 import { languages } from '@codemirror/language-data';
 import { editorHighlight, editorTheme } from './editor-theme';
 import {
-  acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk, unifiedMergeView, updateOriginalDoc,
+  acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
+  unifiedMergeView, updateOriginalDoc,
 } from '@codemirror/merge';
 
 export type ViewKind = 'unstaged' | 'staged' | 'plain';

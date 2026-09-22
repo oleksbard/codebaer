@@ -12,7 +12,9 @@ export function Header() {
     <header className="head">
       <div className="brand"><img src="/icon.png" alt="" />CodeBär</div>
       <span className="repo">{S.root ?? ''}</span>
-      <div className="right"><Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button></div>
+      <div className="right">
+        <Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button>
+      </div>
     </header>
   );
 }
@@ -30,7 +32,8 @@ function RemoteActions() {
       {st.upstream !== null &&
         <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>↻</IconButton>}
       {st.behind > 0 &&
-        <IconButton label={`Pull ${commits(st.behind)}`} disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
+        <IconButton label={`Pull ${commits(st.behind)}`}
+          disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
       {push &&
         <IconButton label={st.upstream === null ? 'Push and set upstream' : `Push ${commits(st.ahead)}`}
           disabled={S.busy} onClick={() => void network('push')}>⤒</IconButton>}
@@ -56,7 +59,8 @@ export function Footer() {
         {S.busy && <Spinner />}
         {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
       </div>
-      {S.open && S.blame && <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
+      {S.open && S.blame &&
+        <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
     </footer>
   );
 }

@@ -30,11 +30,14 @@ afterEach(() => {
 
 describe('command palette', () => {
   it('lists items, filters on typing, Enter resolves the highlighted value and closes', async () => {
-    const p = pick([{ label: 'Git: Push', value: 'push' }, { label: 'Open Repository…', hint: '⌘O', value: 'open' }], 'Type a command');
+    const p = pick(
+      [{ label: 'Git: Push', value: 'push' }, { label: 'Open Repository…', hint: '⌘O', value: 'open' }],
+      'Type a command');
     await tick();
     const input = document.querySelector<HTMLInputElement>('.dialog.pal input')!;
     expect(input.placeholder).toBe('Type a command');
-    expect([...document.querySelectorAll('.pal li')].map((l) => l.textContent)).toEqual(['Git: Push', 'Open Repository…⌘O']);
+    expect([...document.querySelectorAll('.pal li')].map((l) => l.textContent))
+      .toEqual(['Git: Push', 'Open Repository…⌘O']);
     setValue(input, 'open');
     await tick();
     expect([...document.querySelectorAll('.pal li')].map((l) => l.textContent)).toEqual(['Open Repository…⌘O']);

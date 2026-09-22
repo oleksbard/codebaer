@@ -28,7 +28,8 @@ export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote:
 export type AppError =
   | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
   | { kind: 'Stale'; detail: FileText }
-  | { kind: 'Timeout' | 'Cancelled' | 'NotARepo' | 'StaleIndex' | 'NotUtf8' | 'Binary' | 'TooLarge' | 'Special' | 'Conflicted' };
+  | { kind: 'Timeout' | 'Cancelled' | 'NotARepo' | 'StaleIndex' | 'NotUtf8' | 'Binary' | 'TooLarge'
+    | 'Special' | 'Conflicted' };
 
 export function errKind(e: unknown): string {
   return typeof e === 'object' && e !== null && 'kind' in e ? String(e.kind) : 'Unknown';
@@ -64,7 +65,8 @@ export const git = {
   status: () => invoke<Status>('status'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
   readFile: (path: string) => invoke<FileText>('read_file', { path }),
-  blame: (path: string, line: number, contents: string, eol: Eol) => invoke<BlameLine>('blame', { path, line, contents, eol }),
+  blame: (path: string, line: number, contents: string, eol: Eol) =>
+    invoke<BlameLine>('blame', { path, line, contents, eol }),
   writeFile: (path: string, text: string, eol: Eol, expected: string | null) =>
     invoke<void>('write_file', { path, text, eol, expected }),
   stageContent: (path: string, text: string | null, eol: Eol, expectedOid: string | null) =>

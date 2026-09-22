@@ -6,7 +6,10 @@ import { Kbd } from '../ui/Kbd';
 import { FileIcon } from '../ui/FileIcon';
 import { IconButton } from '../ui/IconButton';
 import { Pill } from '../ui/Pill';
-import { accept, acceptFile, closeFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload, toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges } from './controller';
+import {
+  accept, acceptFile, closeFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload,
+  toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges,
+} from './controller';
 import { S, useApp } from './store';
 
 const PANEL_TEXT: Record<string, string> = {
@@ -39,7 +42,10 @@ function EditorHost({ hidden }: { hidden: boolean }) {
 
 function WholeFileButtons({ path, kind }: { path: string; kind: 'unstaged' | 'staged' }) {
   if (kind === 'unstaged') {
-    return <><Button onClick={() => void rejectFile(path)}>Reject file</Button> <Button variant="primary" onClick={() => void acceptFile(path)}>Accept file</Button></>;
+    return <>
+      <Button onClick={() => void rejectFile(path)}>Reject file</Button>{' '}
+      <Button variant="primary" onClick={() => void acceptFile(path)}>Accept file</Button>
+    </>;
   }
   return <Button onClick={() => void unstageFile(path)}>Unstage file</Button>;
 }
@@ -49,27 +55,36 @@ function TitleBar() {
   const o = S.open;
   if (!o) return <div className="tbar" />;
   const [dir, name] = split(o.path);
-  const title = <span className="file"><FileIcon name={name} /><span className="txt"><span className="dir">{dir}</span>{name}</span></span>;
+  const title = <span className="file"><FileIcon name={name} />
+    <span className="txt"><span className="dir">{dir}</span>{name}</span></span>;
   const badge = o.badge
-    ? <Pill tone="warn">changed on disk<button type="button" onClick={() => void reload()}>Reload</button><button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
+    ? <Pill tone="warn">changed on disk
+      <button type="button" onClick={() => void reload()}>Reload</button>
+      <button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
     : null;
   const close = <IconButton label="Close file" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
-    return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span><div className="right">{badge}{close}</div></div>;
+    return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span>
+      <div className="right">{badge}{close}</div></div>;
   }
   if (o.conflicted) {
     return (
       <div className="tbar">{title}<span className="pos">conflict</span>
-        <div className="right">{badge}<Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
+        <div className="right">{badge}
+          <Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
       </div>
     );
   }
   const chunks = chunkCount(view.state);
   const at = chunkIndexAtCursor(view.state);
-  const pos = o.view === 'plain' ? 'working tree' : chunks ? `hunk ${Math.max(at, 0) + 1} of ${chunks}` : o.view === 'staged' ? 'nothing staged' : 'no unstaged changes';
-  const pill = o.view === 'plain' ? 'whole file, current state' : o.view === 'staged' ? 'HEAD → index · read only' : 'index → working tree';
+  const pos = o.view === 'plain' ? 'working tree'
+    : chunks ? `hunk ${Math.max(at, 0) + 1} of ${chunks}`
+      : o.view === 'staged' ? 'nothing staged' : 'no unstaged changes';
+  const pill = o.view === 'plain' ? 'whole file, current state'
+    : o.view === 'staged' ? 'HEAD → index · read only' : 'index → working tree';
   const btns = o.view === 'unstaged' && chunks
-    ? <><Button onClick={() => void reject()}>Reject <Kbd>⌘N</Kbd></Button><Button variant="primary" onClick={() => void accept()}>Accept <Kbd>⌘Y</Kbd></Button></>
+    ? <><Button onClick={() => void reject()}>Reject <Kbd>⌘N</Kbd></Button>
+      <Button variant="primary" onClick={() => void accept()}>Accept <Kbd>⌘Y</Kbd></Button></>
     : o.view === 'staged' && chunks
       ? <Button onClick={() => void unstageHunk()}>Unstage <Kbd>⌘K ⌘N</Kbd></Button>
       : o.view === 'plain' && hasUnstaged(o.path)
@@ -79,7 +94,8 @@ function TitleBar() {
     <>
       <IconButton label="Previous change (⇧F7)" onClick={() => nextHunk(-1)}>↑</IconButton>
       <IconButton label="Next change (F7)" onClick={() => nextHunk(1)}>↓</IconButton>
-      <IconButton label="Show changes only" aria-pressed={S.changesOnly} onClick={() => toggleChangesOnly()}>⊟</IconButton>
+      <IconButton label="Show changes only" aria-pressed={S.changesOnly}
+        onClick={() => toggleChangesOnly()}>⊟</IconButton>
     </>
   );
   return (
@@ -96,9 +112,11 @@ function Banner() {
   if (o.conflicted) return <div className="banner conflict">Resolve the markers, then stage the file.</div>;
   if (o.view === 'plain') return null;
   const chunks = chunkCount(view.state);
-  const changed = S.status?.files.some((f) => f.path === o.path && (o.view === 'staged' ? f.indexStatus !== '.' : f.worktreeStatus !== '.' || f.untracked));
+  const changed = S.status?.files.some((f) => f.path === o.path
+    && (o.view === 'staged' ? f.indexStatus !== '.' : f.worktreeStatus !== '.' || f.untracked));
   if (chunks !== 0 || !changed) return null;
-  return <div className="banner">line endings, filters, or file mode only. <WholeFileButtons path={o.path} kind={o.view} /></div>;
+  return <div className="banner">line endings, filters, or file mode only.{' '}
+    <WholeFileButtons path={o.path} kind={o.view} /></div>;
 }
 
 function Blank() {
@@ -111,7 +129,9 @@ function Blank() {
         <div>
           <img src="/logo.png" alt="" />
           <h2>{n ? `${n} files to review` : 'Nothing left to review'}</h2>
-          <p>{n ? 'Pick a file on the left, or press ⌥F5 to start at the first hunk.' : 'Write a message and commit with ⌘↩, or wait for the agent.'}</p>
+          <p>{n
+            ? 'Pick a file on the left, or press ⌥F5 to start at the first hunk.'
+            : 'Write a message and commit with ⌘↩, or wait for the agent.'}</p>
         </div>
       </div>
     );

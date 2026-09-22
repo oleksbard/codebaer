@@ -5,9 +5,13 @@ import { EditorState, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
 import { unfoldAll } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
-import { acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey, unstageText, visibleFiles, type Row } from '../model';
 import {
-  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, onCursor, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
+  acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey,
+  unstageText, visibleFiles, type Row,
+} from '../model';
+import {
+  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk,
+  goToPreviousChunk, onCursor, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
 import { foldToChanges } from '../context-view';
 import { pick } from '../palette';
@@ -90,7 +94,9 @@ async function refreshOpen(): Promise<void> {
     if (o.view !== 'plain' && !o.conflicted) {
       const orig = await git.readBlob(o.view === 'unstaged' ? 'index' : 'head', o.path);
       if (stale()) return;
-      if (orig.oid !== o.originalOid) { replaceOriginal(view, orig.text); o.originalOid = orig.oid; o.originalExists = orig.exists; }
+      if (orig.oid !== o.originalOid) {
+        replaceOriginal(view, orig.text); o.originalOid = orig.oid; o.originalExists = orig.exists;
+      }
     }
     if (o.view === 'staged') {
       const idx = await git.readBlob('index', o.path);
@@ -100,7 +106,10 @@ async function refreshOpen(): Promise<void> {
       const disk = await git.readFile(o.path);
       if (stale()) return;
       const d = decideRefresh(disk, o.baseline, o.dirty);
-      if (d === 'replace') { replaceDoc(view, disk.text); o.baseline = disk.exists ? disk.text : null; o.eol = disk.eol; o.badge = null; }
+      if (d === 'replace') {
+        replaceDoc(view, disk.text);
+        o.baseline = disk.exists ? disk.text : null; o.eol = disk.eol; o.badge = null;
+      }
       else if (d === 'badge') o.badge = disk;
     }
     o.panel = null;
@@ -178,7 +187,9 @@ export async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
 
 export async function guarded<T>(name: keyof typeof git, fn: () => Promise<T>): Promise<T | undefined> {
   if (FLUSH_SET.has(name) && !(await flush())) {
-    toast(S.open?.badge ? 'This file changed on disk. Reload or Keep mine first.' : 'not saved, see the error above', 'warn');
+    toast(S.open?.badge
+      ? 'This file changed on disk. Reload or Keep mine first.'
+      : 'not saved, see the error above', 'warn');
     return undefined;
   }
   try {
@@ -215,7 +226,9 @@ export function cursorMoved(): void {
   clearTimeout(blameTimer);
   if (!o || o.panel) { asked = null; setBlame(null); return; }
   const doc = view.state.doc;
-  const ask: Asked = { open: o, line: doc.lineAt(view.state.selection.main.head).number, doc, head: S.status?.head ?? null };
+  const ask: Asked = {
+    open: o, line: doc.lineAt(view.state.selection.main.head).number, doc, head: S.status?.head ?? null,
+  };
   if (sameAsk(ask, asked)) return;
   asked = ask;
   setBlame(null);
@@ -278,8 +291,12 @@ export async function openRow(row: Row): Promise<void> {
       const idx = await git.readBlob('index', row.path);
       doc = idx.text; docOid = idx.oid; eol = idx.eol;
     }
-    const opened: Open = { path: row.path, view: kind, eol, baseline, originalOid: orig.oid, originalExists: orig.exists, docOid, dirty: false, badge: null, panel: null, conflicted: false };
-    const state = await buildState(kind, row.path, doc, orig.text, markDirty, kind === 'unstaged' ? { accept: () => void accept(), reject: () => void reject() } : undefined);
+    const opened: Open = {
+      path: row.path, view: kind, eol, baseline, originalOid: orig.oid, originalExists: orig.exists,
+      docOid, dirty: false, badge: null, panel: null, conflicted: false,
+    };
+    const state = await buildState(kind, row.path, doc, orig.text, markDirty,
+      kind === 'unstaged' ? { accept: () => void accept(), reject: () => void reject() } : undefined);
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
@@ -289,7 +306,10 @@ export async function openRow(row: Row): Promise<void> {
     // the panel is set for every error kind, not only the four with panel copy: it is what
     // disables accept, reject and flush. Without it the failed open leaves the previous file's
     // document mounted under this path, and one file's text reaches another file's index or disk
-    S.open = { path: row.path, view: kind, eol: 'lf', baseline: null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: false };
+    S.open = {
+      path: row.path, view: kind, eol: 'lf', baseline: null, originalOid: null, originalExists: false,
+      docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: false,
+    };
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
@@ -309,14 +329,20 @@ export async function openPlain(path: string): Promise<void> {
   reveal(path);
   try {
     const f = await git.readFile(path);
-    const opened: Open = { path, view: 'plain', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: false };
+    const opened: Open = {
+      path, view: 'plain', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null,
+      originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: false,
+    };
     const state = await buildState('plain', path, f.text, null, markDirty);
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
   } catch (e) {
     if (epoch !== S.openEpoch) return;
-    S.open = { path, view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: false };
+    S.open = {
+      path, view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false,
+      docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: false,
+    };
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
   }
@@ -340,14 +366,20 @@ async function openConflict(path: string): Promise<void> {
   const epoch = ++S.openEpoch;
   try {
     const f = await git.readFile(path);
-    const opened: Open = { path, view: 'unstaged', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: true };
+    const opened: Open = {
+      path, view: 'unstaged', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null,
+      originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: true,
+    };
     const state = await buildState('plain', path, f.text, null, markDirty);
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
   } catch (e) {
     if (epoch !== S.openEpoch) return;
-    const opened: Open = { path, view: 'unstaged', eol: 'lf', baseline: null, originalOid: null, originalExists: false, docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: true };
+    const opened: Open = {
+      path, view: 'unstaged', eol: 'lf', baseline: null, originalOid: null, originalExists: false,
+      docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: true,
+    };
     S.open = opened;
     view.setState(EditorState.create({ doc: '' }));
     if (!PANEL_KINDS.has(errKind(e))) toast(errText(e), 'err');
@@ -379,7 +411,8 @@ export function hasUnstaged(path: string): boolean {
   return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
 }
 
-export const viewChanges = (path: string): Promise<void> => openRow({ section: 'unstaged', path, letter: 'M', untracked: false, conflicted: false });
+export const viewChanges = (path: string): Promise<void> =>
+  openRow({ section: 'unstaged', path, letter: 'M', untracked: false, conflicted: false });
 
 export async function reload(): Promise<void> {
   await S.flushing; // an in-flight write would otherwise land its own text in the baseline set below
@@ -483,7 +516,8 @@ export async function unstageHunk(): Promise<void> {
 }
 
 export const acceptFile = (path: string): Promise<void | undefined> => guarded('stagePath', () => git.stagePath(path));
-export const unstageFile = (path: string): Promise<void | undefined> => guarded('unstagePath', () => git.unstagePath(path));
+export const unstageFile = (path: string): Promise<void | undefined> =>
+  guarded('unstagePath', () => git.unstagePath(path));
 export const stageAll = (): Promise<void | undefined> => guarded('stageAll', () => git.stageAll());
 export const unstageAll = (): Promise<void | undefined> => guarded('unstageAll', () => git.unstageAll());
 
@@ -494,7 +528,8 @@ export async function rejectFile(path: string): Promise<void> {
 
 export function nextHunk(dir: 1 | -1): void {
   const o = S.open;
-  const moved = o && o.view !== 'plain' && !o.panel && !o.conflicted && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
+  const moved = o && o.view !== 'plain' && !o.panel && !o.conflicted
+    && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
   if (moved) { notify(); return; }
   const rows = S.status ? buildQueue(S.status).unstaged : [];
   if (!rows.length) { toast('Nothing left to review', 'info'); return; }
@@ -572,7 +607,11 @@ export async function network(name: Net): Promise<void> {
     await refresh();
     const st = await git.status().catch(() => null);
     const conflicts = st?.files.filter((f) => f.conflicted).map((f) => f.path) ?? [];
-    if (conflicts.length) toast(`${name} left ${conflicts.length} conflict${conflicts.length > 1 ? 's' : ''}:\n  ${conflicts.join('\n  ')}\nFix the markers, then stage the file.`, 'warn');
+    if (conflicts.length) {
+      const n = conflicts.length;
+      const lead = `${name} left ${n} conflict${n > 1 ? 's' : ''}:`;
+      toast(`${lead}\n  ${conflicts.join('\n  ')}\nFix the markers, then stage the file.`, 'warn');
+    }
   }
 }
 
@@ -596,7 +635,10 @@ async function discardAll(): Promise<void> {
 export async function checkout(): Promise<void> {
   let bs: Branch[] = [];
   try { bs = await git.branches(); } catch (e) { toast(errText(e), 'err'); return; }
-  const b = await pick(bs.map((br) => ({ label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br })), 'Select a branch to checkout');
+  const opts = bs.map((br) => ({
+    label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br,
+  }));
+  const b = await pick(opts, 'Select a branch to checkout');
   if (b) await guarded('switchBranch', () => git.switchBranch(b));
 }
 
@@ -649,7 +691,8 @@ export async function palette(): Promise<void> {
 
 async function quickOpen(): Promise<void> {
   try {
-    const files = visibleFiles(await git.listFiles(), S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, files: [] });
+    const files = visibleFiles(await git.listFiles(),
+      S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, files: [] });
     const p = await pick(files.map((f) => ({ label: f, value: f })), 'Search files by name');
     if (p) await openPlain(p);
   } catch (e) {
@@ -758,7 +801,10 @@ export async function closeTerminal(id: number): Promise<void> {
 
 // ---------- startup and repo switching ----------
 async function openRepo(path: string): Promise<void> {
-  if (!(await flush())) { toast('This file changed on disk. Reload or Keep mine before switching repos.', 'warn'); return; }
+  if (!(await flush())) {
+    toast('This file changed on disk. Reload or Keep mine before switching repos.', 'warn');
+    return;
+  }
   try {
     S.root = await git.openRepo(path);
     localStorage.setItem('codebaer.lastRepo', path);

@@ -10,7 +10,8 @@ import { S, useApp } from './store';
 
 export function TerminalsIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
       <path d="M4.5 6.25 6.75 8 4.5 9.75M8.75 10.25h3" />
     </svg>

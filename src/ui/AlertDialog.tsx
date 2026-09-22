@@ -17,7 +17,9 @@ export function AlertDialog({ title, body, confirmLabel = 'OK', error = false, o
           {body ? <RA.Description className="dialog-body">{body}</RA.Description> : null}
           <div className="dialog-actions">
             {!error && <RA.Cancel asChild><Button>Cancel</Button></RA.Cancel>}
-            <RA.Action asChild><Button variant="primary" onClick={(e) => { e.preventDefault(); onResult(true); }}>{confirmLabel}</Button></RA.Action>
+            <RA.Action asChild>
+              <Button variant="primary" onClick={(e) => { e.preventDefault(); onResult(true); }}>{confirmLabel}</Button>
+            </RA.Action>
           </div>
         </RA.Content>
       </RA.Portal>

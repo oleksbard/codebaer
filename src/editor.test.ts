@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, rejectChunk, replaceDoc, replaceOriginal } from './editor';
+import {
+  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, rejectChunk,
+  replaceDoc, replaceOriginal,
+} from './editor';
 import { editorHighlight } from './editor-theme';
 
 const ORIGINAL = 'a\nb\nc\nd\n';

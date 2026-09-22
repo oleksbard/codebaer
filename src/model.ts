@@ -60,7 +60,8 @@ export function decideRefresh(disk: FileText, baseline: string | null, dirty: bo
 }
 
 export function visibleFiles(list: string[], s: Status): string[] {
-  const deleted = new Set(s.files.filter((e: FileEntry) => e.worktreeStatus === 'D' && !e.untracked).map((e) => e.path));
+  const deleted = new Set(s.files
+    .filter((e: FileEntry) => e.worktreeStatus === 'D' && !e.untracked).map((e) => e.path));
   return list.filter((p) => !deleted.has(p));
 }
 
@@ -69,7 +70,9 @@ export const FLUSH_SET: ReadonlySet<string> = new Set([
   'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo',
 ]);
 
-export function rejectSpecialCase(baseline: string | null, originalExists: boolean): 'restore' | 'removeConfirm' | null {
+export function rejectSpecialCase(
+  baseline: string | null, originalExists: boolean,
+): 'restore' | 'removeConfirm' | null {
   if (baseline === null) return 'restore';
   if (!originalExists) return 'removeConfirm';
   return null;

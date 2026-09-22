@@ -12,7 +12,9 @@ afterEach(() => {
   calls.length = 0;
 });
 
-function press(init: { key: string; code: string; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean }) {
+type Init = { key: string; code: string; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean };
+
+function press(init: Init) {
   const event = new KeyboardEvent('keydown', {
     key: init.key,
     code: init.code,

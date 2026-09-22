@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import {
+  useEffect, useMemo, useRef, useState,
+  type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode,
+} from 'react';
 import { buildQueue, buildTree, rowKey, split, type Row, type Section, type TreeDir } from '../model';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -8,13 +11,17 @@ import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
-import { acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, toggleDir, unstageAll, unstageFile } from './controller';
+import {
+  acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, toggleDir,
+  unstageAll, unstageFile,
+} from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
 import { TerminalsIcon } from './Terminals';
 
 function ChangesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
+      aria-hidden="true">
       <circle cx="4.5" cy="3" r="1.75" />
       <circle cx="4.5" cy="13" r="1.75" />
       <circle cx="11.5" cy="3" r="1.75" />
@@ -25,7 +32,8 @@ function ChangesIcon() {
 
 function FilesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
+      strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
       <path d="M9.5 1.75V5h3.25" />
       <path d="M10 14.25H4.75A.75.75 0 0 1 4 13.5V4.5" />
@@ -53,7 +61,8 @@ const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); vo
 
 // the status is a bare colour dot now, so the letter it replaced becomes its tooltip
 const ST_LABEL: Record<string, string> = {
-  A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type changed', U: 'Untracked', '!': 'Conflict',
+  A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type changed',
+  U: 'Untracked', '!': 'Conflict',
 };
 
 export function Sidebar() {
@@ -64,7 +73,8 @@ export function Sidebar() {
     <aside className="side">
       {S.tab === 'files'
         ? <FilesList files={S.files} active={S.open?.path ?? null} />
-        : <QueueList q={q} selected={S.selected} open={open} onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
+        : <QueueList q={q} selected={S.selected} open={open}
+          onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
       <CommitBox staged={q.staged.length} hidden={S.tab !== 'changes'} />
     </aside>
   );
@@ -95,10 +105,13 @@ function QueueList({ q, selected, open, onToggle }: {
 }) {
   return (
     <List>
-      <SectionBlock id="unstaged" label="Changes" rows={q.unstaged} empty="Nothing left to review" selected={selected} open={open.unstaged} onToggle={onToggle}
-        all={<IconButton label="Stage all changes" title="Stage all changes (⌘⌥Y)" data-all="stage" disabled={!q.unstaged.length}
+      <SectionBlock id="unstaged" label="Changes" rows={q.unstaged} empty="Nothing left to review"
+        selected={selected} open={open.unstaged} onToggle={onToggle}
+        all={<IconButton label="Stage all changes" title="Stage all changes (⌘⌥Y)" data-all="stage"
+          disabled={!q.unstaged.length}
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>+</IconButton>} />
-      <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here" selected={selected} open={open.staged} onToggle={onToggle}
+      <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
+        selected={selected} open={open.staged} onToggle={onToggle}
         all={<IconButton label="Unstage all changes" data-all="unstage" disabled={!q.staged.length}
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); void unstageAll(); }}>−</IconButton>} />
     </List>
@@ -147,13 +160,16 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
       ? <IconButton label="Mark resolved" data-act="stage" onClick={stop(() => acceptFile(r.path))}>+</IconButton>
       : <>
           <IconButton label="Stage file (⌘⇧Y)" data-act="stage" onClick={stop(() => acceptFile(r.path))}>+</IconButton>
-          <IconButton label="Discard changes (⌘⇧N)" data-act="revert" onClick={stop(() => rejectFile(r.path))}>↶</IconButton>
+          <IconButton label="Discard changes (⌘⇧N)" data-act="revert"
+            onClick={stop(() => rejectFile(r.path))}>↶</IconButton>
         </>;
   return (
     <ContextMenu items={menuFor(r)}>
-      <div className={`row${selected ? ' sel' : ''}`} data-key={rowKey(r)} data-st={r.letter} role="button" title={r.path} onClick={() => void openRow(r)}>
+      <div className={`row${selected ? ' sel' : ''}`} data-key={rowKey(r)} data-st={r.letter} role="button"
+        title={r.path} onClick={() => void openRow(r)}>
         <FileIcon name={name} />
-        <span className="path"><span className="name">{name}</span><span className="dir">{dirSlash.slice(0, -1)}</span></span>
+        <span className="path"><span className="name">{name}</span>
+          <span className="dir">{dirSlash.slice(0, -1)}</span></span>
         <span className="tail">
           {r.conflicted && <Badge>conflict</Badge>}
           <span className="acts">{acts}</span>
@@ -192,7 +208,8 @@ function TreeLevel({ node, depth, active }: { node: TreeDir; depth: number; acti
         );
       })}
       {node.files.map((p) => (
-        <div key={p} className={`row f${p === active ? ' sel' : ''}`} data-key={`plain:${p}`} data-path={p} style={indent}
+        <div key={p} className={`row f${p === active ? ' sel' : ''}`} data-key={`plain:${p}`} data-path={p}
+          style={indent}
           role="button" aria-current={p === active || undefined} title={p} onClick={() => void openPlain(p)}>
           <FileIcon name={split(p)[1]} />
           <span className="path"><span className="name">{split(p)[1]}</span></span>
@@ -230,8 +247,10 @@ function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
       <div className="bar">
         <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
         <span className="r">
-          <IconButton id="ai-btn" label="Write the commit message with Claude" busy={S.aiBusy} disabled={staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
-          <Button variant="primary" id="commit-btn" busy={S.committing} disabled={staged === 0 || !message.trim() || S.committing} onClick={() => void commit()}>
+          <IconButton id="ai-btn" label="Write the commit message with Claude" busy={S.aiBusy}
+            disabled={staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
+          <Button variant="primary" id="commit-btn" busy={S.committing}
+            disabled={staged === 0 || !message.trim() || S.committing} onClick={() => void commit()}>
             {S.committing ? <><Spinner />Committing…</> : <>Commit <Kbd>⌘↩</Kbd></>}
           </Button>
         </span>

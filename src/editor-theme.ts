@@ -8,7 +8,8 @@ export const editorTheme = EditorView.theme(
     '&': { color: 'var(--text)', backgroundColor: 'var(--bg)' },
     '.cm-content': { caretColor: 'var(--text)' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text)' },
-    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    ['&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,'
+      + ' .cm-selectionBackground, .cm-content ::selection']: {
       backgroundColor: 'var(--accent-soft)',
     },
     '.cm-selectionMatch': { backgroundColor: 'var(--sel)' },
@@ -38,10 +39,19 @@ export const editorHighlight = HighlightStyle.define([
   { tag: t.keyword, color: 'var(--syn-keyword)' },
   { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: 'var(--syn-name)' },
   { tag: [t.function(t.variableName), t.labelName], color: 'var(--syn-function)' },
-  { tag: [t.color, t.constant(t.name), t.standard(t.name), t.atom, t.bool, t.special(t.variableName)], color: 'var(--syn-constant)' },
+  {
+    tag: [t.color, t.constant(t.name), t.standard(t.name), t.atom, t.bool, t.special(t.variableName)],
+    color: 'var(--syn-constant)',
+  },
   { tag: [t.definition(t.name), t.separator], color: 'var(--text)' },
-  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: 'var(--syn-type)' },
-  { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: 'var(--syn-operator)' },
+  {
+    tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace],
+    color: 'var(--syn-type)',
+  },
+  {
+    tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)],
+    color: 'var(--syn-operator)',
+  },
   { tag: [t.meta, t.comment], color: 'var(--syn-comment)' },
   { tag: t.strong, fontWeight: 'bold' },
   { tag: t.emphasis, fontStyle: 'italic' },
