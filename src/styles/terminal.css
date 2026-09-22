@@ -1,0 +1,134 @@
+/* the activity bar stays, the sidebar panel does not: a terminal gets the whole main area */
+.app.terminals {
+  grid-template-columns: 44px 0 minmax(0, 1fr);
+}
+
+.app.terminals .side,
+.app.terminals .gutter {
+  display: none;
+}
+
+.term-host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 6px 0 0 10px;
+  background: var(--bg);
+}
+
+.term,
+.term .xterm {
+  height: 100%;
+  width: 100%;
+}
+
+.term .xterm-viewport {
+  background: transparent !important;
+  scrollbar-width: thin;
+}
+
+.term-pick {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 44ch;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  color: var(--text);
+  font: var(--fs-2) var(--ui);
+
+  &:hover { background: var(--panel2); }
+
+  .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .caret { color: var(--faint); }
+}
+
+.term-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--faint);
+
+  &.run { background: var(--accent); }
+  &.idle { background: var(--add); }
+  &.off { background: var(--faint); }
+}
+
+.term-menu {
+  min-width: 300px;
+
+  .menu-label {
+    padding: 6px 10px 3px;
+    font-size: var(--fs-1);
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .menu-sep {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--line);
+  }
+
+  .detail {
+    margin-left: auto;
+    padding-left: 12px;
+    font: var(--fs-1) var(--mono);
+    color: var(--faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.term-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .name { flex: none; }
+  .detail { min-width: 0; }
+  .term-x { display: none; color: var(--muted); }
+
+  &:hover .term-x,
+  &[data-highlighted] .term-x { display: block; }
+  .term-x:hover { color: var(--text); }
+}
+
+.term-bell {
+  flex: none;
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.term-find {
+  width: 12ch;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-2) var(--ui);
+
+  &:focus { border-color: var(--focus); outline: none; width: 20ch; }
+}
+
+.blank .dim { color: var(--faint); font-family: var(--mono); }
+
+/* the dot rides the Terminals tab, which is the last one in the activity bar */
+.act.attention .tab:last-child::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.act .tab { position: relative; }

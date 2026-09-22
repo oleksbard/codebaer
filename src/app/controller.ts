@@ -13,6 +13,7 @@ import { foldToChanges } from '../context-view';
 import { pick } from '../palette';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
+import * as term from '../terminal';
 import { notify, refs, S, type Open, type Tab } from './store';
 
 const PANEL_KINDS = new Set(['Binary', 'NotUtf8', 'TooLarge', 'Special']);
@@ -630,6 +631,15 @@ export async function palette(): Promise<void> {
     { label: 'Git: Discard File', hint: '⌘⇧N', run: () => S.open && rejectFile(S.open.path) },
     { label: 'Git: Unstage File', run: () => S.open && unstageFile(S.open.path) },
     { label: 'Open Repository…', run: pickRepo },
+    { label: 'Terminal: New Terminal', hint: '⌘T', run: () => newTerminal() },
+    ...(S.termMenu?.shells ?? []).map((sh) => ({
+      label: `Terminal: New ${sh.name}`,
+      run: () => newTerminal({ t: 'Shell', path: sh.path }),
+    })),
+    ...(S.termMenu?.commands ?? []).map((c) => ({
+      label: `Terminal: Run ${c}`,
+      run: () => newTerminal({ t: 'Command', argv0: c }),
+    })),
   ];
   const unborn = S.status?.head === null;
   const shown = unborn ? cmds.filter((c) => !c.label.includes('Stash')) : cmds;
@@ -653,6 +663,97 @@ export async function setTab(tab: Tab): Promise<void> {
     try { S.files = visibleFiles(await git.listFiles(), S.status); } catch (e) { toast(errText(e), 'err'); }
   }
   notify();
+  if (tab === 'terminals') await connectTerminals();
+}
+
+// ---------- terminals ----------
+
+/** Set once the spawn we are waiting for is known, so an unprompted session, one restored on
+ *  reconnect say, does not steal the view. */
+let awaitingSpawn = 0;
+let connected = false;
+
+export function onTermEvent(m: term.ServerMsg): void {
+  switch (m.t) {
+    case 'Hello':
+      S.terminals = m.sessions;
+      if (!m.sessions.some((t) => t.id === S.activeTerm)) S.activeTerm = m.sessions.at(-1)?.id ?? null;
+      break;
+    case 'Spawned':
+      S.terminals = [...S.terminals.filter((t) => t.id !== m.info.id), m.info];
+      if (m.req === awaitingSpawn) {
+        S.activeTerm = m.info.id;
+        awaitingSpawn = 0;
+      }
+      break;
+    case 'Status':
+      S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: m.state, tier: m.tier } : t));
+      break;
+    case 'Command':
+      if (m.code !== null && m.code !== 0) flag(m.id);
+      break;
+    case 'Exit':
+      S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: { t: 'Exited', code: m.code } } : t));
+      flag(m.id);
+      break;
+    case 'Bell':
+      flag(m.id);
+      break;
+    case 'Closed':
+      S.terminals = S.terminals.filter((t) => t.id !== m.id);
+      S.termAttention.delete(m.id);
+      term.dispose(m.id);
+      if (S.activeTerm === m.id) S.activeTerm = S.terminals.at(-1)?.id ?? null;
+      break;
+    case 'Error':
+      S.termError = m.message;
+      toast(m.message, 'err');
+      break;
+  }
+  notify();
+}
+
+/** Only a session you are not looking at can want attention. */
+function flag(id: number): void {
+  if (id !== S.activeTerm || S.tab !== 'terminals') S.termAttention.add(id);
+}
+
+async function connectTerminals(): Promise<void> {
+  if (connected) return;
+  try {
+    await term.subscribe(onTermEvent);
+    connected = true;
+    S.termMenu = await term.menu();
+    S.termError = null;
+  } catch (e) {
+    S.termError = errText(e);
+  }
+  notify();
+}
+
+export async function newTerminal(kind?: term.SpawnKind): Promise<void> {
+  await setTab('terminals');
+  const pick = kind ?? (S.termMenu ? ({ t: 'Shell', path: S.termMenu.default } as const) : null);
+  if (!pick) return;
+  try {
+    awaitingSpawn = await term.spawn(pick, ...term.size());
+  } catch (e) {
+    toast(errText(e), 'err');
+  }
+}
+
+export function selectTerminal(id: number): void {
+  S.activeTerm = id;
+  S.termAttention.delete(id);
+  notify();
+}
+
+export async function killTerminal(id: number): Promise<void> {
+  try { await term.kill(id); } catch (e) { toast(errText(e), 'err'); }
+}
+
+export async function closeTerminal(id: number): Promise<void> {
+  try { await term.close(id); } catch (e) { toast(errText(e), 'err'); }
 }
 
 // ---------- startup and repo switching ----------
@@ -706,6 +807,9 @@ export function dispatch(a: Action): void {
     focusCommit,
     filesTab: () => { void setTab('files').then(() => refs.list?.focus()); },
     escape: () => { if (S.open?.badge) { S.open.badge = null; notify(); } },
+    newTerminal: () => void newTerminal(),
+    terminalsTab: () => void setTab('terminals'),
+    focusTerminal: () => { if (S.activeTerm !== null) term.focus(S.activeTerm); },
   };
   void map[a]();
 }

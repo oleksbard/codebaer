@@ -2,6 +2,7 @@ pub mod ai;
 pub mod error;
 pub mod eol;
 pub mod git;
+pub mod pty;
 pub mod recents;
 pub mod status;
 pub mod watcher;
@@ -88,6 +89,7 @@ pub fn run_app() {
                 .build(),
         )
         .manage(git::AppState::new())
+        .manage(pty::client::PtyState::new())
         .setup(|app| {
             // config windows are built and their saved state restored before setup runs
             if let Some(w) = app.get_webview_window("main") {
@@ -142,7 +144,15 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message])
-        .run(tauri::generate_context!())
-        .expect("error while running CodeBär");
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close])
+        .build(tauri::generate_context!())
+        .expect("error while running CodeBär")
+        .run(|app, event| {
+            // both variants: closing the last window gives ExitRequested, but Cmd-Q and the
+            // Quit menu item go through applicationWillTerminate, which tauri maps to Exit.
+            // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                pty::client::shutdown(app);
+            }
+        });
 }

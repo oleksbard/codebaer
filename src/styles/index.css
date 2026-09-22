@@ -5,4 +5,5 @@
 @import './layout.css';
 @import './sidebar.css';
 @import './editor.css';
+@import './terminal.css';
 @import './overlays.css';

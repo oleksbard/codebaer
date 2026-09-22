@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { Main } from './Main';
+import { Terminals } from './Terminals';
 import { Overlays } from './Overlays';
 import { Footer, Gutter, Header } from './Shell';
 import { ActivityBar, Sidebar } from './Sidebar';
@@ -11,12 +12,12 @@ export function App() {
   const style = S.sideWidth ? ({ '--side-w': `${S.sideWidth}px` } as CSSProperties) : undefined;
   return (
     <>
-      <div className={`app${S.sidebarHidden ? ' nosidebar' : ''}`} id="shell" style={style}>
+      <div className={`app${S.sidebarHidden ? ' nosidebar' : ''}${S.tab === 'terminals' ? ' terminals' : ''}`} id="shell" style={style}>
         <Header />
         <ActivityBar />
         <Sidebar />
         <Gutter />
-        <Main />
+        {S.tab === 'terminals' ? <Terminals /> : <Main />}
         <Footer />
       </div>
       <Overlays />

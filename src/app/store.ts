@@ -2,8 +2,9 @@ import { useSyncExternalStore } from 'react';
 import type { Eol, FileText, Status } from '../git';
 import type { ViewKind } from '../editor';
 import type { Item } from '../palette';
+import type { Info, Menu } from '../terminal';
 
-export type Tab = 'changes' | 'files';
+export type Tab = 'changes' | 'files' | 'terminals';
 
 export type Open = {
   path: string;
@@ -57,6 +58,13 @@ export const S = {
   aiBusy: false,
   commitMessage: '',
   blame: null as string | null,
+  terminals: [] as Info[],
+  activeTerm: null as number | null,
+  /** Sessions that did something worth noticing while they were not the focused one. */
+  termAttention: new Set<number>(),
+  termMenu: null as Menu | null,
+  termError: null as string | null,
+  termFind: '',
 };
 
 /** DOM nodes the controller focuses; components register them in ref callbacks. */
