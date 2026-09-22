@@ -1,9 +1,12 @@
 import { notify, S, type ToastKind } from './app/store';
+import { logError } from './log';
 
 let nextId = 1;
 
 export function toast(message: string, kind: ToastKind = 'info'): void {
   const id = nextId++;
+  // every error the user is shown outlives the toast they cannot copy before it goes
+  if (kind === 'err') logError(message);
   S.toasts = [...S.toasts, { id, message, kind }];
   notify();
   if (kind !== 'err') setTimeout(() => removeToast(id), 6000);

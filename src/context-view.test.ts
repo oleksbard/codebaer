@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
-import { foldedRanges } from '@codemirror/language';
+import type { EditorState } from '@codemirror/state';
+import { foldedRanges, forceParsing } from '@codemirror/language';
 import { buildState } from './editor';
 import { foldToChanges, keepRanges } from './context-view';
 
@@ -27,7 +28,19 @@ function b() {
 }
 `;
 
-const state = (path: string, doc: string, original: string) => buildState('unstaged', path, doc, original, () => {});
+/**
+ * keepRanges reads the syntax tree, and the app only ever reaches it through foldToChanges,
+ * which forces the parse first. Left to itself CodeMirror parses one opening quantum of a few
+ * thousand characters, so without this the assertions turn on how much of the document that
+ * happened to cover: green on a fast machine, the bare fallback range on a loaded CI runner.
+ */
+async function state(path: string, doc: string, original: string): Promise<EditorState> {
+  const view = new EditorView({ state: await buildState('unstaged', path, doc, original, () => {}) });
+  forceParsing(view, view.state.doc.length, 5000);
+  const parsed = view.state;
+  view.destroy();
+  return parsed;
+}
 
 describe('changes-only keep ranges', () => {
   it('keeps the enclosing method whole and only the header line of the class around it', async () => {

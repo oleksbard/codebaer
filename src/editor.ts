@@ -5,6 +5,7 @@ import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/s
 import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { editorHighlight, editorTheme } from './editor-theme';
+import { logError } from './log';
 import {
   acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   unifiedMergeView, updateOriginalDoc,
@@ -19,7 +20,15 @@ export const onCursor = { run: () => {} };
 
 async function languageFor(path: string): Promise<Extension> {
   const desc = LanguageDescription.matchFilename(languages, path);
-  return desc ? await desc.load() : [];
+  if (!desc) return [];
+  try {
+    return await desc.load();
+  } catch (e) {
+    // support packages are fetched on demand, and highlighting is never worth refusing to open a
+    // file over: this is the same empty extension a name we do not recognise already gets
+    logError(e, `language for ${path}`);
+    return [];
+  }
 }
 
 export async function buildState(
