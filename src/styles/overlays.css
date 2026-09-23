@@ -6,9 +6,12 @@
   background: transparent;
   color: var(--text);
   font: var(--fs-4) var(--ui);
-  padding: 12px 14px;
+  padding: 12px 40px 12px 14px;
   outline: none;
 }
+
+.pal .dialog-x,
+.prompt .dialog-x { top: 11px; }
 
 .prompt {
   width: min(440px, calc(100vw - 32px));
@@ -16,7 +19,10 @@
   .dialog-actions { padding: 12px 14px; }
 }
 
+/* Top-anchored, not centered: the list shrinks as you type and a centered box would jump. */
 .pal {
+  margin-top: 10vh;
+
   ul {
     list-style: none;
     margin: 0;
@@ -94,10 +100,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-right: 28px;
 
   .dialog-title { margin: 0; }
-  .btn { margin-left: auto; }
+  .ico { margin-left: auto; }
 }
+
+.orphans .dialog-x { top: 14px; right: 14px; }
 
 .orphans-found {
   color: var(--muted);

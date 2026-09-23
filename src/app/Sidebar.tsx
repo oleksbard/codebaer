@@ -9,6 +9,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
 import { FileIcon } from '../ui/FileIcon';
+import { REFRESH, StrokeIcon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
@@ -44,16 +45,6 @@ function FilesIcon() {
   );
 }
 
-function StrokeIcon({ d, size = 16 }: { d: string; size?: number }) {
-  return (
-    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={d} />
-    </svg>
-  );
-}
-
-const FETCH = 'M13.25 8a5.25 5.25 0 1 1-1.54-3.71M13.25 2.5v2.75H10.5';
 const PULL = 'M8 2v8M4.75 6.75 8 10l3.25-3.25M2.75 13.5h10.5';
 const PUSH = 'M8 10V3M4.75 6.25 8 3l3.25 3.25M2.75 13.5h10.5';
 const PLUS = 'M8 3v10M3 8h10';
@@ -346,7 +337,7 @@ function RemoteActions() {
     <span className="remote">
       {st.upstream !== null &&
         <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>
-          <StrokeIcon d={FETCH} /></IconButton>}
+          <StrokeIcon d={REFRESH} /></IconButton>}
       {st.behind > 0 &&
         <IconButton label={`Pull ${commits(st.behind)}`}
           disabled={S.busy} onClick={() => void network('pull')}><StrokeIcon d={PULL} /></IconButton>}

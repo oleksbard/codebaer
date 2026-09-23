@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -41,6 +41,8 @@ pub struct Proc {
     /// CodeBär itself descends from this process or shares its group, so ending it ends the app:
     /// `pnpm tauri dev` run from one of its own terminals.
     pub holds_app: bool,
+    /// Caught partway through exit, which `ps` marks `E`: nothing is left of it to restore.
+    pub exiting: bool,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -102,22 +104,25 @@ struct Line<'a> {
     ppid: i32,
     pgid: i32,
     uid: u32,
+    stat: &'a str,
     tty: &'a str,
     rest: &'a str,
 }
 
-/// `pid ppid pgid uid tty rest`, with `rest` kept verbatim because a command line has spaces in it.
+/// `pid ppid pgid uid stat tty rest`, with `rest` kept verbatim because a command line has spaces in it.
 fn parse_line(line: &str) -> Option<Line<'_>> {
     let (pid, rest) = word(line);
     let (ppid, rest) = word(rest);
     let (pgid, rest) = word(rest);
     let (uid, rest) = word(rest);
+    let (stat, rest) = word(rest);
     let (tty, rest) = word(rest);
     Some(Line {
         pid: pid.parse().ok()?,
         ppid: ppid.parse().ok()?,
         pgid: pgid.parse().ok()?,
         uid: uid.parse().ok()?,
+        stat,
         tty,
         rest: rest.trim_start(),
     })
@@ -164,6 +169,7 @@ fn snapshot(plain: &str, with_env: &str, exe: &str) -> Snapshot {
                 session: env.and_then(session_of),
                 relay: relay_of(l.rest, exe),
                 holds_app: false,
+                exiting: l.stat.contains('E'),
             }
         })
         .collect();
@@ -267,20 +273,25 @@ fn classify(
     Ok(Report { sock: ctx.sock.to_string(), hosts, escaped })
 }
 
+fn refuse(host: &Host, p: &Proc) -> Result<(), String> {
+    if host.in_use {
+        return Err("another CodeBär is attached to that host, and its terminals are its to end".into());
+    }
+    if host.unclear {
+        return Err("another host claims that host's socket path, so which one this is cannot be told".into());
+    }
+    if p.holds_app {
+        return Err("that would take CodeBär itself down with it".into());
+    }
+    Ok(())
+}
+
 /// What to signal for `pid`, negative for a whole process group. Only stale-host sessions and
 /// escaped processes qualify: a session of the current host is closed through the host instead.
 fn kill_targets(snap: &Snapshot, report: &Report, pid: i32, me: i32) -> Result<Vec<i32>, String> {
     let stale = report.hosts.iter().filter(|h| !h.current).find_map(|h| Some((h, h.sessions.iter().find(|p| p.pid == pid)?)));
     let targets = if let Some((host, p)) = stale {
-        if host.in_use {
-            return Err("another CodeBär is attached to that host, and its terminals are its to end".into());
-        }
-        if host.unclear {
-            return Err("another host claims that host's socket path, so which one this is cannot be told".into());
-        }
-        if p.holds_app {
-            return Err("that would take CodeBär itself down with it".into());
-        }
+        refuse(host, p)?;
         // what the host itself signals: a job-control shell's jobs sit in groups of their own and
         // are reached only by the shell hanging them up in turn
         vec![-p.pgid]
@@ -308,6 +319,125 @@ fn kill_targets(snap: &Snapshot, report: &Report, pid: i32, me: i32) -> Result<V
         return Err("that would take CodeBär itself down with it".into());
     }
     Ok(targets)
+}
+
+/// The host of `pid` when that is a session stuck exiting, which no signal ends: see `unstick`.
+fn stuck_host(report: &Report, pid: i32) -> Result<Option<i32>, String> {
+    let found = report.hosts.iter().find_map(|h| Some((h, h.sessions.iter().find(|p| p.pid == pid && p.exiting)?)));
+    let Some((host, p)) = found else { return Ok(None) };
+    refuse(host, p)?;
+    Ok(Some(host.pid))
+}
+
+/// From sys/proc_info.h, which libc covers only partly. The call reports how much it wrote, and
+/// anything but this struct's size is taken as a mismatch.
+const PROC_PIDFDVNODEPATHINFO: i32 = 2;
+
+#[repr(C)]
+struct ProcFileInfo {
+    fi_openflags: u32,
+    fi_status: u32,
+    fi_offset: i64,
+    fi_type: i32,
+    fi_guardflags: u32,
+}
+
+#[repr(C)]
+struct VnodeFdInfoWithPath {
+    pfi: ProcFileInfo,
+    pvip: libc::vnode_info_path,
+}
+
+/// The ptys whose master `pid` holds, named as `ps` names a tty.
+fn host_ptys(pid: i32) -> Result<Vec<String>, String> {
+    let unreadable = || format!("cannot list the files its host, pid {pid}, holds open");
+    let each = std::mem::size_of::<libc::proc_fdinfo>();
+    let need = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
+    if need <= 0 {
+        return Err(unreadable());
+    }
+    // with room for files opened between the two calls
+    let mut fds: Vec<libc::proc_fdinfo> = Vec::with_capacity(need as usize / each + 16);
+    let room = (fds.capacity() * each) as i32;
+    let got = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, fds.as_mut_ptr().cast(), room) };
+    if got <= 0 {
+        return Err(unreadable());
+    }
+    unsafe { fds.set_len(got as usize / each) };
+    let size = std::mem::size_of::<VnodeFdInfoWithPath>() as i32;
+    let mut names = Vec::new();
+    for fd in fds.iter().filter(|f| f.proc_fdtype == libc::PROX_FDTYPE_VNODE as u32) {
+        let mut info = std::mem::MaybeUninit::<VnodeFdInfoWithPath>::zeroed();
+        if unsafe { libc::proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, info.as_mut_ptr().cast(), size) } != size {
+            continue;
+        }
+        let info = unsafe { info.assume_init() };
+        let path = unsafe { std::ffi::CStr::from_ptr(info.pvip.vip_path.as_ptr().cast()) };
+        if path.to_bytes() != b"/dev/ptmx" {
+            continue;
+        }
+        // xnu names a clone's slave after the master's minor. Should that template ever change,
+        // the check keeps the flush from reaching some other terminal.
+        let minor = info.pvip.vip_vi.vi_stat.vst_rdev & 0x00ff_ffff;
+        let name = format!("ttys{minor:03}");
+        let slave = std::fs::metadata(format!("/dev/{name}"));
+        if slave.is_ok_and(|m| m.file_type().is_char_device() && m.rdev() & 0x00ff_ffff == u64::from(minor)) {
+            names.push(name);
+        }
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+/// Every tty some process has as its terminal, whoever's process it is.
+fn ttys_in_use() -> Result<HashSet<String>, String> {
+    let out = Command::new("/bin/ps").args(["-ax", "-o", "tty="]).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err("cannot list the terminals in use".into());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().to_string()).collect())
+}
+
+/// Throws away what is queued for the master to read. Opened non-blocking so the open cannot
+/// wait, and never as anyone's controlling terminal.
+fn flush(tty: &str) -> bool {
+    let Ok(path) = std::ffi::CString::new(format!("/dev/{tty}")) else { return false };
+    let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK) };
+    if fd < 0 {
+        return false;
+    }
+    let flushed = unsafe { libc::tcflush(fd, libc::TCOFLUSH) } == 0;
+    unsafe { libc::close(fd) };
+    flushed
+}
+
+/// A child that exits with output still queued on its tty waits in exit for the tty to drain,
+/// which no signal cuts short, and which nothing does while its host holds the master without
+/// reading it. The tty no longer shows on the process, so every pty of its host that no process
+/// has as its terminal any more is flushed. Done once the host has reaped it.
+pub fn unstick(host: i32, pid: i32) -> Result<(), String> {
+    // listed before the terminals in use, so one opened in between cannot pass for a leftover
+    let held = host_ptys(host)?;
+    let used = ttys_in_use()?;
+    let leftover: Vec<&String> = held.iter().filter(|t| !used.contains(t.as_str())).collect();
+    if leftover.is_empty() {
+        return Err("its host holds no leftover terminal to flush".into());
+    }
+    let flushed = leftover.iter().filter(|t| flush(t)).count();
+    if flushed == 0 {
+        return Err("none of its host's leftover terminals could be opened to flush".into());
+    }
+    // EPERM is a session that went to another account, and still there
+    let alive = || unsafe { libc::kill(pid, 0) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+    let until = Instant::now() + Duration::from_secs(2);
+    while alive() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    if alive() {
+        return Err(format!("its host's leftover terminals were flushed ({flushed}), and it has still not ended"));
+    }
+    Ok(())
 }
 
 /// A copy of the host's escalation timing, stopping early once nothing answers `kill(0)`. A zombie
@@ -353,7 +483,7 @@ fn ps(env: bool) -> Result<String, AppError> {
     if env {
         cmd.arg("-E");
     }
-    let out = cmd.args(["-o", "pid=,ppid=,pgid=,uid=,tty=,command="]).output()?;
+    let out = cmd.args(["-o", "pid=,ppid=,pgid=,uid=,stat=,tty=,command="]).output()?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -531,6 +661,9 @@ pub fn term_restore<R: Runtime>(
 #[tauri::command(async)]
 pub fn term_kill_orphan<R: Runtime>(app: AppHandle<R>, pid: i32) -> Result<(), AppError> {
     let (snap, report) = scan(&app)?;
+    if let Some(host) = stuck_host(&report, pid).map_err(AppError::Io)? {
+        return unstick(host, pid).map_err(AppError::Io);
+    }
     let targets = kill_targets(&snap, &report, pid, std::process::id() as i32).map_err(AppError::Io)?;
     escalate(&targets).map_err(AppError::Io)
 }
@@ -549,6 +682,10 @@ mod tests {
     type Row<'a> = (i32, i32, i32, &'a str, &'a str, &'a str);
 
     fn listing(extra: &[Row]) -> Snapshot {
+        listing_with(extra, &[])
+    }
+
+    fn listing_with(extra: &[Row], exiting: &[i32]) -> Snapshot {
         let host = format!("/app/CodeBär --pty-host {SOCK}");
         let old = format!("/app/CodeBär --pty-host {OLD}");
         let mut rows: Vec<Row> = vec![
@@ -567,8 +704,10 @@ mod tests {
         rows.extend_from_slice(extra);
         // launchd is root's, like the other account's host below
         let uid = |r: &Row| if r.0 == 1 || r.0 == 600 { 0 } else { UID };
+        let stat = |r: &Row| if exiting.contains(&r.0) { "?Es" } else { "Ss" };
         let line = |r: &Row, env: bool| {
-            format!("{:>5} {:>5} {:>5} {:>5} {:<8} {}{}", r.0, r.1, r.2, uid(r), r.3, r.4, if env { r.5 } else { "" })
+            let env = if env { r.5 } else { "" };
+            format!("{:>5} {:>5} {:>5} {:>5} {:<4} {:<8} {}{env}", r.0, r.1, r.2, uid(r), stat(r), r.3, r.4)
         };
         let plain = rows.iter().map(|r| line(r, false)).collect::<Vec<_>>().join("\n");
         let with_env = rows.iter().map(|r| line(r, true)).collect::<Vec<_>>().join("\n");
@@ -704,7 +843,7 @@ mod tests {
     fn will_not_judge_a_listing_that_misses_the_apps_own_host() {
         // what an app with no locale saw: ps escaping the "ä" hid every host
         let hidden = snapshot(
-            &format!("  100     1   100   501 ??       /app/CodeBM-CM-$r --pty-host {SOCK}"),
+            &format!("  100     1   100   501 Ss   ??       /app/CodeBM-CM-$r --pty-host {SOCK}"),
             "",
             EXE,
         );
@@ -734,8 +873,8 @@ mod tests {
     #[test]
     fn a_pid_reused_between_the_listings_has_no_session() {
         let snap = snapshot(
-            "  500     1   500   501 ??       python3 job.py",
-            "  500     1   500   501 ??       grep CODEBAER_SESSION=9 log",
+            "  500     1   500   501 Ss   ??       python3 job.py",
+            "  500     1   500   501 Ss   ??       grep CODEBAER_SESSION=9 log",
             EXE,
         );
         assert_eq!(snap.procs[0].session, None);
@@ -743,8 +882,9 @@ mod tests {
 
     #[test]
     fn keeps_the_spaces_in_a_command_line() {
-        let l = parse_line("  7284 59734  7284   501 ttys005  claude --resume a b").unwrap();
-        assert_eq!((l.pid, l.ppid, l.pgid, l.uid, l.tty, l.rest), (7284, 59734, 7284, 501, "ttys005", "claude --resume a b"));
+        let l = parse_line("  7284 59734  7284   501 Ss+  ttys005  claude --resume a b").unwrap();
+        let got = (l.pid, l.ppid, l.pgid, l.uid, l.stat, l.tty, l.rest);
+        assert_eq!(got, (7284, 59734, 7284, 501, "Ss+", "ttys005", "claude --resume a b"));
         assert!(parse_line("garbage").is_none());
     }
 
@@ -758,6 +898,23 @@ mod tests {
         // the current host's sessions and anything untagged are not this command's to kill
         assert!(kill_targets(&snap, &r, 101, ME).is_err());
         assert!(kill_targets(&snap, &r, 400, ME).is_err());
+    }
+
+    #[test]
+    fn a_session_stuck_exiting_is_ended_through_its_host_on_any_host() {
+        // as `ps` shows one: its arguments, environment and terminal are already gone
+        let snap = listing_with(&[(103, 100, 103, "??", "(zsh)", ""), (202, 200, 202, "??", "(claude)", "")], &[103, 202]);
+        let r = report(&snap);
+        let stuck = r.hosts[0].sessions.iter().find(|p| p.pid == 103).unwrap();
+        assert!(stuck.exiting && stuck.session.is_none());
+        assert!(!r.hosts[0].sessions.iter().find(|p| p.pid == 101).unwrap().exiting);
+        assert_eq!(stuck_host(&r, 103), Ok(Some(100)));
+        assert_eq!(stuck_host(&r, 202), Ok(Some(200)));
+        // a live session of the current host is still closed through the host
+        assert_eq!(stuck_host(&r, 101), Ok(None));
+        assert!(kill_targets(&snap, &r, 101, ME).is_err());
+        let busy = classify(&snap, &ctx(None), |_| true, |pid| pid == 200).unwrap();
+        assert!(stuck_host(&busy, 202).is_err_and(|e| e.contains("another CodeBär")));
     }
 
     #[test]

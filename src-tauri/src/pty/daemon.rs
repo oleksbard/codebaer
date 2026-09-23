@@ -484,7 +484,16 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
             let (tx, notes) = {
                 let mut h = pump.lock().unwrap();
                 let tx = h.out.clone();
-                let Some(s) = h.sessions.get_mut(&id) else { break };
+                // Closed, and read on anyway: a child that exits with output still queued waits
+                // in exit for the tty to drain, which no signal cuts short, so waiting on it
+                // unread would never end. Closing the master instead would hang up a shell that
+                // is still hanging up its own jobs.
+                let Some(s) = h.sessions.get_mut(&id) else {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        break;
+                    }
+                    continue;
+                };
                 s.ring.push(&buf[..n]);
                 let mut marks = Vec::new();
                 s.scanner.feed(&buf[..n], &mut marks);

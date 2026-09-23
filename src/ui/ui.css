@@ -148,9 +148,9 @@ kbd {
 
 .dialog {
   position: fixed;
-  top: 10vh;
-  left: 50%;
-  transform: translateX(-50%);
+  inset: 0;
+  margin: auto;
+  height: fit-content;
   width: min(600px, calc(100vw - 32px));
   background: var(--panel);
   border: 1px solid var(--line);
@@ -163,7 +163,15 @@ kbd {
   &.alert {
     width: min(440px, calc(100vw - 32px));
     padding: 16px 18px 14px;
+
+    .dialog-title { padding-right: 24px; }
   }
+}
+
+.dialog-x {
+  position: absolute;
+  top: 16px;
+  right: 12px;
 }
 
 .dialog-title {

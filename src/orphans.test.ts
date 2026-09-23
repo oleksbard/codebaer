@@ -6,7 +6,7 @@ const SOCK = '/cfg/ptyd-2.sock';
 const OLD = '/cfg/ptyd-1.sock';
 const NEWER = '/cfg/ptyd-3.sock';
 const proc = (pid: number, session: number | null, command = 'zsh'): Proc =>
-  ({ pid, ppid: 1, pgid: pid, tty: 'ttys001', command, session, relay: null, holds_app: false });
+  ({ pid, ppid: 1, pgid: pid, tty: 'ttys001', command, session, relay: null, holds_app: false, exiting: false });
 const host = (pid: number, sock: string, sessions: Proc[], more: Partial<Host> = {}): Host =>
   ({ pid, sock, current: sock === SOCK, sock_exists: true, in_use: false, unclear: false,
     proto: Number(/ptyd-(\d+)/.exec(sock)?.[1]), relay: null, sessions, ...more });
@@ -151,6 +151,30 @@ describe('orphanRows', () => {
   it('offers nothing on a host that shares its socket path with another', () => {
     const r: Orphans = { sock: SOCK, hosts: [host(20, OLD, [proc(21, 1)], { unclear: true })], escaped: [] };
     expect(brief(orphanRows(r, []))).toEqual([['stale', 1, null, null]]);
+  });
+
+  it('offers a kill instead of a restore for a session stuck exiting, on any host', () => {
+    // as `ps` shows one: its arguments, environment and terminal are already gone
+    const stuck = (pid: number, command: string): Proc =>
+      ({ ...proc(pid, null, command), tty: '??', exiting: true });
+    const r: Orphans = {
+      sock: SOCK,
+      hosts: [host(10, SOCK, [proc(11, 1), stuck(12, '(zsh)')]), host(20, OLD, [stuck(21, '(claude)')])],
+      escaped: [],
+    };
+    const rows = orphanRows(r, [info(1, { t: 'Idle' }, { pid: 11 })]);
+    expect(brief(rows)).toEqual([
+      ['shown', 1, null, 'close'],
+      ['stuck', null, null, 'signal'],
+      ['stuck', null, null, 'signal'],
+    ]);
+    expect(rows[1]?.kill).toEqual({ t: 'signal', pid: 12 });
+    expect(rows[1]?.why).toMatch(/nothing .*restore/);
+
+    const busy = orphanRows({ sock: SOCK, hosts: [host(20, OLD, [stuck(21, '(zsh)')], { in_use: true })],
+      escaped: [] }, []);
+    expect(brief(busy)).toEqual([['stuck', null, null, null]]);
+    expect(busy[0]?.why).toMatch(/another CodeBär/);
   });
 
   it('names a relay by what it relays', () => {

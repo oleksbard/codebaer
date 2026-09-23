@@ -17,7 +17,8 @@ const { toast } = await import('./toast');
 
 const SOCK = '/cfg/ptyd-2.sock';
 const proc = (pid: number, session: number | null): Proc =>
-  ({ pid, ppid: 10, pgid: pid, tty: 'ttys001', command: '/bin/zsh -l', session, relay: null, holds_app: false });
+  ({ pid, ppid: 10, pgid: pid, tty: 'ttys001', command: '/bin/zsh -l', session, relay: null, holds_app: false,
+    exiting: false });
 const report = (sessions: Proc[]): Orphans => ({
   sock: SOCK,
   hosts: [{ pid: 10, sock: SOCK, current: true, sock_exists: true, in_use: false, unclear: false, proto: 2,
@@ -28,6 +29,7 @@ const info = (id: number): Info => ({ id, title: 'zsh', cwd: '/r', tier: 'marks'
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
   S.orphans = null;
 });
 
@@ -45,4 +47,31 @@ it('closes the session when a fresh scan still agrees', async () => {
   vi.mocked(term.orphans).mockResolvedValue(report([proc(11, 9)]));
   await orphanAction({ t: 'close', id: 9, pid: 11 });
   expect(term.close).toHaveBeenCalledWith(9);
+});
+
+it('says so when a restore brings nothing back', async () => {
+  vi.useFakeTimers();
+  S.terminals = [];
+  vi.mocked(term.orphans).mockResolvedValue(report([proc(11, null)]));
+  const unknown = orphanAction({ t: 'relist', id: null });
+  await vi.advanceTimersByTimeAsync(5000);
+  await unknown;
+  expect(term.relist).toHaveBeenCalledWith(null);
+  expect(toast).toHaveBeenLastCalledWith(expect.stringMatching(/nothing was restored/), 'err');
+
+  const known = orphanAction({ t: 'relist', id: 4 });
+  await vi.advanceTimersByTimeAsync(5000);
+  await known;
+  expect(toast).toHaveBeenLastCalledWith(expect.stringMatching(/#4.*nothing was restored/), 'err');
+});
+
+it('stays quiet when a restore brings the terminal back', async () => {
+  S.terminals = [];
+  vi.mocked(term.orphans).mockResolvedValue(report([proc(11, null)]));
+  vi.mocked(term.relist).mockImplementationOnce(async () => {
+    S.terminals = [info(7)];
+  });
+  await orphanAction({ t: 'relist', id: null });
+  expect(term.relist).toHaveBeenLastCalledWith(7);
+  expect(toast).not.toHaveBeenCalled();
 });

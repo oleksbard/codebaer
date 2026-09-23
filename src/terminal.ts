@@ -36,6 +36,7 @@ export type Relay = { sock: string; id: number | null; pid: number | null };
 export type Proc = {
   pid: number; ppid: number; pgid: number; tty: string; command: string; session: number | null; relay: Relay | null;
   holds_app: boolean;
+  exiting: boolean;
 };
 export type Host = {
   pid: number; sock: string; current: boolean; sock_exists: boolean; in_use: boolean; unclear: boolean;

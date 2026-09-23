@@ -4,6 +4,8 @@ import {
 } from '../orphans';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { REFRESH, StrokeIcon } from '../ui/Icon';
+import { IconButton } from '../ui/IconButton';
 import { Pill } from '../ui/Pill';
 import { closeOrphans, orphanAction, rescan } from './controller';
 
@@ -52,7 +54,9 @@ export function OrphansDialog({ scan }: { scan: OrphanScan }) {
         {/* the dialog is already named by its hidden title */}
         <h2 className="dialog-title" aria-hidden="true">Terminals and orphans</h2>
         <span className="orphans-found">{found ? `${found} orphaned` : 'nothing orphaned'}</span>
-        <Button variant="ghost" disabled={busy !== null} onClick={() => void rescan()}>Rescan</Button>
+        <IconButton label="Rescan" disabled={busy !== null} onClick={() => void rescan()}>
+          <StrokeIcon d={REFRESH} size={14} />
+        </IconButton>
       </div>
       <div className="orphans-hosts">
         {report.hosts.length === 0 && <Pill>no pty host running</Pill>}

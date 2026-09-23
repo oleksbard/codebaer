@@ -899,7 +899,9 @@ async function relistUnknown(): Promise<void> {
   await term.relist(null);
   // the list arrives as a Hello event, not as this call's result
   for (let i = 0; i < 20 && S.terminals.every((t) => before.has(t.id)); i++) await sleep(100);
-  for (const t of S.terminals) if (!before.has(t.id)) await replay(t.id);
+  const gained = S.terminals.filter((t) => !before.has(t.id));
+  if (!gained.length) toast('The host listed no terminal the sidebar was missing, so nothing was restored.', 'err');
+  for (const t of gained) await replay(t.id);
 }
 
 /** Whatever the view already holds for the session goes first, or its history shows twice. */
@@ -908,6 +910,7 @@ async function replay(id: number): Promise<void> {
   await term.relist(id);
   // until the list lands, a rescan's copy of it would still say the session is missing
   for (let i = 0; i < 20 && !S.terminals.some((t) => t.id === id); i++) await sleep(100);
+  if (!S.terminals.some((t) => t.id === id)) toast(`The host has no terminal #${id}, so nothing was restored.`, 'err');
 }
 
 export async function rescan(): Promise<void> {

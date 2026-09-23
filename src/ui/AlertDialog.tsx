@@ -1,5 +1,7 @@
 import { AlertDialog as RA } from 'radix-ui';
 import { Button } from './Button';
+import { CLOSE, StrokeIcon } from './Icon';
+import { IconButton } from './IconButton';
 
 export function AlertDialog({ title, body, confirmLabel = 'OK', error = false, onResult }: {
   title: string;
@@ -21,6 +23,10 @@ export function AlertDialog({ title, body, confirmLabel = 'OK', error = false, o
               <Button variant="primary" onClick={(e) => { e.preventDefault(); onResult(true); }}>{confirmLabel}</Button>
             </RA.Action>
           </div>
+          {/* not an RA.Cancel: Radix keeps one Cancel ref to focus on open, and it must stay the Cancel button */}
+          <IconButton label="Close" className="dialog-x" onClick={() => onResult(false)}>
+            <StrokeIcon d={CLOSE} size={14} />
+          </IconButton>
         </RA.Content>
       </RA.Portal>
     </RA.Root>

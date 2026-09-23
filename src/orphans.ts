@@ -1,6 +1,7 @@
 import type { Host, Info, Orphans, Proc } from './terminal';
 
-export type Status = 'shown' | 'hidden' | 'unmatched' | 'relayed' | 'stale' | 'escaped' | 'ghost' | 'exited';
+export type Status =
+  | 'shown' | 'hidden' | 'unmatched' | 'relayed' | 'stale' | 'stuck' | 'escaped' | 'ghost' | 'exited';
 
 export type OrphanAction =
   | { t: 'relist'; id: number | null }
@@ -31,6 +32,7 @@ export const STATUS: Record<Status, string> = {
   unmatched: 'Unmatched',
   relayed: 'Relayed',
   stale: 'Stale host',
+  stuck: 'Stuck exiting',
   escaped: 'Escaped',
   ghost: 'No process',
   exited: 'Exited',
@@ -39,13 +41,15 @@ export const STATUS: Record<Status, string> = {
 /** Working as intended. */
 export const HEALTHY: ReadonlySet<Status> = new Set(['shown', 'relayed', 'exited']);
 /** Known to be lost. An unmatched row is only unknown, so it is not counted as one. */
-export const ORPHANED: ReadonlySet<Status> = new Set(['hidden', 'stale', 'escaped', 'ghost']);
+export const ORPHANED: ReadonlySet<Status> = new Set(['hidden', 'stale', 'stuck', 'escaped', 'ghost']);
 
 const UNMATCHED = 'cannot match it: its id is hidden, and its host reports no pids';
 const HOLDS_APP = 'CodeBär itself runs inside it';
 const NO_HOST = 'no host was found to close it through';
 const RESTORE_FIRST = 'its id is hidden: restore it, then close it from the sidebar';
 const UNCLEAR = 'another host claims its socket path';
+const IN_USE = 'another CodeBär is attached to its host';
+const STUCK = 'it is stuck exiting, so nothing is left to restore';
 
 export const sockName = (sock: string): string => sock.slice(sock.lastIndexOf('/') + 1);
 
@@ -103,8 +107,17 @@ export function orphanRows(r: Orphans, listed: Info[]): OrphanRow[] {
   const leftListed = listed.filter((t) => !matched.has(t.id) && t.pid == null && live(t));
   const base = (p: Proc, host: string) =>
     ({ key: `p${p.pid}`, pid: p.pid, tty: p.tty, command: commandOf(p), host });
+  // no signal ends one, and the backend, given its pid, flushes the terminals its host left behind
+  const stuck = (p: Proc, host: string, blocked: string | null): OrphanRow => ({
+    ...base(p, host), session: p.session, status: 'stuck', restore: null,
+    kill: blocked ? null : { t: 'signal', pid: p.pid }, why: blocked ?? STUCK,
+  });
 
   for (const p of children) {
+    if (p.exiting && !match.has(p.pid)) {
+      rows.push(stuck(p, sockName(current?.sock ?? ''), p.holds_app ? HOLDS_APP : null));
+      continue;
+    }
     const id = match.get(p.pid) ?? p.session;
     const shown = match.has(p.pid);
     const unmatched = !shown && id === null && leftListed.length > 0;
@@ -139,10 +152,15 @@ export function orphanRows(r: Orphans, listed: Info[]): OrphanRow[] {
   }
   for (const h of r.hosts.filter((h) => !h.current)) {
     for (const p of h.sessions) {
+      if (p.exiting) {
+        rows.push(stuck(p, `${sockName(h.sock)} · pid ${h.pid}`,
+          h.in_use ? IN_USE : h.unclear ? UNCLEAR : p.holds_app ? HOLDS_APP : null));
+        continue;
+      }
       const relayed = relays(h, p);
       let why: string | null = null;
       const tooOld = p.session === null && (h.proto ?? 0) < 2;
-      if (h.in_use) why = 'another CodeBär is attached to its host';
+      if (h.in_use) why = IN_USE;
       else if (h.unclear) why = UNCLEAR;
       else if (p.holds_app) why = HOLDS_APP;
       else if (!h.sock_exists) why = 'its host has lost its socket';

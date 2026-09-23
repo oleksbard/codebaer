@@ -80,6 +80,18 @@ describe('primitives', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('Dialog closes from its X button, which does not take the open focus', async () => {
+    const onOpenChange = vi.fn();
+    mount(<Dialog open onOpenChange={onOpenChange} title="Pick"><input /></Dialog>);
+    await tick();
+    expect(document.activeElement).toBe(document.querySelector('.dialog input'));
+    const x = document.querySelector<HTMLButtonElement>('.dialog-x')!;
+    expect(x.getAttribute('aria-label')).toBe('Close');
+    expect(x.querySelector('svg')).not.toBeNull();
+    x.click();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('AlertDialog shows title, body, Cancel and the confirm label; buttons report the result', async () => {
     const onResult = vi.fn();
     mount(<AlertDialog title="Delete x?" body="Gone for good." confirmLabel="OK" onResult={onResult} />);
@@ -98,6 +110,16 @@ describe('primitives', () => {
     mount(<AlertDialog title="Delete x?" onResult={onResult} />);
     await tick();
     document.querySelectorAll<HTMLButtonElement>('.dialog-actions button')[0]!.click();
+    expect(onResult).toHaveBeenCalledWith(false);
+    expect(onResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('AlertDialog reports one false from its X button and still opens focused on Cancel', async () => {
+    const onResult = vi.fn();
+    mount(<AlertDialog title="Delete x?" onResult={onResult} />);
+    await tick();
+    expect(document.activeElement?.textContent).toBe('Cancel');
+    document.querySelector<HTMLButtonElement>('.dialog-x')!.click();
     expect(onResult).toHaveBeenCalledWith(false);
     expect(onResult).toHaveBeenCalledTimes(1);
   });

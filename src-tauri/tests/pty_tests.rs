@@ -316,6 +316,30 @@ fn closing_a_live_session_does_not_strand_its_process_tree() {
 }
 
 #[test]
+fn a_session_that_writes_as_it_closes_is_still_reaped() {
+    // exit blocks until a tty's queued output drains, which nothing does while the host keeps
+    // the master open without reading it; macOS lists such a process as `?E` with its name in
+    // parentheses, and killpg refuses its group, so the host's own escalation cannot end it
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("shell.pid");
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_sh(&dir.path().to_string_lossy());
+    let script = "trap '' TERM; trap 'printf a; sleep 0.3; printf b; sleep 0.3; printf c; exit' HUP";
+    // quoted apart so the echo of the typed line cannot pass for it having run
+    c.input(id, format!("{script}; echo $$ > {}; echo ar''med\n", pidfile.display()).as_bytes());
+    assert!(c.wait_for("armed", Duration::from_secs(5)));
+    let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+
+    c.send(&ClientMsg::Close { id });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && alive(pid) {
+        c.pump(Duration::from_millis(100));
+    }
+    assert!(!alive(pid), "pid {pid} is stuck exiting after Close");
+}
+
+#[test]
 fn a_new_session_reports_the_folder_its_shell_really_started_in() {
     let h = Harness::start();
     let mut c = h.connect();
