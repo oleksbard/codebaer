@@ -1,119 +1,30 @@
-import { useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { DropdownMenu } from 'radix-ui';
-import { git, type Recent } from '../git';
-import { split } from '../model';
-import { Button } from '../ui/Button';
-import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
-import { Spinner } from '../ui/Spinner';
-import { cancel, checkout, network, openRepo, palette, pickRepo } from './controller';
-import { notify, S, useApp } from './store';
-import { TermStatus } from './Terminals';
-
-function RepoLabel({ name, path }: { name: string; path: string }) {
-  return (
-    <span className="repo-label">
-      <span className="name">{name}</span>
-      <span className="dash">-</span>
-      <span className="path">{path}</span>
-    </span>
-  );
-}
-
-function Repo() {
-  const [recent, setRecent] = useState<Recent[]>([]);
-  if (!S.root) return null;
-  return (
-    <span className="repo">
-      <RepoLabel name={S.title ?? split(S.root)[1]} path={S.root} />
-      <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" className="ico repo-switch" title="Switch project" aria-label="Switch project">
-            ⇄
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={6}>
-            <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
-              Open Folder…<span className="detail">⌘O</span>
-            </DropdownMenu.Item>
-            {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
-            {recent.map((r) => (
-              <DropdownMenu.Item key={r.path} className="menu-item" onSelect={() => void openRepo(r.path)}>
-                <RepoLabel name={r.name} path={r.label} />
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </span>
-  );
-}
+import { palette } from './controller';
+import { notify, S } from './store';
 
 export function Header() {
-  useApp();
+  // the window has no title bar of its own, so this row is what drags it
   return (
-    <header className="head">
-      <img className="brand" src="/icon.png" alt="" />
-      <Repo />
-      <div className="right">
-        <Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button>
-      </div>
+    <header className="head" data-tauri-drag-region>
+      <button type="button" className="cmd-field" onClick={() => void palette()}>
+        <SearchIcon />
+        <span className="txt">Search commands</span>
+        <Kbd>⌘⇧P</Kbd>
+      </button>
     </header>
   );
 }
 
-const commits = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
-
-function RemoteActions() {
-  const st = S.status;
-  if (!st) return null;
-  // git reports no ahead count without an upstream, and push is the thing that creates one,
-  // so an untracked branch offers push rather than hiding it until it can be counted
-  const push = st.upstream === null ? st.head !== null : st.ahead > 0 && st.behind === 0;
+function SearchIcon() {
   return (
-    <span className="remote">
-      {st.upstream !== null &&
-        <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>↻</IconButton>}
-      {st.behind > 0 &&
-        <IconButton label={`Pull ${commits(st.behind)}`}
-          disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
-      {push &&
-        <IconButton label={st.upstream === null ? 'Push and set upstream' : `Push ${commits(st.ahead)}`}
-          disabled={S.busy} onClick={() => void network('push')}>⤒</IconButton>}
-    </span>
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4"
+      strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M10.5 10.5 14 14" />
+    </svg>
   );
 }
-
-export function Footer() {
-  useApp();
-  const st = S.status;
-  const branch = !st ? '…' : st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
-  const ab = !st ? null : st.upstream
-    ? <span className="ab">
-        <span className={st.ahead ? 'on' : ''}>↑{st.ahead}</span>
-        <span className={st.behind ? 'on' : ''}>↓{st.behind}</span>
-      </span>
-    : <span>no upstream</span>;
-  return (
-    <footer className="foot">
-      <div className="branch">
-        <button type="button" title="Checkout to…" onClick={() => void checkout()}><span>{branch}</span>{ab}</button>
-        <RemoteActions />
-        {S.busy && <Spinner />}
-        {S.busy && S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}
-      </div>
-      {S.tab === 'terminals'
-        ? <TermStatus />
-        : S.open && S.blame &&
-          <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>}
-    </footer>
-  );
-}
-
-// mirrors the activity-bar column in layout.css: clientX counts it, --side-w does not
-export const ACT_W = 56;
 
 export function Gutter() {
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -121,10 +32,14 @@ export function Gutter() {
     e.preventDefault();
     const g = e.currentTarget;
     g.setPointerCapture(e.pointerId);
+    const box = g.parentElement!;
+    const left = box.querySelector('.side')?.getBoundingClientRect().left ?? 0;
+    // the frame's content box is what the CSS min() takes 100% of, so the two caps agree
+    const max = box.clientWidth - 400;
     let w = 0;
     let frame = 0;
     const move = (ev: PointerEvent) => {
-      w = Math.max(180, Math.min(globalThis.innerWidth - 400 - ACT_W, Math.round(ev.clientX) - ACT_W));
+      w = Math.max(180, Math.min(max, Math.round(ev.clientX - left)));
       S.sideWidth = w;
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; notify(); });
     };

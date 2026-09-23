@@ -119,7 +119,7 @@ describe('row layout', () => {
     expect(row('README.md').classList.contains('ignored')).toBe(false);
 
     expect(dir('node_modules').querySelector('summary')!.classList.contains('ignored')).toBe(true);
-    expect(dir('src')!.querySelector('summary')!.classList.contains('ignored')).toBe(false);
+    expect(dir('src').querySelector('summary')!.classList.contains('ignored')).toBe(false);
     // an ignored directory nested under a listed one still lands inside it
     expect(dir('src/gen').parentElement).toBe(dir('src'));
   });

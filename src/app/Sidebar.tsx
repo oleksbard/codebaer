@@ -2,6 +2,8 @@ import {
   useEffect, useMemo, useRef, useState,
   type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode,
 } from 'react';
+import { DropdownMenu } from 'radix-ui';
+import { git, type Recent } from '../git';
 import { buildQueue, buildTree, rowKey, split, type Row, type Section, type TreeDir } from '../model';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -12,15 +14,15 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import {
-  acceptFile, aiMessage, commit, openPlain, openRow, rejectFile, setTab, stageAll, toggleDir,
-  unstageAll, unstageFile,
+  acceptFile, aiMessage, cancel, checkout, commit, network, openPlain, openRepo, openRow, pickRepo, rejectFile,
+  setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
 import { TerminalRail } from './Terminals';
 
 function ChangesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
       aria-hidden="true">
       <circle cx="4.5" cy="3" r="1.75" />
       <circle cx="4.5" cy="13" r="1.75" />
@@ -32,7 +34,7 @@ function ChangesIcon() {
 
 function FilesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
       <path d="M9.5 1.75V5h3.25" />
@@ -51,7 +53,7 @@ export function ActivityBar() {
       icon: (
         <span className="tab-icon">
           <ChangesIcon />
-          {unstaged > 0 && <span className="tab-dot" />}
+          {unstaged > 0 && <span className="tab-count" aria-hidden="true">{unstaged > 99 ? '99+' : unstaged}</span>}
         </span>
       ),
     },
@@ -59,8 +61,52 @@ export function ActivityBar() {
   ];
   return (
     <div className="act">
+      <img className="brand" src="/icon.png" alt="" />
       <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs} />
       <TerminalRail />
+    </div>
+  );
+}
+
+function RepoLabel({ name, path }: { name: string; path: string }) {
+  return (
+    <span className="repo-label">
+      <span className="name">{name}</span>
+      <span className="dash">-</span>
+      <span className="path">{path}</span>
+    </span>
+  );
+}
+
+function RepoSwitcher() {
+  const [recent, setRecent] = useState<Recent[]>([]);
+  if (!S.root) return null;
+  return (
+    <div className="side-head">
+      <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="repo-trigger" title={`${S.root} - switch project`}>
+            <span className="name">{S.title ?? split(S.root)[1]}</span>
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4}>
+            <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
+              Open Folder…<span className="detail">⌘O</span>
+            </DropdownMenu.Item>
+            {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
+            {recent.map((r) => (
+              <DropdownMenu.Item key={r.path} className="menu-item" onSelect={() => void openRepo(r.path)}>
+                <RepoLabel name={r.name} path={r.label} />
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -79,6 +125,7 @@ export function Sidebar() {
   const q = S.status ? buildQueue(S.status) : { unstaged: [], staged: [] };
   return (
     <aside className="side">
+      <RepoSwitcher />
       {S.tab === 'files'
         ? <FilesList files={S.files} ignored={S.ignored} active={S.open?.path ?? null} />
         : <QueueList q={q} selected={S.selected} open={open}
@@ -246,6 +293,58 @@ function Sparkle() {
   );
 }
 
+const commits = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+
+function RemoteActions() {
+  const st = S.status;
+  if (!st) return null;
+  // git reports no ahead count without an upstream, and push is the thing that creates one,
+  // so an untracked branch offers push rather than hiding it until it can be counted
+  const push = st.upstream === null ? st.head !== null : st.ahead > 0 && st.behind === 0;
+  return (
+    <span className="remote">
+      {st.upstream !== null &&
+        <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>↻</IconButton>}
+      {st.behind > 0 &&
+        <IconButton label={`Pull ${commits(st.behind)}`}
+          disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
+      {push &&
+        <IconButton label={st.upstream === null ? 'Push and set upstream' : `Push ${commits(st.ahead)}`}
+          disabled={S.busy} onClick={() => void network('push')}>⤒</IconButton>}
+    </span>
+  );
+}
+
+function BranchBar() {
+  const st = S.status;
+  const branch = !st ? '…' : st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
+  const ab = !st ? null : st.upstream
+    ? <span className="ab">
+        <span className={st.ahead ? 'on' : ''}>↑{st.ahead}</span>
+        <span className={st.behind ? 'on' : ''}>↓{st.behind}</span>
+      </span>
+    : <span>no upstream</span>;
+  return (
+    <div className="branch">
+      <button type="button" className="co" title="Checkout to…" onClick={() => void checkout()}>
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4"
+          aria-hidden="true">
+          <circle cx="4.5" cy="3.5" r="1.5" />
+          <circle cx="4.5" cy="12.5" r="1.5" />
+          <circle cx="11.5" cy="5.5" r="1.5" />
+          <path d="M4.5 5v6M11.5 7a3.5 3.5 0 0 1-3.5 3.5H4.5" />
+        </svg>
+        <span className="nm">{branch}</span>{ab}
+      </button>
+      {/* the remote actions are disabled while busy, so the spinner takes their place in the narrow row */}
+      {S.busy
+        ? <span className="busy"><Spinner />
+            {S.cancellable && <Button variant="ghost" onClick={() => void cancel()}>Cancel</Button>}</span>
+        : <RemoteActions />}
+    </div>
+  );
+}
+
 function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
   useApp();
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -258,6 +357,7 @@ function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
   }, [message, hidden]);
   return (
     <div className="commit" hidden={hidden}>
+      <BranchBar />
       <textarea id="commit-message" rows={1} placeholder="Commit message" aria-label="Commit message" value={message}
         ref={(el) => { ref.current = el; refs.commit = el; }}
         onChange={(e) => { S.commitMessage = e.target.value; notify(); }}

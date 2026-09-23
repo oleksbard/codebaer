@@ -3,6 +3,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
+  --chrome: var(--gray-0);
   --bg: var(--gray-1);
   --panel: var(--gray-2);
   --panel2: var(--gray-3);

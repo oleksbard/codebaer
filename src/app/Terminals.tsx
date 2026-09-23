@@ -27,7 +27,7 @@ function ClaudeMark({ busy }: { busy: boolean }) {
 
 function CodexIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5z" />
       <path d="M8 5.4 10.9 7v2.9L8 11.6 5.1 9.9V7z" />
@@ -37,8 +37,7 @@ function CodexIcon() {
 
 const ICONS: Record<Agent, (p: { busy: boolean }) => ReactElement> = { claude: ClaudeMark, codex: CodexIcon };
 
-/** A running session's elapsed time is only true while it is being redrawn. */
-function useTick(active: boolean, ms = 1000): number {
+function useTick(active: boolean, ms: number): number {
   const [n, set] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -97,14 +96,6 @@ function Empty() {
 function Dot({ session }: { session: term.Info }) {
   const tone = isExited(session) ? 'off' : session.state.t === 'Running' ? 'run' : 'idle';
   return <span className={`term-dot ${tone}`} aria-hidden="true" />;
-}
-
-/** What the title bar used to say, in the footer the whole app already has. */
-export function TermStatus() {
-  const s = S.terminals.find((t) => t.id === S.activeTerm);
-  useTick(s?.state.t === 'Running');
-  if (!s) return null;
-  return <span className="tstat">{s.title} · {statusLabel(s, Date.now(), homeFrom(s.cwd))}</span>;
 }
 
 export function TerminalRail() {

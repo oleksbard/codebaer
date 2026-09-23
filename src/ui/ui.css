@@ -117,21 +117,23 @@ kbd {
 .tabs.vert {
   flex: none;
   flex-direction: column;
+  align-items: center;
+  gap: 4px;
   border-bottom: 0;
-  padding: 6px 0;
+  padding: 0 0 4px;
 
   .tab {
-    width: 100%;
-    height: 50px;
+    width: 40px;
+    height: 40px;
     padding: 0;
     display: grid;
     place-items: center;
     margin-bottom: 0;
     border-bottom: 0;
-    border-left: 2px solid transparent;
+    border-radius: var(--r-4);
 
-    &:hover { color: var(--text); }
-    &[data-state="active"] { border-left-color: var(--accent); }
+    &:hover { background: var(--panel); color: var(--text); }
+    &[data-state="active"] { background: var(--panel2); color: var(--text); }
   }
 }
 

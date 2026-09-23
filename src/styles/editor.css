@@ -19,6 +19,14 @@
   }
 
   .pos { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; }
+  .blame {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--fs-1) var(--mono);
+    color: var(--faint);
+  }
   .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   .right .ico { width: 24px; height: 24px; }
   .right .ico[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }

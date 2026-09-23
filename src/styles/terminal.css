@@ -1,6 +1,6 @@
-/* the activity bar stays, the sidebar panel does not: a terminal gets the whole main area */
-.app.terminals {
-  grid-template-columns: var(--act-w) 0 minmax(0, 1fr);
+/* the activity bar stays, the sidebar panel does not: a terminal gets the whole frame */
+.app.terminals .frame {
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .app.terminals .side,
@@ -61,10 +61,18 @@
   align-items: center;
   gap: 2px;
   min-height: 0;
-  padding: 6px 0;
-  border-top: 1px solid var(--line);
+  padding: 4px 0 6px;
   overflow-y: auto;
   scrollbar-width: none;
+
+  &::before {
+    content: '';
+    flex: none;
+    width: 24px;
+    height: 1px;
+    margin: 2px 0 4px;
+    background: var(--line);
+  }
 }
 
 .rail-b {
@@ -74,18 +82,18 @@
   height: 40px;
   display: grid;
   place-items: center;
-  border-radius: var(--r-3);
+  border-radius: var(--r-4);
   color: var(--muted);
 
-  &:hover { background: var(--panel2); color: var(--text); }
-  &.on { background: var(--sel); color: var(--text); }
-  &.new { font-size: 22px; }
+  &:hover { background: var(--panel); color: var(--text); }
+  &.on { background: var(--panel2); color: var(--text); }
+  &.new { font-size: 20px; }
 
   .num { font: var(--fs-4) var(--mono); }
   .agent { display: grid; }
   .agent.claude { color: var(--whiskey); }
   .agent.codex { color: var(--sage); }
-  .mark { font-size: 26px; line-height: 1; }
+  .mark { font-size: 22px; line-height: 1; }
 
   .term-dot { position: absolute; right: 5px; bottom: 5px; }
 

@@ -7,6 +7,64 @@
   min-height: 0;
 }
 
+.side-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+}
+
+.repo-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--r-3);
+  font-size: var(--fs-5);
+  font-weight: 700;
+
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  svg { flex: none; color: var(--muted); }
+
+  &:hover, &[data-state="open"] { background: var(--panel2); }
+}
+
+.repo-menu { min-width: 300px; }
+
+/* every row of the switcher menu */
+.repo-label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+
+  .name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .dash {
+    flex: none;
+    color: var(--faint);
+  }
+
+  .path {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: var(--fs-2) var(--mono);
+    color: var(--muted);
+  }
+}
+
 .list {
   flex: 1;
   overflow: auto;
@@ -20,22 +78,23 @@ summary.sec {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  min-height: 24px;
-  padding: 6px 16px;
+  min-height: 26px;
+  margin: 0 8px;
+  padding: 3px 8px;
+  border-radius: var(--r-3);
   color: var(--muted);
-  font-size: var(--fs-1);
-  text-transform: uppercase;
-  letter-spacing: .08em;
+  font-weight: 500;
   cursor: pointer;
   list-style: none;
   user-select: none;
 
-  /* the tree indents by nesting level; the change queue has no --depth and stays at 16px */
+  &:hover { background: var(--panel2); color: var(--text); }
+
+  /* the tree indents by nesting level; the change queue has no --depth */
   &.d {
-    text-transform: none;
-    letter-spacing: 0;
+    font-weight: 400;
     font-size: var(--fs-2);
-    padding-left: calc(8px + var(--depth, 0) * 12px);
+    padding-left: calc(4px + var(--depth, 0) * 12px);
   }
 }
 
@@ -95,22 +154,15 @@ details:not([open])>.sec .l::before {
   grid-template-columns: auto minmax(0,1fr) auto;
   gap: 6px;
   align-items: center;
-  padding: 2px 10px 2px 14px;
+  margin: 0 8px;
+  padding: 2px 8px;
+  border-radius: var(--r-3);
   cursor: pointer;
-  border-left: 2px solid transparent;
   min-height: 26px;
 
   &:hover { background: var(--panel2); }
-  &.sel { background: var(--sel); border-left-color: var(--accent); }
-  &.f { grid-template-columns: auto minmax(0,1fr); padding-left: calc(20px + var(--depth, 0) * 12px); }
-
-  /* the accent bar is drawn at x=0, too far from an indented row to read as marking it, so the
-     tree marks the open file on the name instead */
-  &.f.sel {
-    border-left-color: transparent;
-
-    .name { color: var(--accent); font-weight: 500; }
-  }
+  &.sel { background: var(--accent-soft); }
+  &.f { grid-template-columns: auto minmax(0,1fr); padding-left: calc(18px + var(--depth, 0) * 12px); }
 
   &[data-st="D"] .name { text-decoration: line-through; color: var(--muted); }
   &[data-st="M"] .st,
@@ -197,6 +249,48 @@ details:not([open])>.sec .l::before {
     color: var(--text);
     font: var(--fs-2)/1.4 var(--ui);
     padding: 7px 9px;
+  }
+
+  .branch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font: var(--fs-2) var(--mono);
+    color: var(--muted);
+
+    .co {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      /* at the 180px sidebar floor the counts are what gets cut */
+      overflow: hidden;
+      margin-left: -6px;
+      padding: 3px 6px;
+      border-radius: var(--r-3);
+      color: var(--text);
+
+      &:hover { background: var(--panel2); }
+      svg { flex: none; color: var(--muted); }
+    }
+
+    .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .ab {
+      display: flex;
+      flex: none;
+      gap: 6px;
+      color: var(--faint);
+
+      .on { color: var(--accent); font-weight: 600; }
+    }
+
+    /* ⤓ and ⤒ carry the meaning here, so they run larger than the 12px .ico default */
+    .remote,
+    .busy { display: flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
+    .busy { gap: 6px; }
+    .remote .ico { font-size: var(--fs-4); }
   }
 
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

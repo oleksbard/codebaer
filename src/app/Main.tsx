@@ -62,6 +62,9 @@ function TitleBar() {
       <button type="button" onClick={() => void reload()}>Reload</button>
       <button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
     : null;
+  const blame = S.blame
+    ? <span className="blame" title="Last commit to touch the line under the cursor">{S.blame}</span>
+    : null;
   const close = <IconButton label="Close file" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
     return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span>
@@ -69,7 +72,7 @@ function TitleBar() {
   }
   if (o.conflicted) {
     return (
-      <div className="tbar">{title}<span className="pos">conflict</span>
+      <div className="tbar">{title}<span className="pos">conflict</span>{blame}
         <div className="right">{badge}
           <Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
       </div>
@@ -99,7 +102,7 @@ function TitleBar() {
     </>
   );
   return (
-    <div className="tbar">{title}<span className="pos">{pos}</span>
+    <div className="tbar">{title}<span className="pos">{pos}</span>{blame}
       <div className="right">{badge}{nav}<Pill>{pill}</Pill>{btns}{close}</div>
     </div>
   );

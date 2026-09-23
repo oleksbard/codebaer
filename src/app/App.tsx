@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { Main } from './Main';
 import { Terminals } from './Terminals';
 import { Overlays } from './Overlays';
-import { Footer, Gutter, Header } from './Shell';
+import { Gutter, Header } from './Shell';
 import { ActivityBar, Sidebar } from './Sidebar';
 import { S, useApp } from './store';
 
@@ -16,10 +16,11 @@ export function App() {
       <div className={cls} id="shell" style={style}>
         <Header />
         <ActivityBar />
-        <Sidebar />
-        <Gutter />
-        {S.tab === 'terminals' ? <Terminals /> : <Main />}
-        <Footer />
+        <div className="frame">
+          <Sidebar />
+          <Gutter />
+          {S.tab === 'terminals' ? <Terminals /> : <Main />}
+        </div>
       </div>
       <Overlays />
     </>

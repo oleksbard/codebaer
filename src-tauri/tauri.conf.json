@@ -17,6 +17,9 @@
       "height": 820,
       "minWidth": 900,
       "minHeight": 560,
+      "titleBarStyle": "Overlay",
+      "hiddenTitle": true,
+      "trafficLightPosition": { "x": 16, "y": 13 },
       "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
     }],
     "security": {

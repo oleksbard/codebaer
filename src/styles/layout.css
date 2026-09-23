@@ -1,13 +1,14 @@
+/* two layers: the chrome (header, activity bar) is one flat surface, and the sidebar and
+   main area float on it together as the rounded .frame */
 .app {
   height: 100%;
   display: grid;
-  grid-template-rows: 38px minmax(0,1fr) 30px;
-  /* the terminals layout re-templates the same columns, so the width lives here only */
-  --act-w: 56px;
-  grid-template-columns: var(--act-w) min(var(--side-w,272px),calc(100% - 444px)) minmax(0,1fr);
-  grid-template-areas: "head head head" "act side main" "foot foot foot";
+  grid-template-rows: 38px minmax(0,1fr);
+  grid-template-columns: 56px minmax(0,1fr);
+  grid-template-areas: "head head" "act frame";
+  background: var(--chrome);
 
-  &.nosidebar { grid-template-columns: 0 0 minmax(0,1fr); }
+  &.nosidebar { grid-template-columns: 0 minmax(0,1fr); }
 }
 
 .app.nosidebar .act,
@@ -16,14 +17,44 @@
   display: none;
 }
 
+.frame {
+  grid-area: frame;
+  display: grid;
+  /* the terminals layout re-templates the same columns, so the width lives here only */
+  grid-template-columns: min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);
+  grid-template-rows: minmax(0,1fr);
+  grid-template-areas: "side main";
+  min-width: 0;
+  min-height: 0;
+  margin: 0 6px 6px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-frame);
+  background: var(--bg);
+  /* the editor and the terminal paint square to their edges; this is what rounds them */
+  overflow: hidden;
+}
+
+.app.nosidebar .frame {
+  grid-template-columns: 0 minmax(0,1fr);
+  margin-left: 6px;
+}
+
 .act {
   grid-area: act;
   display: flex;
   flex-direction: column;
+  align-items: center;
   min-height: 0;
-  border-right: 1px solid var(--line);
-  background: var(--panel);
   overflow: hidden;
+}
+
+/* decorative: it sits where a title bar would name the app */
+.brand {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 4px 0 14px;
+  border-radius: var(--r-4);
 }
 
 .tab-icon {
@@ -32,16 +63,20 @@
   place-items: center;
 }
 
-/* the marker the terminal rail uses, on the tab holding work nobody has looked at */
-.tab-dot {
+/* unreviewed files; the tab's label carries the same number for a screen reader */
+.tab-count {
   position: absolute;
-  right: -1px;
-  bottom: 1px;
-  width: 7px;
-  height: 7px;
+  top: -6px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   border-radius: var(--r-pill);
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--panel);
+  color: var(--accent-ink);
+  font: 600 10px/16px var(--ui);
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--chrome);
 }
 
 .gutter {
@@ -59,102 +94,28 @@
   grid-area: head;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-
-  .right { margin-left: auto; display: flex; gap: 6px; }
+  justify-content: center;
+  /* clears the macOS window buttons, which sit over this row; mirrored so the field stays centred */
+  padding: 0 84px;
 }
 
-/* decorative: the window title bar carries the app name */
-.brand {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--r-3);
-}
-
-.repo {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* the header row and every row of the switcher menu */
-.repo-label {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  min-width: 0;
-  white-space: nowrap;
-
-  .name {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--fs-3);
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .dash {
-    flex: none;
-    color: var(--faint);
-  }
-
-  .path {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font: var(--fs-2) var(--mono);
-    color: var(--muted);
-  }
-}
-
-.repo-switch {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  font-size: var(--fs-5);
-
-  &[data-state="open"] { background: var(--line); color: var(--text); }
-}
-
-.repo-menu { min-width: 300px; }
-
-.branch {
+.cmd-field {
   display: flex;
   align-items: center;
   gap: 8px;
-  font: var(--fs-2) var(--mono);
-  color: var(--muted);
+  width: min(560px, 100%);
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-3);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--faint);
+  font-size: var(--fs-2);
 
-  /* direct child only: the remote actions below are .ico buttons, not pills */
-  > button {
-    padding: 3px 8px;
-    border-radius: var(--r-3);
-    border: 1px solid var(--line);
-    color: var(--text);
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
+  .txt { flex: 1; text-align: left; }
+  kbd { border-color: transparent; }
 
-  /* ⤓ and ⤒ carry the meaning here, so they run larger than the 12px .ico default */
-  .remote { display: flex; gap: 2px; }
-  .remote .ico { font-size: var(--fs-4); }
-
-  .ab {
-    display: flex;
-    gap: 6px;
-    color: var(--faint);
-
-    .on { color: var(--accent); font-weight: 600; }
-  }
+  &:hover { background: var(--panel2); color: var(--muted); }
 }
 
 .main {
@@ -163,27 +124,4 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-}
-
-.foot {
-  grid-area: foot;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-  font-size: var(--fs-1);
-  color: var(--muted);
-
-  .blame,
-  .tstat {
-    margin-left: auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-family: var(--mono);
-    color: var(--faint);
-  }
 }

@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BlameLine, Blob, FileText, Status } from './git';
 import { tick } from './test-setup';
-import { ACT_W } from './app/Shell';
 
 vi.mock('./git', async () => {
   const actual = await vi.importActual<typeof import('./git')>('./git');
@@ -131,7 +130,7 @@ describe('the Files tree', () => {
   });
 
   it('reads once when a directory is reopened before the first read lands', async () => {
-    let settle = (_: string[]) => {};
+    let settle: (v: string[]) => void = () => {};
     g.listDir!.mockReturnValue(new Promise<string[]>((r) => { settle = r; }));
     await filesTab();
 
@@ -323,20 +322,23 @@ describe('sidebar resize', () => {
   // jsdom drives requestAnimationFrame off its own ~16ms clock, which no tick() can wait for
   const raf = globalThis.requestAnimationFrame;
   const caf = globalThis.cancelAnimationFrame;
+  // jsdom lays nothing out: the sidebar's left edge is 0, so clientX is the width, and the
+  // frame is given the width layout would have
+  const frameWidth = 1000;
+  const maxWidth = frameWidth - 400;
   beforeAll(() => {
     globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0));
     globalThis.cancelAnimationFrame = (h) => clearTimeout(h);
+    const frame = document.querySelector('.frame')!;
+    Object.defineProperty(frame, 'clientWidth', { value: frameWidth, configurable: true });
   });
   afterAll(() => {
     globalThis.requestAnimationFrame = raf;
     globalThis.cancelAnimationFrame = caf;
+    delete (document.querySelector('.frame') as { clientWidth?: number } | null)?.clientWidth;
   });
 
-  // the activity bar occupies the first 44px of the shell, so a pointer at clientX sizes the
-  // sidebar to clientX - 44
-  const maxWidth = globalThis.innerWidth - 400 - ACT_W;
-
-  it('follows the pointer between 180px and window width minus the rails, and stores the width on release',
+  it('follows the pointer between 180px and the frame width less 400px, and stores the width on release',
     async () => {
     const gutter = document.getElementById('gutter')!;
     const shell = document.getElementById('shell')!;
@@ -345,7 +347,7 @@ describe('sidebar resize', () => {
     ev('pointerdown', 272);
     ev('pointermove', 340);
     await tick();
-    expect(shell.style.getPropertyValue('--side-w')).toBe(`${340 - ACT_W}px`);
+    expect(shell.style.getPropertyValue('--side-w')).toBe('340px');
     ev('pointermove', 20);
     await tick();
     expect(shell.style.getPropertyValue('--side-w')).toBe('180px');
@@ -374,9 +376,9 @@ describe('sidebar resize', () => {
     off();
 
     expect(notifies).toBe(1);
-    expect(shell.style.getPropertyValue('--side-w')).toBe(`${420 - ACT_W}px`);
+    expect(shell.style.getPropertyValue('--side-w')).toBe('420px');
     ev('pointerup');
-    expect(localStorage.getItem('codebaer.sideWidth')).toBe(String(420 - ACT_W));
+    expect(localStorage.getItem('codebaer.sideWidth')).toBe('420');
   });
 });
 
@@ -448,7 +450,7 @@ describe('a failed commit', () => {
   });
 });
 
-describe('the title bar and the status bar', () => {
+describe('the title bar and the branch row', () => {
   const pillButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.tbar .pill.warn button')];
 
   it('shows the changed-on-disk pill, reloads from disk, and writes the buffer on Keep mine', async () => {
@@ -511,22 +513,22 @@ describe('the title bar and the status bar', () => {
     S.status = tracked(2, 0);
     notify();
     await tick();
-    let counts = [...document.querySelectorAll('.foot .ab span')];
+    let counts = [...document.querySelectorAll('.commit .ab span')];
     expect(counts.map((c) => c.textContent)).toEqual(['↑2', '↓0']);
     expect(counts.map((c) => c.className)).toEqual(['on', '']);
 
     S.status = tracked(0, 3);
     notify();
     await tick();
-    counts = [...document.querySelectorAll('.foot .ab span')];
+    counts = [...document.querySelectorAll('.commit .ab span')];
     expect(counts.map((c) => c.textContent)).toEqual(['↑0', '↓3']);
     expect(counts.map((c) => c.className)).toEqual(['', 'on']);
 
     S.status = status('a.txt');
     notify();
     await tick();
-    expect(document.querySelector('.foot .ab')).toBeNull();
-    expect(document.querySelector('.foot .branch button')!.textContent).toBe('mainno upstream');
+    expect(document.querySelector('.commit .ab')).toBeNull();
+    expect(document.querySelector('.commit .branch .co')!.textContent).toBe('mainno upstream');
   });
 
   it('shows a spinner while busy, and Cancel only when the operation can be cancelled', async () => {
@@ -534,13 +536,13 @@ describe('the title bar and the status bar', () => {
     S.busy = true;
     notify();
     await tick();
-    expect(document.querySelector('.foot .spinner')).not.toBeNull();
-    expect(document.querySelector('.foot .branch .btn')).toBeNull();
+    expect(document.querySelector('.commit .branch .spinner')).not.toBeNull();
+    expect(document.querySelector('.commit .branch .btn')).toBeNull();
 
     S.cancellable = true;
     notify();
     await tick();
-    const cancel = document.querySelector<HTMLButtonElement>('.foot .branch .btn')!;
+    const cancel = document.querySelector<HTMLButtonElement>('.commit .branch .btn')!;
     expect(cancel.textContent).toBe('Cancel');
 
     cancel.click();
@@ -550,7 +552,7 @@ describe('the title bar and the status bar', () => {
     S.cancellable = false;
     notify();
     await tick();
-    expect(document.querySelector('.foot .spinner')).toBeNull();
+    expect(document.querySelector('.commit .branch .spinner')).toBeNull();
   });
 });
 
@@ -634,7 +636,7 @@ describe('changes-only survives the refresh path', () => {
   });
 });
 
-describe('blame in the status bar', () => {
+describe('blame in the file bar', () => {
   const line = (oid: string, summary: string): BlameLine => ({ oid, author: 'Ada', time: 1789629173, summary });
   /** Longer than the 150 ms debounce, so the queued git call has gone out. */
   const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 200));

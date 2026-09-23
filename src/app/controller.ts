@@ -734,10 +734,10 @@ async function loadFiles(): Promise<void> {
   // written in place rather than as a fresh Map: a directory opened while this was in flight is
   // not in `opened`, and replacing the Map wholesale would discard the read it just started
   opened.forEach((p, i) => {
-    if (kids[i]) S.ignoredKids.set(p, kids[i]!);
+    if (kids[i]) S.ignoredKids.set(p, kids[i]);
     else S.ignoredKids.delete(p);
   });
-  for (const p of [...S.ignoredKids.keys()]) if (!S.filesOpen.has(p)) S.ignoredKids.delete(p);
+  for (const p of S.ignoredKids.keys()) if (!S.filesOpen.has(p)) S.ignoredKids.delete(p);
   rebuildIgnored();
 }
 
