@@ -468,8 +468,47 @@ fn list_dir_refuses_a_file_and_anything_outside_the_repo() {
     fs::write(r.join("a.txt"), "1").unwrap();
     assert!(matches!(list_dir_impl(r, "a.txt"), Err(AppError::InvalidPath(_))));
     assert!(matches!(list_dir_impl(r, "../.."), Err(AppError::InvalidPath(_))));
+    assert!(matches!(list_dir_impl(r, "/etc"), Err(AppError::InvalidPath(_))));
     assert!(matches!(list_dir_impl(r, ".git"), Err(AppError::InvalidPath(_))));
+    assert!(matches!(list_dir_impl(r, ".git/refs"), Err(AppError::InvalidPath(_))));
     assert!(matches!(list_dir_impl(r, "nope"), Err(AppError::InvalidPath(_))));
+    assert!(list_dir_impl(r, "").is_err());
+}
+
+/// Every way a symlink can reach somewhere `resolve()` refuses for a file.
+#[test]
+fn list_dir_refuses_a_symlink_reaching_git_a_file_or_nothing() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "1").unwrap();
+    let link = |target: &Path, name: &str| std::os::unix::fs::symlink(target, r.join(name)).unwrap();
+    link(&r.join(".git"), "to_git");
+    link(&r.join(".git/refs"), "to_git_refs");
+    link(&r.join("a.txt"), "to_file");
+    link(&r.join("does_not_exist"), "dangling");
+    link(Path::new("/etc"), "to_etc");
+    link(r.parent().unwrap(), "to_parent");
+
+    for name in ["to_git", "to_git_refs", "to_etc", "to_parent"] {
+        assert!(matches!(list_dir_impl(r, name), Err(AppError::InvalidPath(_))), "{name} was not refused");
+    }
+    // exists but is not a directory, which is the Special the file view already renders
+    assert!(matches!(list_dir_impl(r, "to_file"), Err(AppError::Special)));
+    assert!(list_dir_impl(r, "dangling").is_err());
+    // a traversal that only becomes an escape after a symlink hop is caught too
+    assert!(list_dir_impl(r, "to_parent/..").is_err());
+}
+
+/// A nested repository's .git is skipped, so the tree never offers a row `resolve()` will refuse.
+#[test]
+fn list_dir_skips_a_nested_git_directory() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), "vendor/\n").unwrap();
+    fs::create_dir_all(r.join("vendor/inner/.git")).unwrap();
+    fs::write(r.join("vendor/inner/f.txt"), "1").unwrap();
+
+    assert_eq!(list_dir_impl(r, "vendor/inner").unwrap(), vec!["vendor/inner/f.txt"]);
 }
 
 #[test]

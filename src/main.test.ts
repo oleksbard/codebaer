@@ -95,6 +95,8 @@ describe('autosave flush before a flush-set command', () => {
 
 describe('the Files tree', () => {
   afterEach(() => {
+    // S.ignored is derived, never written to directly; a direct write is how duplicate rows got in
+    expect(S.ignored).toEqual([S.ignoredBase, ...S.ignoredKids.values()].flat());
     S.tab = 'changes';
     S.files = [];
     S.ignored = [];
