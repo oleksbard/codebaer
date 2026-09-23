@@ -48,13 +48,14 @@
   overflow: hidden;
 }
 
-/* decorative: it sits where a title bar would name the app */
+/* the app menu, sitting where a title bar would name the app */
 .brand {
   flex: none;
-  width: 30px;
-  height: 30px;
+  padding: 0;
   margin: 4px 0 14px;
   border-radius: var(--r-4);
+
+  img { display: block; width: 30px; height: 30px; border-radius: inherit; }
 }
 
 .tab-icon {

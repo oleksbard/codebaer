@@ -341,9 +341,18 @@ pub fn status_impl(root: &Path) -> Result<Status, AppError> {
 
 #[derive(Debug, Serialize)]
 pub struct Opened {
-    /// Display only, `~`-shortened; the real root stays in `AppState`.
+    /// Canonical, so it compares equal to the folders the kernel reports for the terminals.
     pub root: String,
+    /// Display only, `~`-shortened.
+    pub label: String,
     pub title: Option<String>,
+}
+
+impl Opened {
+    fn of(root: &Path) -> Self {
+        let path = root.to_string_lossy().to_string();
+        Self { label: crate::recents::label(&path), root: path, title: repo_title(root) }
+    }
 }
 
 /// Enough of a file to reach a README's first heading or to hold a whole package.json.
@@ -384,17 +393,16 @@ pub(crate) fn repo_title(root: &Path) -> Option<String> {
 pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<Opened, AppError> {
     let repo = discover(Path::new(&path))?;
     let handle = crate::watcher::start(&app, &repo.root, &repo.git_dir, &repo.common_dir)?;
-    let root = repo.root.to_string_lossy().to_string();
-    let title = repo_title(&repo.root);
+    let opened = Opened::of(&repo.root);
     // The watcher is created first, so a failure to start it leaves state
     // untouched; once it succeeds, the repo is stored before the new
     // watcher's handle becomes live.
     *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = Some(repo);
     *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
     // every way in (dialog, launch argument, second instance, File menu) lands here
-    crate::recents::push(&app, &root);
+    crate::recents::push(&app, &opened.root);
     crate::refresh_recent_menu(&app);
-    Ok(Opened { root: crate::recents::label(&root), title })
+    Ok(opened)
 }
 
 #[tauri::command(async)]
@@ -1047,5 +1055,15 @@ mod tests {
 
         std::fs::write(root.join("ReadMe.md"), "<p>badge</p>\n\n#  CodeB\u{e4}r \n\n# Later\n").unwrap();
         assert_eq!(repo_title(root).as_deref(), Some("CodeB\u{e4}r"));
+    }
+
+    #[test]
+    fn opened_keeps_the_real_root_apart_from_its_label() {
+        let home = std::env::var("HOME").unwrap();
+        let root = format!("{home}/projects/app");
+        let o = Opened::of(Path::new(&root));
+        // the terminals compare their kernel-reported folders against `root`
+        assert_eq!(o.root, root);
+        assert_eq!(o.label, "~/projects/app");
     }
 }

@@ -210,7 +210,6 @@ kbd {
   font-size: var(--fs-2);
   cursor: default;
   outline: none;
-  user-select: none;
 
   &[data-highlighted] { background: var(--sel); }
 }

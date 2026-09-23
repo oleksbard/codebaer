@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import * as term from '../terminal';
-import { agentOf, homeFrom, isExited, statusLabel, type Agent } from '../terminal-status';
+import { agentOf, awayLabel, homeFrom, isExited, statusLabel, type Agent } from '../terminal-status';
 import { Button } from '../ui/Button';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Kbd } from '../ui/Kbd';
@@ -93,6 +93,15 @@ function Empty() {
   );
 }
 
+function Away() {
+  return (
+    <svg className="away" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 10v3.5h-9v-9H6" />
+    </svg>
+  );
+}
+
 function Dot({ session }: { session: term.Info }) {
   const tone = isExited(session) ? 'off' : session.state.t === 'Running' ? 'run' : 'idle';
   return <span className={`term-dot ${tone}`} aria-hidden="true" />;
@@ -104,8 +113,11 @@ export function TerminalRail() {
     <div className="rail">
       {S.terminals.map((s) => {
         const wants = S.termAttention.has(s.id);
+        const home = homeFrom(s.cwd);
+        const away = awayLabel(s, S.root, home);
         // the number and the glyph are both decorative once the label carries the same words
-        const label = `${s.title} · ${statusLabel(s, Date.now(), homeFrom(s.cwd))}${wants ? ' · wants attention' : ''}`;
+        const label = `${s.title} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
+          + `${wants ? ' · wants attention' : ''}`;
         return (
           <ContextMenu
             key={s.id}
@@ -123,6 +135,7 @@ export function TerminalRail() {
               onClick={() => selectTerminal(s.id)}
             >
               <Glyph session={s} />
+              {away && <Away />}
               <Dot session={s} />
               {wants && <span className="bell" aria-hidden="true" />}
             </button>

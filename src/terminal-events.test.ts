@@ -32,3 +32,9 @@ it('keeps the list and the repaint even when handling an event fails', () => {
   expect(toast).toHaveBeenCalledWith('Error: teardown failed', 'err');
   stop();
 });
+
+it('moves a session to the folder its host reports, and only that session', () => {
+  S.terminals = [session(1), session(2)];
+  onTermEvent({ t: 'Cwd', id: 1, cwd: '/elsewhere' });
+  expect(S.terminals.map((t) => t.cwd)).toEqual(['/elsewhere', '/repo']);
+});

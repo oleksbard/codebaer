@@ -11,5 +11,11 @@ fn main() {
             None => std::process::exit(2),
         }
     }
+    if args.get(1).is_some_and(|a| a == "--pty-relay") {
+        match (args.get(2), args.get(3).and_then(|t| codebaer_lib::pty::relay::Target::parse(t))) {
+            (Some(sock), Some(target)) => codebaer_lib::pty::relay::run(std::path::Path::new(sock), &target),
+            _ => std::process::exit(2),
+        }
+    }
     codebaer_lib::run_app()
 }

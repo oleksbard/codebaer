@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped by any change to the frames or messages below. The socket file name carries it,
 /// so an app never speaks to a daemon built against a different version; the orphan idle-reaps.
-pub const PROTO: u32 = 1;
+pub const PROTO: u32 = 2;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +36,8 @@ pub enum ClientMsg {
     Resize { id: u32, cols: u16, rows: u16 },
     Kill { id: u32 },
     Close { id: u32 },
+    /// Re-reads every session's folder now, for when the app's idea of "inside" just changed.
+    CheckCwd,
     Shutdown,
 }
 
@@ -58,7 +60,13 @@ pub enum State {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Info {
     pub id: u32,
+    /// The session's process, which also leads its group. The only link from a session to a pid
+    /// that survives a platform binary such as /bin/zsh, whose environment `ps` cannot read.
+    /// Defaulted so that a host from before it was added still parses.
+    #[serde(default)]
+    pub pid: Option<i32>,
     pub title: String,
+    /// The folder as last read from the kernel, which starts out as the spawn folder.
     pub cwd: String,
     pub tier: Tier,
     pub state: State,
@@ -76,6 +84,8 @@ pub enum ServerMsg {
     // portable-pty reports only a code, so a signal death arrives as its 128+n encoding
     Exit { id: u32, code: Option<i32> },
     Bell { id: u32 },
+    /// Sent only when the folder differs from the last one reported, `Info::cwd` included.
+    Cwd { id: u32, cwd: String },
     Closed { id: u32 },
     Error { id: Option<u32>, message: String },
 }

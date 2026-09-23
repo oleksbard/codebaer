@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentOf, elapsed, homeFrom, shortCwd, statusLabel } from './terminal-status';
+import { agentOf, awayLabel, elapsed, homeFrom, outsideRepo, shortCwd, statusLabel } from './terminal-status';
 import type { Info } from './terminal';
 
 const base: Info = { id: 1, title: 'zsh', cwd: '/Users/me/projects/x', tier: 'marks', state: { t: 'Idle' } };
@@ -70,5 +70,47 @@ describe('agentOf', () => {
   it('has nothing to show for a plain shell or an unrelated command', () => {
     expect(agentOf(base)).toBe(null);
     expect(agentOf({ ...base, state: { t: 'Running', command: 'pnpm test', since_ms: 0 } })).toBe(null);
+  });
+});
+
+describe('outsideRepo', () => {
+  const at = (cwd: string, extra: Partial<Info> = {}): Info => ({ ...base, cwd, ...extra });
+  const root = '/Users/me/projects/x';
+
+  it('counts the root and every folder under it as inside', () => {
+    expect(outsideRepo(at('/Users/me/projects/x'), root)).toBe(false);
+    expect(outsideRepo(at('/Users/me/projects/x/src/app'), root)).toBe(false);
+  });
+
+  it('flags a folder anywhere else', () => {
+    expect(outsideRepo(at('/Users/me/projects'), root)).toBe(true);
+    expect(outsideRepo(at('/tmp'), root)).toBe(true);
+    // a sibling whose name merely starts the same way is a different repo
+    expect(outsideRepo(at('/Users/me/projects/x-old'), root)).toBe(true);
+  });
+
+  it('flags nothing while no repo is open', () => {
+    expect(outsideRepo(at('/tmp'), null)).toBe(false);
+  });
+
+  it('leaves an exited session alone, since it can no longer edit anything', () => {
+    expect(outsideRepo(at('/tmp', { state: { t: 'Exited', code: 0 } }), root)).toBe(false);
+  });
+});
+
+describe('awayLabel', () => {
+  const root = '/Users/me/projects/x';
+
+  it('says nothing for a session inside the repo', () => {
+    expect(awayLabel(base, root, '/Users/me')).toBe(null);
+  });
+
+  it('does not repeat the folder an idle label already shows', () => {
+    expect(awayLabel({ ...base, cwd: '/Users/me/other' }, root, '/Users/me')).toBe('outside the repo');
+  });
+
+  it('names the folder when the label is busy showing a command', () => {
+    const s: Info = { ...base, cwd: '/Users/me/other', state: { t: 'Running', command: 'claude', since_ms: 0 } };
+    expect(awayLabel(s, root, '/Users/me')).toBe('outside the repo, in ~/other');
   });
 });

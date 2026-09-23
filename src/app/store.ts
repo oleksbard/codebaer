@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Eol, FileText, Status } from '../git';
 import type { ViewKind } from '../editor';
 import type { Item } from '../palette';
+import type { OrphanScan } from '../orphans';
 import type { Info, Menu } from '../terminal';
 
 export type Tab = 'changes' | 'files' | 'terminals';
@@ -30,7 +31,9 @@ export type PromptRequest = { placeholder: string; resolve(value: string | null)
 const storedWidth = localStorage.getItem('codebaer.sideWidth');
 
 export const S = {
+  /** Canonical, the form the terminal host reports folders in; `rootLabel` is for display. */
   root: null as string | null,
+  rootLabel: null as string | null,
   title: null as string | null,
   status: null as Status | null,
   files: [] as string[],
@@ -72,6 +75,8 @@ export const S = {
   termMenu: null as Menu | null,
   termError: null as string | null,
   termFind: '',
+  /** The debug orphan finder's last scan; set while its dialog is open. */
+  orphans: null as OrphanScan | null,
 };
 
 /** DOM nodes the controller focuses; components register them in ref callbacks. */

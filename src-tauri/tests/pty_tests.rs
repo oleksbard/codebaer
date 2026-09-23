@@ -12,13 +12,18 @@ struct Harness {
 }
 
 impl Harness {
+    /// Neither the idle timeout nor the folder sweep fires inside a test run, so a test sees
+    /// only what its own actions caused.
     fn start() -> Harness {
+        Harness::sweeping(Duration::from_secs(3600))
+    }
+
+    fn sweeping(every: Duration) -> Harness {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("ptyd.sock");
         let listener = UnixListener::bind(&sock).unwrap();
         let hub = daemon::new_hub(sock.clone());
-        // an idle timeout long enough that it never fires inside a test run
-        std::thread::spawn(move || daemon::serve(listener, hub, Duration::from_secs(3600)));
+        std::thread::spawn(move || daemon::serve(listener, hub, Duration::from_secs(3600), every));
         Harness { sock, _dir: dir }
     }
 
@@ -98,9 +103,13 @@ impl Client {
     }
 
     fn spawn_sh(&mut self, cwd: &str) -> u32 {
+        self.spawn_shell("/bin/sh", cwd)
+    }
+
+    fn spawn_shell(&mut self, path: &str, cwd: &str) -> u32 {
         self.send(&ClientMsg::Spawn {
             req: 1,
-            kind: SpawnKind::Shell { path: "/bin/sh".into() },
+            kind: SpawnKind::Shell { path: path.into() },
             cwd: cwd.into(),
             cols: 80,
             rows: 24,
@@ -116,6 +125,36 @@ impl Client {
         }
         panic!("no session was spawned: {:?}", self.msgs);
     }
+
+    /// The folders reported for `id`, oldest first.
+    fn cwds(&self, id: u32) -> Vec<String> {
+        self.msgs
+            .iter()
+            .filter_map(|m| match m {
+                ServerMsg::Cwd { id: got, cwd } if *got == id => Some(cwd.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn wait_for_cwd(&mut self, id: u32, want: &str, how_long: Duration) -> bool {
+        let deadline = Instant::now() + how_long;
+        while Instant::now() < deadline {
+            self.pump(Duration::from_millis(120));
+            if self.cwds(id).iter().any(|c| c == want) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Real paths, because that is what the kernel reports: a tempdir lives under /var, which is a
+/// symlink to /private/var.
+fn real_dir() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().to_string_lossy().into_owned();
+    (dir, path)
 }
 
 fn alive(pid: i32) -> bool {
@@ -274,4 +313,70 @@ fn closing_a_live_session_does_not_strand_its_process_tree() {
         std::thread::sleep(Duration::from_millis(100));
     }
     assert!(!alive(pid), "pid {pid} was stranded by Close");
+}
+
+#[test]
+fn a_new_session_reports_the_folder_its_shell_really_started_in() {
+    let h = Harness::start();
+    let mut c = h.connect();
+    // /tmp is a symlink, so the kernel's answer differs from the spawn folder without any cd
+    let id = c.spawn_sh("/tmp");
+    assert!(
+        c.wait_for_cwd(id, "/private/tmp", Duration::from_secs(5)),
+        "the first output must trigger a check: {:?}",
+        c.msgs
+    );
+}
+
+#[test]
+fn a_shell_that_changes_folder_reports_it_at_its_next_prompt() {
+    let (_a, start) = real_dir();
+    let (_b, moved) = real_dir();
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_shell("/bin/zsh", &start);
+    c.pump(Duration::from_millis(800));
+    c.input(id, format!("cd '{moved}'\n").as_bytes());
+    assert!(c.wait_for_cwd(id, &moved, Duration::from_secs(5)), "got: {:?}", c.msgs);
+}
+
+#[test]
+fn a_check_on_demand_finds_a_folder_change_nothing_announced() {
+    let (_a, start) = real_dir();
+    let (_b, moved) = real_dir();
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_sh(&start);
+    c.input(id, format!("cd '{moved}' && echo moved-now\n").as_bytes());
+    assert!(c.wait_for("moved-now", Duration::from_secs(5)), "got: {:?}", c.text());
+    c.pump(Duration::from_millis(300));
+    // sh has no prompt marks, so only the explicit check can have noticed
+    assert!(c.cwds(id).is_empty(), "reported before anyone asked: {:?}", c.cwds(id));
+
+    c.send(&ClientMsg::CheckCwd);
+    assert!(c.wait_for_cwd(id, &moved, Duration::from_secs(5)), "got: {:?}", c.msgs);
+}
+
+#[test]
+fn a_session_that_stayed_put_reports_nothing() {
+    let (_a, start) = real_dir();
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_sh(&start);
+    c.input(id, b"echo settled\n");
+    assert!(c.wait_for("settled", Duration::from_secs(5)));
+    c.send(&ClientMsg::CheckCwd);
+    c.pump(Duration::from_millis(500));
+    assert!(c.cwds(id).is_empty(), "an unchanged folder is not news: {:?}", c.cwds(id));
+}
+
+#[test]
+fn the_host_rechecks_every_session_on_its_own_timer() {
+    let (_a, start) = real_dir();
+    let (_b, moved) = real_dir();
+    let h = Harness::sweeping(Duration::from_millis(200));
+    let mut c = h.connect();
+    let id = c.spawn_sh(&start);
+    c.input(id, format!("cd '{moved}'\n").as_bytes());
+    assert!(c.wait_for_cwd(id, &moved, Duration::from_secs(5)), "got: {:?}", c.msgs);
 }

@@ -96,6 +96,8 @@
   .mark { font-size: 22px; line-height: 1; }
 
   .term-dot { position: absolute; right: 5px; bottom: 5px; }
+  /* the one corner the bell and the state dot leave free */
+  .away { position: absolute; top: 4px; left: 4px; color: var(--warn); }
 
   /* a session producing output is thinking; one at its prompt is silent */
   &.busy .agent:not(.claude),

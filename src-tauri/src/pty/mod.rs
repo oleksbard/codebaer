@@ -1,6 +1,8 @@
 pub mod client;
 pub mod daemon;
+pub mod orphans;
 pub mod osc133;
 pub mod proto;
+pub mod relay;
 pub mod ring;
 pub mod shells;

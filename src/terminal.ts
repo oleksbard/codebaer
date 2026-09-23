@@ -16,7 +16,7 @@ export type TermState =
   | { t: 'Running'; command: string | null; since_ms: number }
   | { t: 'Exited'; code: number | null };
 
-export type Info = { id: number; title: string; cwd: string; tier: Tier; state: TermState };
+export type Info = { id: number; pid?: number | null; title: string; cwd: string; tier: Tier; state: TermState };
 export type Shell = { path: string; name: string };
 export type Menu = { shells: Shell[]; default: string; commands: string[] };
 export type SpawnKind = { t: 'Shell'; path: string } | { t: 'Command'; argv0: string };
@@ -28,8 +28,20 @@ export type ServerMsg =
   | { t: 'Command'; id: number; code: number | null }
   | { t: 'Exit'; id: number; code: number | null }
   | { t: 'Bell'; id: number }
+  | { t: 'Cwd'; id: number; cwd: string }
   | { t: 'Closed'; id: number }
   | { t: 'Error'; id: number | null; message: string };
+
+export type Relay = { sock: string; id: number | null; pid: number | null };
+export type Proc = {
+  pid: number; ppid: number; pgid: number; tty: string; command: string; session: number | null; relay: Relay | null;
+  holds_app: boolean;
+};
+export type Host = {
+  pid: number; sock: string; current: boolean; sock_exists: boolean; in_use: boolean; unclear: boolean;
+  proto: number | null; relay: Relay | null; sessions: Proc[];
+};
+export type Orphans = { sock: string; hosts: Host[]; escaped: Proc[] };
 
 export type Term = {
   term: Terminal;
@@ -96,6 +108,63 @@ export function retheme(): void {
   for (const t of terms.values()) t.term.options.theme = theme();
 }
 
+type WheelTerm = {
+  readonly modes: { readonly mouseTrackingMode: Terminal['modes']['mouseTrackingMode'] };
+  readonly buffer: { readonly active: { readonly type: 'normal' | 'alternate' } };
+  readonly rows: number;
+  readonly element: HTMLElement | undefined;
+};
+
+/** x10 tracking reports button presses only, so the wheel stays with the scrollback. */
+const WHEEL_REPORTING = new Set<WheelTerm['modes']['mouseTrackingMode']>(['vt200', 'drag', 'any']);
+
+/**
+ * xterm 6 sends a program that reads the wheel (Claude Code's fullscreen UI, vim, less) at most one
+ * line per wheel event, and counts a trackpad's travel as 0.3 of the lines it covers, so a swipe there
+ * moves about a third of what it scrolls anywhere else. This replays one line-sized event per cell
+ * height of travel instead, and xterm encodes each for the active mouse protocol as it would its own.
+ */
+export function wheelHandler(term: WheelTerm): (e: WheelEvent) => boolean {
+  let px = 0;
+  let replaying = false;
+  return (e) => {
+    const toApp = WHEEL_REPORTING.has(term.modes.mouseTrackingMode) || term.buffer.active.type === 'alternate';
+    if (replaying || !toApp || e.shiftKey || !e.deltaY || !e.target) return true;
+    const screen = term.element?.querySelector<HTMLElement>('.xterm-screen');
+    const cell = screen && term.rows ? screen.offsetHeight / term.rows : 0;
+    if (!cell) return true;
+    const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * cell
+      : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * cell * term.rows
+      : e.deltaY;
+    // a reversal answers at once instead of first paying back what the other direction left over
+    if (Math.sign(delta) !== Math.sign(px)) px = 0;
+    px += delta;
+    const lines = Math.trunc(px / cell);
+    px -= lines * cell;
+    // xterm cancels a wheel it reports, but not one it would have turned into arrow keys
+    e.preventDefault();
+    replaying = true;
+    try {
+      for (let i = 0; i < Math.abs(lines); i++) {
+        e.target.dispatchEvent(new WheelEvent('wheel', {
+          deltaY: Math.sign(lines),
+          deltaMode: WheelEvent.DOM_DELTA_LINE,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          metaKey: e.metaKey,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    } finally {
+      replaying = false;
+    }
+    return false;
+  };
+}
+
 function create(id: number, el: HTMLDivElement): Term {
   const term = new Terminal({
     allowProposedApi: true,
@@ -135,6 +204,7 @@ function create(id: number, el: HTMLDivElement): Term {
     void invoke('term_input', { id, data: '\x1b\r' });
     return false;
   });
+  term.attachCustomWheelEventHandler(wheelHandler(term));
   term.onData((data) => void invoke('term_input', { id, data }));
   // legacy X10 and 1005 mouse reports are not UTF-8 and arrive here instead of onData
   term.onBinary((data) => {
@@ -287,6 +357,14 @@ function flush(): void {
   }
 }
 
+/** Drops everything held for a session, so that a replay of its ring starts from nothing. The
+ *  instance is cleared rather than disposed, since the view may be showing it already, and by a
+ *  written RIS rather than `reset()`, which would leave what xterm has queued to parse after it. */
+export function reset(id: number): void {
+  pending.delete(id);
+  terms.get(id)?.term.write('\x1bc');
+}
+
 /** The payload is a little-endian session id followed by raw pty bytes. */
 export function route(message: ArrayBuffer | number[]): void {
   const buf = message instanceof ArrayBuffer ? message : new Uint8Array(message).buffer;
@@ -309,6 +387,14 @@ export async function subscribe(onEvent: (m: ServerMsg) => void): Promise<void> 
 export const menu = (): Promise<Menu> => invoke<Menu>('term_menu');
 export const kill = (id: number): Promise<void> => invoke('term_kill', { id });
 export const close = (id: number): Promise<void> => invoke('term_close', { id });
+export const checkCwd = (): Promise<void> => invoke('term_check_cwd');
+export const orphans = (): Promise<Orphans> => invoke<Orphans>('term_orphans');
+export const relist = (id: number | null): Promise<void> => invoke('term_relist', { id });
+export const killOrphan = (pid: number): Promise<void> => invoke('term_kill_orphan', { pid });
+export function restoreOrphan(sock: string, id: number | null, pid: number): Promise<void> {
+  const [cols, rows] = size();
+  return invoke('term_restore', { sock, id, pid, cols, rows });
+}
 
 /** The geometry of any live instance, so a new session opens at the size it will be shown at
  *  rather than at 80x24 followed by a reflow. */

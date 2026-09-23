@@ -47,7 +47,7 @@ impl PtyState {
     }
 }
 
-fn sock_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, AppError> {
+pub(super) fn sock_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, AppError> {
     let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("ptyd-{}.sock", proto::PROTO)))
@@ -278,12 +278,51 @@ pub fn term_spawn<R: Runtime>(
         return Err(AppError::InvalidPath(format!("{kind:?}")));
     }
     let cwd = git.root()?;
-    ensure(&app)?;
+    request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)
+}
+
+/// Unchecked: `term_spawn` holds the webview to the menu, and a restore names its own program.
+pub(super) fn request_spawn<R: Runtime>(
+    app: &AppHandle<R>,
+    kind: SpawnKind,
+    cwd: String,
+    cols: u16,
+    rows: u16,
+) -> Result<u32, AppError> {
+    ensure(app)?;
+    let state = app.state::<PtyState>();
     let mut c = state.0.lock().unwrap();
     c.req += 1;
     let req = c.req;
-    control(&mut c, &ClientMsg::Spawn { req, kind, cwd: cwd.to_string_lossy().into_owned(), cols, rows })?;
+    control(&mut c, &ClientMsg::Spawn { req, kind, cwd, cols, rows })?;
     Ok(req)
+}
+
+/// The host at the far end of this app's connection. Two hosts can claim one socket path: `bind`
+/// replaces the file of a host that stopped answering, and the old one keeps running.
+pub(super) fn host_pid<R: Runtime>(app: &AppHandle<R>) -> Option<i32> {
+    use std::os::fd::AsRawFd;
+    let state = app.state::<PtyState>();
+    let c = state.0.lock().unwrap();
+    let fd = c.write.as_ref()?.as_raw_fd();
+    let mut pid: libc::pid_t = 0;
+    let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+    let got = unsafe {
+        libc::getsockopt(fd, libc::SOL_LOCAL, libc::LOCAL_PEERPID, (&raw mut pid).cast(), &mut len)
+    };
+    (got == 0 && pid > 0).then_some(pid)
+}
+
+/// For a view that lost track of a session: the Hello reply is the host's whole list. Only the
+/// named session is replayed, onto whatever the view holds for it, so the caller drops that first.
+#[tauri::command(async)]
+pub fn term_relist(state: State<'_, PtyState>, id: Option<u32>) -> Result<(), AppError> {
+    let mut c = state.0.lock().unwrap();
+    control(&mut c, &ClientMsg::Hello { proto: proto::PROTO, client: "codebaer".into() })?;
+    match id {
+        Some(id) => control(&mut c, &ClientMsg::Attach { id: Some(id) }),
+        None => Ok(()),
+    }
 }
 
 #[tauri::command(async)]
@@ -316,6 +355,17 @@ pub fn term_kill(state: State<'_, PtyState>, id: u32) -> Result<(), AppError> {
 pub fn term_close(state: State<'_, PtyState>, id: u32) -> Result<(), AppError> {
     let mut c = state.0.lock().unwrap();
     control(&mut c, &ClientMsg::Close { id })
+}
+
+/// A no-op with no host connected: it must not start one, and a host that is not running has no
+/// sessions to check.
+#[tauri::command(async)]
+pub fn term_check_cwd(state: State<'_, PtyState>) -> Result<(), AppError> {
+    let mut c = state.0.lock().unwrap();
+    if c.write.is_none() {
+        return Ok(());
+    }
+    control(&mut c, &ClientMsg::CheckCwd)
 }
 
 /// Quitting is the one exit that takes the sessions with it. A rebuild kills this process with

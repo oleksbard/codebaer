@@ -13,9 +13,14 @@ vi.mock('./toast', async () => {
   const actual = await vi.importActual<typeof import('./toast')>('./toast');
   return { ...actual, confirmDialog: vi.fn() };
 });
+vi.mock('./terminal', async () => {
+  const actual = await vi.importActual<typeof import('./terminal')>('./terminal');
+  return { ...actual, checkCwd: vi.fn() };
+});
 
 const { git } = await import('./git');
 const { confirmDialog } = await import('./toast');
+const { checkCwd } = await import('./terminal');
 const g = git as unknown as Record<string, ReturnType<typeof vi.fn<(...args: never[]) => Promise<unknown>>>>;
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
 
@@ -675,5 +680,17 @@ describe('blame in the file bar', () => {
     moveTo(1);
     await settle();
     expect(S.blame).toBe(null);
+  });
+});
+
+describe('switching repos', () => {
+  it('asks the terminal host to re-read every folder against the new root', async () => {
+    const check = checkCwd as unknown as ReturnType<typeof vi.fn>;
+    check.mockReset().mockResolvedValue(undefined);
+    g.openRepo!.mockResolvedValue({ root: '/Users/me/repos/other', label: '~/repos/other', title: 'other' });
+    await m.openRepo('/Users/me/repos/other');
+    expect(S.root).toBe('/Users/me/repos/other');
+    expect(S.rootLabel).toBe('~/repos/other');
+    expect(check).toHaveBeenCalledOnce();
   });
 });

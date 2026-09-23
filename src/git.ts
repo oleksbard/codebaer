@@ -6,7 +6,7 @@ export type Rev = 'index' | 'head';
 export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
-export type Opened = { root: string; title: string | null };
+export type Opened = { root: string; label: string; title: string | null };
 export type Recent = { path: string; name: string; label: string };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
 export type Listing = { files: string[]; ignored: string[] };

@@ -36,6 +36,18 @@ export function statusLabel(s: Info, now: number, home: string | null = null): s
 
 export const isExited = (s: Info): boolean => s.state.t === 'Exited';
 
+/** Edits made from outside the open repo never reach its review queue. `root` and `cwd` are
+ *  both real paths, so a plain prefix check cannot be fooled by a symlink. */
+export function outsideRepo(s: Info, root: string | null): boolean {
+  if (!root || isExited(s)) return false;
+  return s.cwd !== root && !s.cwd.startsWith(`${root}/`);
+}
+
+export function awayLabel(s: Info, root: string | null, home: string | null): string | null {
+  if (!outsideRepo(s, root)) return null;
+  return s.state.t === 'Idle' ? 'outside the repo' : `outside the repo, in ${shortCwd(s.cwd, home)}`;
+}
+
 /** Home directory as the shells report it, so a label can shorten a path without asking Rust. */
 export function homeFrom(cwd: string): string | null {
   if (!cwd.startsWith(HOME)) return null;

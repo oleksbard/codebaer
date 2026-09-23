@@ -14,7 +14,8 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import {
-  acceptFile, aiMessage, cancel, checkout, commit, network, openPlain, openRepo, openRow, pickRepo, rejectFile,
+  acceptFile, aiMessage, cancel, checkout, commit, findOrphans, network, openPlain, openRepo, openRow, pickRepo,
+  rejectFile,
   setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
@@ -59,6 +60,25 @@ const PLUS = 'M8 3v10M3 8h10';
 const MINUS = 'M3 8h10';
 const DISCARD = 'M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7';
 
+function BrandMenu() {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="brand" aria-label="CodeBär menu">
+          <img src="/icon.png" alt="" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6}>
+          <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
+            Terminals and Orphans…
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 export function ActivityBar() {
   useApp();
   const unstaged = S.status ? buildQueue(S.status).unstaged.length : 0;
@@ -77,7 +97,7 @@ export function ActivityBar() {
   ];
   return (
     <div className="act">
-      <img className="brand" src="/icon.png" alt="" />
+      <BrandMenu />
       <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs} />
       <TerminalRail />
     </div>
@@ -101,7 +121,7 @@ function RepoSwitcher() {
     <div className="side-head">
       <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="repo-trigger" title={`${S.root} - switch project`}>
+          <button type="button" className="repo-trigger" title={`${S.rootLabel ?? S.root} - switch project`}>
             <span className="name">{S.title ?? split(S.root)[1]}</span>
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

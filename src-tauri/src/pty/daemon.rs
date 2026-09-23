@@ -25,10 +25,13 @@ const COALESCE: Duration = Duration::from_millis(8);
 /// defeated the injection (powerlevel10k's instant prompt does exactly this) and it drops to
 /// the tier that only reports liveness.
 const MARK_GRACE: Duration = Duration::from_secs(5);
-const TERM_GRACE: Duration = Duration::from_secs(2);
+/// Only a fallback: a shell with marks is re-read at every prompt, so this has to catch just the
+/// agents and the shells whose marks were defeated.
+const SWEEP: Duration = Duration::from_secs(30);
+pub(super) const TERM_GRACE: Duration = Duration::from_secs(2);
 /// A shell hangs up its own jobs within single-digit milliseconds. The rest is margin for a
 /// loaded machine, which is the only condition the race was ever seen under.
-const HUP_GRACE: Duration = Duration::from_millis(250);
+pub(super) const HUP_GRACE: Duration = Duration::from_millis(250);
 const CHUNK: usize = 64 * 1024;
 
 struct Session {
@@ -85,6 +88,24 @@ pub fn login_shell() -> String {
     "/bin/zsh".to_string()
 }
 
+/// The folder the kernel has for `pid`, with symlinks already resolved, so it compares equal to
+/// a canonicalized repo root. macOS has no notification for a chdir; this can only be asked.
+fn cwd_of(pid: i32) -> Option<String> {
+    if pid <= 0 {
+        return None;
+    }
+    let mut info = std::mem::MaybeUninit::<libc::proc_vnodepathinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as i32;
+    let got = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDVNODEPATHINFO, 0, info.as_mut_ptr().cast(), size) };
+    if got != size {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    let raw = unsafe { std::ffi::CStr::from_ptr(info.pvi_cdir.vip_path.as_ptr().cast()) };
+    // empty for a process whose folder was deleted out from under it
+    raw.to_str().ok().filter(|s| !s.is_empty()).map(String::from)
+}
+
 /// Blocking, and called from outside the hub lock for the same reason the reader threads send
 /// their notes from outside it. `Hello`, `Spawned` and `Closed` are the client's whole record of
 /// a session appearing or leaving and it never re-lists, so one dropped message leaves its list
@@ -109,7 +130,16 @@ pub fn new_hub(sock: PathBuf) -> Shared {
     }))
 }
 
-pub fn serve(listener: UnixListener, hub: Shared, idle: Duration) {
+pub fn serve(listener: UnixListener, hub: Shared, idle: Duration, sweep: Duration) {
+    let sweeper = hub.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(sweep);
+        if sweeper.lock().unwrap().stop {
+            return;
+        }
+        check_all(&sweeper);
+    });
+
     let timer = hub.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(20));
@@ -282,6 +312,7 @@ fn control(msg: ClientMsg, hub: &Shared) -> bool {
             }
         }
         ClientMsg::Kill { id } => kill(id, hub),
+        ClientMsg::CheckCwd => check_all(hub),
         ClientMsg::Close { id } => {
             let exited = match hub.lock().unwrap().sessions.get(&id) {
                 None => return false,
@@ -333,7 +364,7 @@ fn attach(id: Option<u32>, hub: &Shared) {
     }
 }
 
-fn quote(s: &str) -> String {
+pub(super) fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
@@ -415,6 +446,7 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
 
     let info = Info {
         id,
+        pid: (pgid > 0).then_some(pgid),
         title,
         cwd: cwd.to_string(),
         tier,
@@ -485,9 +517,36 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
     Ok(())
 }
 
+/// Reads the session's folder again, and returns the message to send if it moved.
+fn recheck(s: &mut Session) -> Option<ServerMsg> {
+    // the pid of a reaped child is free for the kernel to hand to an unrelated process
+    if matches!(s.info.state, State::Exited { .. }) {
+        return None;
+    }
+    let cwd = cwd_of(s.pgid)?;
+    if cwd == s.info.cwd {
+        return None;
+    }
+    s.info.cwd.clone_from(&cwd);
+    Some(ServerMsg::Cwd { id: s.info.id, cwd })
+}
+
+fn check_all(hub: &Shared) {
+    let (tx, notes) = {
+        let mut h = hub.lock().unwrap();
+        let notes: Vec<ServerMsg> = h.sessions.values_mut().filter_map(recheck).collect();
+        (h.out.clone(), notes)
+    };
+    for note in &notes {
+        emit(tx.as_ref(), note);
+    }
+}
+
 /// Folds the marks a read produced into the session and returns what the client must be told.
 fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
     let mut out = Vec::new();
+    // the first output comes after the rc files ran, which are free to cd somewhere else
+    let mut moved = matches!(s.info.state, State::Starting);
     // one message per transition, not per read: a command quick enough to start and finish
     // inside a single read would otherwise report nothing but the prompt that followed it
     let mut sent = s.info.state.clone();
@@ -496,6 +555,7 @@ fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
             Mark::PromptStart => {
                 s.saw_mark = true;
                 s.info.state = State::Idle;
+                moved = true;
             }
             Mark::CommandStart(command) => {
                 s.saw_mark = true;
@@ -524,6 +584,9 @@ fn apply(s: &mut Session, marks: Vec<Mark>) -> Vec<ServerMsg> {
     }
     if s.info.state != sent {
         out.push(ServerMsg::Status { id: s.info.id, state: s.info.state.clone(), tier: s.info.tier });
+    }
+    if moved {
+        out.extend(recheck(s));
     }
     out
 }
@@ -661,7 +724,7 @@ pub fn run(sock: &Path) -> ! {
     // the socket carries this app's keystrokes; nothing else on the machine may connect
     let _ = std::fs::set_permissions(sock, <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600));
     let hub = new_hub(sock.to_path_buf());
-    serve(listener, hub.clone(), IDLE);
+    serve(listener, hub.clone(), IDLE, SWEEP);
     // idempotent: the Shutdown path has already emptied the map, so this only does work
     // when serve() returned for another reason, such as the idle timer
     teardown(&hub);
@@ -672,6 +735,18 @@ pub fn run(sock: &Path) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_folder_a_live_process_is_in() {
+        let here = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(cwd_of(std::process::id() as i32).as_deref(), here.to_str());
+    }
+
+    #[test]
+    fn has_no_folder_for_a_pid_that_is_not_running() {
+        assert_eq!(cwd_of(-1), None);
+        assert_eq!(cwd_of(0x7fff_fff0), None);
+    }
 
     #[test]
     fn emit_waits_for_room_rather_than_dropping() {

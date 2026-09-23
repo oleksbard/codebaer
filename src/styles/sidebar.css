@@ -86,7 +86,6 @@ summary.sec {
   font-weight: 500;
   cursor: pointer;
   list-style: none;
-  user-select: none;
 
   &:hover { background: var(--panel2); color: var(--text); }
 

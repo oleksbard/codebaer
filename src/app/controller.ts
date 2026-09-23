@@ -18,6 +18,7 @@ import { pick } from '../palette';
 import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
+import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
 import * as term from '../terminal';
 import { notify, refs, S, type Open, type Tab } from './store';
 
@@ -798,6 +799,9 @@ export function onTermEvent(m: term.ServerMsg): void {
       case 'Bell':
         flag(m.id);
         break;
+      case 'Cwd':
+        S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, cwd: m.cwd } : t));
+        break;
       case 'Closed':
         S.terminals = S.terminals.filter((t) => t.id !== m.id);
         S.termAttention.delete(m.id);
@@ -839,6 +843,113 @@ async function connectTerminals(): Promise<void> {
     S.termError = errText(e);
   }
   notify();
+}
+
+/** The sidebar's list is copied before the processes are listed, never after: a terminal opened in
+ *  between is then at worst a process with no entry, never an entry with no process, which is the
+ *  kind that gets offered a Kill. */
+async function takeScan(): Promise<OrphanScan> {
+  const listed = [...S.terminals];
+  return { report: await term.orphans(), listed };
+}
+
+/** Bumped per opening, so a scan started for one dialog cannot land in the next. */
+let orphansEpoch = 0;
+
+export async function findOrphans(): Promise<void> {
+  const epoch = ++orphansEpoch;
+  try {
+    const scan = await takeScan();
+    // something else took the screen meanwhile, or this was opened again
+    if (epoch !== orphansEpoch || S.palette || S.confirm || S.prompt) return;
+    S.orphans = scan;
+  } catch (e) {
+    logError(e, 'find orphans');
+    toast(errText(e), 'err');
+  }
+  notify();
+}
+
+export function closeOrphans(): void {
+  orphansEpoch++;
+  S.orphans = null;
+  notify();
+}
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+/** Rescans until `pid` is gone, since the host signals a closed session's group after it replies. */
+async function rescanOrphans(gone: number | null = null): Promise<void> {
+  const epoch = orphansEpoch;
+  for (let i = 0; i < 12; i++) {
+    const scan = await takeScan();
+    // closed, or closed and opened again, while this was in flight
+    if (!S.orphans || epoch !== orphansEpoch) return;
+    S.orphans = scan;
+    notify();
+    const all = [...scan.report.hosts.flatMap((h) => h.sessions), ...scan.report.escaped];
+    if (gone === null || !all.some((p) => p.pid === gone)) return;
+    await sleep(250);
+  }
+}
+
+/** For a session whose id could not be read: list again, then replay whatever the list gained. */
+async function relistUnknown(): Promise<void> {
+  const before = new Set(S.terminals.map((t) => t.id));
+  await term.relist(null);
+  // the list arrives as a Hello event, not as this call's result
+  for (let i = 0; i < 20 && S.terminals.every((t) => before.has(t.id)); i++) await sleep(100);
+  for (const t of S.terminals) if (!before.has(t.id)) await replay(t.id);
+}
+
+/** Whatever the view already holds for the session goes first, or its history shows twice. */
+async function replay(id: number): Promise<void> {
+  term.reset(id);
+  await term.relist(id);
+  // until the list lands, a rescan's copy of it would still say the session is missing
+  for (let i = 0; i < 20 && !S.terminals.some((t) => t.id === id); i++) await sleep(100);
+}
+
+export async function rescan(): Promise<void> {
+  try {
+    await rescanOrphans();
+  } catch (e) {
+    logError(e, 'rescan orphans');
+    toast(errText(e), 'err');
+  }
+}
+
+export async function orphanAction(a: OrphanAction): Promise<void> {
+  const epoch = orphansEpoch;
+  try {
+    switch (a.t) {
+      case 'relist': await (a.id === null ? relistUnknown() : replay(a.id)); break;
+      case 'relay': await term.restoreOrphan(a.sock, a.id, a.pid); break;
+      case 'signal': await term.killOrphan(a.pid); break;
+      case 'close': {
+        // the only kill the backend cannot check, since only this side knows which entry is which,
+        // so a fresh scan has to agree with the row first
+        const fresh = await takeScan();
+        const same = orphanRows(fresh.report, fresh.listed)
+          .some((r) => r.kill?.t === 'close' && r.kill.id === a.id && r.pid === a.pid);
+        if (!same) {
+          if (S.orphans && epoch === orphansEpoch) S.orphans = fresh;
+          notify();
+          toast('That terminal changed since the scan. Nothing was closed; check the new one.', 'err');
+          return;
+        }
+        await term.close(a.id);
+        // a record the host no longer has gets no Closed, and only its list can drop it
+        await term.relist(null);
+        break;
+      }
+    }
+    // the dialog this action came from may have been closed and another opened meanwhile
+    if (epoch === orphansEpoch) await rescanOrphans(a.t === 'close' ? a.pid : null);
+  } catch (e) {
+    logError(e, `orphan ${a.t}`);
+    toast(errText(e), 'err');
+  }
 }
 
 export async function newTerminal(kind?: term.SpawnKind): Promise<void> {
@@ -885,6 +996,9 @@ export async function openRepo(path: string): Promise<void> {
   try {
     const opened = await git.openRepo(path);
     S.root = opened.root;
+    S.rootLabel = opened.label;
+    // the badge already compares against the new root; this only freshens folders up to a sweep old
+    term.checkCwd().catch((e: unknown) => logError(e, 'terminal folders'));
     S.title = opened.title;
     localStorage.setItem('codebaer.lastRepo', path);
     clearTimeout(S.saveTimer);
@@ -909,7 +1023,7 @@ export async function pickRepo(): Promise<void> {
 
 /** An open overlay owns the keyboard; Radix handles its own Escape. */
 function overlayIdle(): boolean {
-  return !S.palette && !S.confirm && !S.prompt;
+  return !S.palette && !S.confirm && !S.prompt && !S.orphans;
 }
 
 export function dispatch(a: Action): void {
@@ -959,6 +1073,7 @@ export async function start(): Promise<void> {
   // a menu item reaches us even while an overlay owns the keyboard, where dispatch() would have refused
   await listen('menu-open-folder', () => { if (overlayIdle()) void pickRepo(); });
   await listen<string>('menu-open-recent', (e) => { if (overlayIdle()) void openRepo(e.payload); });
+  await listen('menu-orphans', () => { if (overlayIdle()) void findOrphans(); });
   const initial = (await git.initialRepo()) ?? localStorage.getItem('codebaer.lastRepo');
   if (initial) await openRepo(initial);
   else await pickRepo();

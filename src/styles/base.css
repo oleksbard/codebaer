@@ -12,6 +12,16 @@ body {
   color: var(--text);
   font: var(--fs-3)/1.45 var(--ui);
   overflow: hidden;
+  /* WebKit selects the word under a right-click. File content and fields opt back in; the terminal
+     keeps its own selection, which xterm draws. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button {
