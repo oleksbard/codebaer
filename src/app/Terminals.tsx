@@ -121,10 +121,13 @@ export function TerminalRail() {
         return (
           <ContextMenu
             key={s.id}
-            items={[{
-              label: isExited(s) ? 'Close' : 'Kill',
-              onSelect: () => void (isExited(s) ? closeTerminal(s.id) : killTerminal(s.id)),
-            }]}
+            items={isExited(s)
+              ? [{ label: 'Close', onSelect: () => void closeTerminal(s.id) }]
+              : [
+                { label: 'Kill', onSelect: () => void killTerminal(s.id) },
+                // the host's Close kills a live session before dropping it
+                { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
+              ]}
           >
             <button
               type="button"
