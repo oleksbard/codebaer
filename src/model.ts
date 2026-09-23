@@ -1,4 +1,4 @@
-import type { BlameLine, FileEntry, FileText, Status } from './git';
+import type { BlameLine, Branch, FileEntry, FileText, Status } from './git';
 
 export type Section = 'unstaged' | 'staged';
 export type Row = { section: Section; path: string; letter: string; untracked: boolean; conflicted: boolean };
@@ -65,6 +65,16 @@ export function visibleFiles(list: string[], s: Status): string[] {
   const deleted = new Set(s.files
     .filter((e: FileEntry) => e.worktreeStatus === 'D' && !e.untracked).map((e) => e.path));
   return list.filter((p) => !deleted.has(p));
+}
+
+const DEFAULT_BRANCHES = ['main', 'master', 'develop'];
+
+export function pinDefaultBranches(bs: Branch[]): Branch[] {
+  const rank = (b: Branch) => {
+    const i = b.kind === 'local' ? DEFAULT_BRANCHES.indexOf(b.name) : -1;
+    return i < 0 ? DEFAULT_BRANCHES.length : i;
+  };
+  return [...bs].sort((a, b) => rank(a) - rank(b));
 }
 
 export const FLUSH_SET: ReadonlySet<string> = new Set([

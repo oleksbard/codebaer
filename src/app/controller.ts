@@ -6,7 +6,7 @@ import { getChunks } from '@codemirror/merge';
 import { unfoldAll } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
 import {
-  acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, rejectSpecialCase, rowKey,
+  acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase, rowKey,
   unstageText, visibleFiles, type Row,
 } from '../model';
 import {
@@ -661,7 +661,7 @@ async function discardAll(): Promise<void> {
 export async function checkout(): Promise<void> {
   let bs: Branch[] = [];
   try { bs = await git.branches(); } catch (e) { toast(errText(e), 'err'); return; }
-  const opts = bs.map((br) => ({
+  const opts = pinDefaultBranches(bs).map((br) => ({
     label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br,
   }));
   const b = await pick(opts, 'Select a branch to checkout');

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, rejectSpecialCase,
+  acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase,
   rowKey, unstageText, visibleFiles,
 } from './model';
-import type { FileEntry, Status } from './git';
+import type { Branch, FileEntry, Status } from './git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
@@ -38,6 +38,27 @@ describe('buildTree', () => {
     expect(t.dirs.map((d) => d.name)).toEqual(['node_modules', 'src']);
     expect(t.dirs[0]!).toMatchObject({ path: 'node_modules', dirs: [], files: [] });
     expect(t.dirs[1]!.dirs.map((d) => d.path)).toEqual(['src/gen']);
+  });
+});
+
+describe('pinDefaultBranches', () => {
+  const local = (name: string): Branch => ({ kind: 'local', name });
+  const remote = (branch: string): Branch => ({ kind: 'remote', remote: 'origin', branch });
+
+  it('puts local main, master and develop first in that order and keeps the rest in their order', () => {
+    const bs = [
+      local('alpha'), local('develop'), local('feature/x'), local('main'), local('master'), local('zeta'),
+      remote('develop'), remote('main'),
+    ];
+    expect(pinDefaultBranches(bs)).toEqual([
+      local('main'), local('master'), local('develop'),
+      local('alpha'), local('feature/x'), local('zeta'), remote('develop'), remote('main'),
+    ]);
+  });
+
+  it('pins only the defaults that exist and leaves remote copies in place', () => {
+    const bs = [local('a'), local('develop'), remote('main'), remote('master')];
+    expect(pinDefaultBranches(bs)).toEqual([local('develop'), local('a'), remote('main'), remote('master')]);
   });
 });
 
