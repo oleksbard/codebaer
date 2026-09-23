@@ -272,7 +272,12 @@ export function toggleDir(path: string, open: boolean, unlisted = false): void {
   if (open && unlisted) void expandIgnored(path);
 }
 
-const rebuildIgnored = (): void => { S.ignored = [S.ignoredBase, ...S.ignoredKids.values()].flat(); };
+/** A directory read off disk knows nothing of git, so a path git has since started tracking
+ *  (`git add -f` inside an ignored directory) would otherwise be both a file and an ignored row. */
+const rebuildIgnored = (): void => {
+  const tracked = new Set(S.files);
+  S.ignored = [S.ignoredBase, ...S.ignoredKids.values()].flat().filter((p) => !tracked.has(p));
+};
 
 /** git collapses a wholly ignored directory to one entry, so opening one reads it off disk.
  *  The key is claimed before the await, so a reopen during the read does not read it twice. */
@@ -726,7 +731,13 @@ async function loadFiles(): Promise<void> {
   // re-read on every refresh for the rest of the session
   const opened = [...S.ignoredKids.keys()].filter((p) => S.filesOpen.has(p));
   const kids = await Promise.all(opened.map((p) => git.listDir(p).catch(() => null)));
-  S.ignoredKids = new Map(opened.flatMap((p, i) => (kids[i] ? [[p, kids[i]!] as [string, string[]]] : [])));
+  // written in place rather than as a fresh Map: a directory opened while this was in flight is
+  // not in `opened`, and replacing the Map wholesale would discard the read it just started
+  opened.forEach((p, i) => {
+    if (kids[i]) S.ignoredKids.set(p, kids[i]!);
+    else S.ignoredKids.delete(p);
+  });
+  for (const p of [...S.ignoredKids.keys()]) if (!S.filesOpen.has(p)) S.ignoredKids.delete(p);
   rebuildIgnored();
 }
 

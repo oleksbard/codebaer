@@ -826,20 +826,37 @@ pub fn list_files_impl(root: &Path) -> Result<Listing, AppError> {
     Ok(Listing { files: nul_separated(&listed.stdout), ignored: nul_separated(&ignored.stdout) })
 }
 
+/// How one entry is listed: `None` drops it, `Some("/")` makes it an expandable directory. A
+/// symlink is judged by where it lands, so the tree never offers a row that opening it refuses -
+/// a pnpm-style link into the repo expands, one leaving it is an ordinary row, one reaching .git
+/// is dropped the same way a literal .git is.
+fn entry_suffix(root_c: &Path, e: &std::fs::DirEntry) -> Option<&'static str> {
+    let Ok(kind) = e.file_type() else { return None };
+    if !kind.is_symlink() {
+        return Some(if kind.is_dir() { "/" } else { "" });
+    }
+    let Ok(full) = e.path().canonicalize() else { return Some("") };
+    match full.strip_prefix(root_c) {
+        Ok(inside) if has_git_component(inside) => None,
+        Ok(_) => Some(if full.is_dir() { "/" } else { "" }),
+        Err(_) => Some(""),
+    }
+}
+
 /// One level of a directory `list_files_impl` collapsed, so an ignored tree can still be browsed.
 /// Subdirectories keep the trailing slash, which is what marks them as not listed yet.
 pub fn list_dir_impl(root: &Path, rel: &str) -> Result<Vec<String>, AppError> {
+    let dir = resolve_dir(root, rel)?;
+    let root_c = root.canonicalize()?;
     let mut out = Vec::new();
-    for e in std::fs::read_dir(resolve_dir(root, rel)?)? {
+    for e in std::fs::read_dir(dir)? {
         // one entry lost to a package manager churning the directory must not lose the rest
         let Ok(e) = e else { continue };
         let name = e.file_name().to_string_lossy().into_owned();
-        // resolve() refuses any path through .git, so listing one would only offer dead rows
         if name.eq_ignore_ascii_case(".git") {
             continue;
         }
-        // is_dir() follows the link, which is what makes a pnpm-style symlinked package a directory
-        let slash = if e.path().is_dir() { "/" } else { "" };
+        let Some(slash) = entry_suffix(&root_c, &e) else { continue };
         out.push(format!("{rel}/{name}{slash}"));
     }
     out.sort();

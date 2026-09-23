@@ -96,7 +96,8 @@ describe('autosave flush before a flush-set command', () => {
 describe('the Files tree', () => {
   afterEach(() => {
     // S.ignored is derived, never written to directly; a direct write is how duplicate rows got in
-    expect(S.ignored).toEqual([S.ignoredBase, ...S.ignoredKids.values()].flat());
+    const tracked = new Set(S.files);
+    expect(S.ignored).toEqual([S.ignoredBase, ...S.ignoredKids.values()].flat().filter((p) => !tracked.has(p)));
     S.tab = 'changes';
     S.files = [];
     S.ignored = [];
@@ -159,6 +160,43 @@ describe('the Files tree', () => {
     g.listDir!.mockClear();
     await m.refresh();
     expect(g.listDir!).not.toHaveBeenCalled();
+  });
+
+  it('keeps a directory opened while a refresh was in flight', async () => {
+    g.listDir!.mockResolvedValue(['node_modules/x.js']);
+    await filesTab();
+    m.toggleDir('node_modules', true, true);
+    await tick();
+
+    const pending = new Map<string, (v: string[]) => void>();
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/', 'dist/'] });
+    g.listDir!.mockImplementation(((p: string) => new Promise<string[]>((r) => { pending.set(p, r); })) as never);
+    const inFlight = m.refresh();
+    await tick();
+
+    m.toggleDir('dist', true, true);
+    await tick();
+    pending.get('node_modules')!(['node_modules/x.js']);
+    pending.get('dist')!(['dist/app.js']);
+    await inFlight;
+    await tick();
+
+    expect(S.ignoredKids.get('dist')).toEqual(['dist/app.js']);
+    expect(S.ignored).toContain('dist/app.js');
+  });
+
+  it('shows a path git has started tracking as a file, not also as an ignored row', async () => {
+    g.listDir!.mockResolvedValue(['node_modules/keep.js']);
+    await filesTab();
+    m.toggleDir('node_modules', true, true);
+    await tick();
+    expect(S.ignored).toContain('node_modules/keep.js');
+
+    // force-added from a terminal: git lists it now, the directory on disk still holds it
+    g.listFiles!.mockResolvedValue({ files: ['a.txt', 'node_modules/keep.js'], ignored: ['node_modules/'] });
+    await m.refresh();
+    expect(S.files).toContain('node_modules/keep.js');
+    expect(S.ignored).not.toContain('node_modules/keep.js');
   });
 
   it('stops re-reading a directory once it is collapsed', async () => {

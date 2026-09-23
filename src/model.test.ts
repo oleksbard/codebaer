@@ -24,6 +24,14 @@ describe('buildTree', () => {
     expect(app.dirs[0]!.files).toEqual(['src/app/api/q.ts']);
   });
 
+  it('lists a path once however many times it arrives', () => {
+    // the disk listing of an ignored directory and git's own listing can name the same path
+    const t = buildTree(['a.ts', 'src/x.ts', 'a.ts', 'src/', 'src/x.ts']);
+    expect(t.files).toEqual(['a.ts']);
+    expect(t.dirs.map((d) => d.path)).toEqual(['src']);
+    expect(t.dirs[0]!.files).toEqual(['src/x.ts']);
+  });
+
   it('a trailing slash makes an empty directory node, not a file', () => {
     const t = buildTree(['README.md', 'node_modules/', 'src/a.ts', 'src/gen/']);
     expect(t.files).toEqual(['README.md']);

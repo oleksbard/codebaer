@@ -46,7 +46,7 @@ export function buildTree(files: string[]): TreeDir {
     seen.set(path, node);
     return node;
   };
-  for (const p of [...files].sort()) {
+  for (const p of [...new Set(files)].sort()) {
     // a trailing slash marks a directory listed without its contents: it gets a node, no leaf
     if (p.endsWith('/')) { dirAt(p.slice(0, -1)); continue; }
     const i = p.lastIndexOf('/');

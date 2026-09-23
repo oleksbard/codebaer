@@ -499,6 +499,36 @@ fn list_dir_refuses_a_symlink_reaching_git_a_file_or_nothing() {
     assert!(list_dir_impl(r, "to_parent/..").is_err());
 }
 
+/// The listing may not offer a row that expanding it would refuse: what `entry_suffix` marks
+/// expandable has to be exactly what `resolve_dir` accepts.
+#[test]
+fn list_dir_never_offers_a_row_that_cannot_be_opened() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), "vendor/\n").unwrap();
+    fs::create_dir_all(r.join("vendor/real")).unwrap();
+    let out = d.path().parent().unwrap().join("outside-target");
+    fs::create_dir_all(&out).unwrap();
+    std::os::unix::fs::symlink(&out, r.join("vendor/escape")).unwrap();
+    std::os::unix::fs::symlink(r.join(".git"), r.join("vendor/gitlink")).unwrap();
+    std::os::unix::fs::symlink(r.join("vendor/gone"), r.join("vendor/dangling")).unwrap();
+
+    let listed = list_dir_impl(r, "vendor").unwrap();
+    // a link out of the repo is shown, because it is there, but never as something to expand
+    assert!(listed.contains(&"vendor/escape".to_string()), "{listed:?}");
+    assert!(matches!(list_dir_impl(r, "vendor/escape"), Err(AppError::InvalidPath(_))));
+    // a link into .git is dropped, exactly as a literal .git entry is
+    assert!(!listed.iter().any(|p| p.contains("gitlink")), "{listed:?}");
+    assert!(listed.contains(&"vendor/dangling".to_string()), "{listed:?}");
+    assert!(listed.contains(&"vendor/real/".to_string()), "{listed:?}");
+
+    // every entry the listing marks expandable opens, and no other entry does
+    for p in &listed {
+        let opens = list_dir_impl(r, p.trim_end_matches('/')).is_ok();
+        assert_eq!(opens, p.ends_with('/'), "{p} expandable={} but opens={opens}", p.ends_with('/'));
+    }
+}
+
 /// A nested repository's .git is skipped, so the tree never offers a row `resolve()` will refuse.
 #[test]
 fn list_dir_skips_a_nested_git_directory() {

@@ -142,6 +142,15 @@ describe('row layout', () => {
     await renderFiles(['src/a.ts'], null, [], ['node_modules/']);
     toggle('node_modules');
     expect(h.toggleDir!).toHaveBeenLastCalledWith('node_modules', true, false);
+
+    // a subdirectory of one already read arrives collapsed in turn, and reads on its own open.
+    // React runs the parent's onToggle too, so this asserts the call rather than the last call
+    S.ignoredKids = new Map([['node_modules', ['node_modules/pkg/']]]);
+    await renderFiles(['src/a.ts'], null, ['node_modules'], ['node_modules/', 'node_modules/pkg/']);
+    h.toggleDir!.mockClear();
+    toggle('node_modules/pkg');
+    expect(h.toggleDir!).toHaveBeenCalledWith('node_modules/pkg', true, true);
+    expect(h.toggleDir!.mock.calls.filter(([p]) => p === 'node_modules')).toEqual([['node_modules', true, false]]);
   });
 
   it('Files tab nests a directory per segment and indents by depth', async () => {
