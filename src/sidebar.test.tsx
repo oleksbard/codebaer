@@ -8,11 +8,12 @@ import type { Row } from './model';
 vi.mock('./app/controller', () => ({
   openRow: vi.fn(), openPlain: vi.fn(), acceptFile: vi.fn(), rejectFile: vi.fn(), unstageFile: vi.fn(),
   stageAll: vi.fn(), unstageAll: vi.fn(), commit: vi.fn(), aiMessage: vi.fn(), setTab: vi.fn(), toggleDir: vi.fn(),
+  openSettings: vi.fn(), findOrphans: vi.fn(),
 }));
 
 const c = await import('./app/controller');
 const { S, notify } = await import('./app/store');
-const { Sidebar } = await import('./app/Sidebar');
+const { ActivityBar, Sidebar } = await import('./app/Sidebar');
 const h = c as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const row = (path: string, letter: string, section: Row['section'] = 'unstaged', extra: Partial<Row> = {}): Row =>
@@ -41,7 +42,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="host"></div>';
   S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
   S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
-  S.ignoredKids = new Map();
+  S.ignoredKids = new Map(); S.settings = { 'general.headless-ai-provider': 'claude' };
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -370,5 +371,35 @@ describe('AI commit message button', () => {
     expect(btn().classList.contains('busy')).toBe(false);
     S.commitMessage = 'Fix the thing'; notify(); await tick();
     expect(side.querySelector<HTMLTextAreaElement>('#commit-message')!.value).toBe('Fix the thing');
+  });
+
+  it('stays disabled with the reason on hover while the AI provider is off', async () => {
+    S.settings = { 'general.headless-ai-provider': 'off' };
+    await render([], [row('a.ts', 'M', 'staged')]);
+    expect(btn().disabled).toBe(true);
+    const reason = 'Turn on an AI provider in Settings to write commit messages';
+    expect(btn().getAttribute('aria-label')).toBe(reason);
+    // a disabled .ico takes no pointer events, so its own title would never show
+    expect(btn().parentElement!.getAttribute('title')).toBe(reason);
+
+    S.settings = { 'general.headless-ai-provider': 'claude' }; notify(); await tick();
+    expect(btn().disabled).toBe(false);
+    expect(btn().getAttribute('aria-label')).toBe('Write the commit message with Claude');
+  });
+});
+
+describe('brand menu', () => {
+  it('opens Settings from its first item', async () => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const bar = createRoot(host);
+    flushSync(() => bar.render(<ActivityBar />));
+    host.querySelector<HTMLButtonElement>('.brand')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    const items = [...document.querySelectorAll<HTMLElement>('.menu-item')];
+    expect(items.map((i) => i.textContent)).toEqual(['Settings…⌘,', 'Terminals and Orphans…']);
+    items[0]!.click();
+    expect(h.openSettings).toHaveBeenCalledTimes(1);
+    bar.unmount();
   });
 });

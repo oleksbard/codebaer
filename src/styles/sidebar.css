@@ -290,5 +290,6 @@ details:not([open])>.sec .l::before {
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .hint { color: var(--faint); font-size: var(--fs-1); }
   .r { display: flex; align-items: center; gap: 6px; }
+  .ai-wrap { display: flex; }
   .ico { width: 26px; height: 26px; }
 }

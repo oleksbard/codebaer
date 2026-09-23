@@ -15,8 +15,8 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import {
-  acceptFile, aiMessage, cancel, checkout, commit, findOrphans, network, openPlain, openRepo, openRow, pickRepo,
-  rejectFile,
+  acceptFile, aiMessage, cancel, checkout, commit, findOrphans, network, openPlain, openRepo, openRow, openSettings,
+  pickRepo, rejectFile,
   setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
@@ -61,6 +61,9 @@ function BrandMenu() {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6}>
+          <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings()}>
+            Settings…<span className="detail">⌘,</span>
+          </DropdownMenu.Item>
           <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
             Terminals and Orphans…
           </DropdownMenu.Item>
@@ -378,10 +381,13 @@ function BranchBar() {
   );
 }
 
+const AI_OFF = 'Turn on an AI provider in Settings to write commit messages';
+
 function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
   useApp();
   const ref = useRef<HTMLTextAreaElement>(null);
   const message = S.commitMessage;
+  const aiOn = S.settings['general.headless-ai-provider'] !== 'off';
   useEffect(() => {
     const el = ref.current;
     if (!el || hidden) return;
@@ -398,8 +404,11 @@ function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
       <div className="bar">
         <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
         <span className="r">
-          <IconButton id="ai-btn" label="Write the commit message with Claude" busy={S.aiBusy}
-            disabled={staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
+          {/* a disabled .ico takes no pointer events, so the reason sits on a wrapper that does */}
+          <span className="ai-wrap" title={aiOn ? undefined : AI_OFF}>
+            <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={S.aiBusy}
+              disabled={!aiOn || staged === 0 || S.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
+          </span>
           <Button variant="primary" id="commit-btn" busy={S.committing}
             disabled={staged === 0 || !message.trim() || S.committing} onClick={() => void commit()}>
             {S.committing ? <><Spinner />Committing…</> : <>Commit <Kbd>⌘↩</Kbd></>}

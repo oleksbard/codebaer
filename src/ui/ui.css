@@ -116,6 +116,27 @@ kbd {
   &[data-state="active"] { color: var(--text); border-bottom-color: var(--accent); }
 }
 
+.seg {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.seg-item {
+  padding: 3px 12px;
+  border-radius: var(--r-2);
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 500;
+
+  &:hover { color: var(--text); }
+  &[data-state="on"] { background: var(--accent); color: var(--accent-ink); }
+}
+
 .tabs.vert {
   flex: none;
   flex-direction: column;

@@ -5,6 +5,7 @@ import { AlertDialog } from '../ui/AlertDialog';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { OrphansDialog } from './Orphans';
+import { SettingsDialog } from './Settings';
 import { notify, S, useApp, type ConfirmRequest, type PaletteRequest, type PromptRequest } from './store';
 
 export function Overlays() {
@@ -15,6 +16,7 @@ export function Overlays() {
       {S.confirm && <ConfirmDialog req={S.confirm} />}
       {S.prompt && <PromptDialog req={S.prompt} />}
       {S.orphans && <OrphansDialog scan={S.orphans} />}
+      {S.settingsOpen && <SettingsDialog />}
       <div className="toasts">
         {S.toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`} onClick={() => removeToast(t.id)}>{t.message}</div>

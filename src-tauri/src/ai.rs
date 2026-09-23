@@ -1,9 +1,10 @@
 use crate::error::AppError;
 use crate::git::{self, AppState};
+use crate::settings::{self, AiProvider};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 sentences with the reason or the key consequence. Write the body as one paragraph on a single line, however long it gets; never break a sentence across lines. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -21,7 +22,11 @@ fn claude_bin() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-pub fn commit_message_impl(root: &Path) -> Result<String, AppError> {
+pub fn commit_message_impl(root: &Path, provider: AiProvider) -> Result<String, AppError> {
+    match provider {
+        AiProvider::Off => return Err(AppError::Ai("AI commit messages are off. Turn them on in Settings.".into())),
+        AiProvider::Claude => {}
+    }
     let diff = git::run(root, &["diff", "--cached", "--no-color", "--no-ext-diff"], None, Some(git::LOCAL))?.stdout;
     if diff.is_empty() {
         return Err(AppError::Ai("Nothing is staged".into()));
@@ -50,9 +55,9 @@ pub fn commit_message_impl(root: &Path) -> Result<String, AppError> {
 
 /// Async so the call leaves the main thread; sync commands would freeze the window while claude runs.
 #[tauri::command]
-pub async fn ai_commit_message(state: State<'_, AppState>) -> Result<String, AppError> {
+pub async fn ai_commit_message(app: AppHandle, state: State<'_, AppState>) -> Result<String, AppError> {
     let root = state.root()?;
-    tauri::async_runtime::spawn_blocking(move || commit_message_impl(&root))
+    tauri::async_runtime::spawn_blocking(move || commit_message_impl(&root, settings::load(&app).headless_ai_provider))
         .await
         .map_err(|e| AppError::Ai(e.to_string()))?
 }

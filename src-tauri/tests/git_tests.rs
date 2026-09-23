@@ -3,6 +3,7 @@ use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_f
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{cancel_impl, push_args, run_net, AppState};
+use codebaer_lib::settings::AiProvider;
 use codebaer_lib::AppError;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -927,7 +928,17 @@ fn run_net_refuses_a_second_concurrent_network_command() {
 #[test]
 fn ai_commit_message_needs_staged_changes() {
     let d = repo();
-    assert!(matches!(codebaer_lib::ai::commit_message_impl(d.path()), Err(AppError::Ai(_))));
+    let res = codebaer_lib::ai::commit_message_impl(d.path(), AiProvider::Claude);
+    assert!(matches!(res, Err(AppError::Ai(ref s)) if s == "Nothing is staged"));
+}
+
+#[test]
+fn ai_commit_message_refuses_when_the_provider_is_off() {
+    let d = repo();
+    fs::write(d.path().join("a.txt"), "changed\n").unwrap();
+    sh(d.path(), &["add", "a.txt"]);
+    let res = codebaer_lib::ai::commit_message_impl(d.path(), AiProvider::Off);
+    assert!(matches!(res, Err(AppError::Ai(ref s)) if s.contains("Settings")), "{res:?}");
 }
 
 #[test]

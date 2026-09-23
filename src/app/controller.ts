@@ -19,6 +19,7 @@ import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
 import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
+import { DEFAULTS, type SettingKey, type Settings } from '../settings';
 import * as term from '../terminal';
 import { notify, refs, S, type Open, type Tab } from './store';
 
@@ -861,7 +862,7 @@ export async function findOrphans(): Promise<void> {
   try {
     const scan = await takeScan();
     // something else took the screen meanwhile, or this was opened again
-    if (epoch !== orphansEpoch || S.palette || S.confirm || S.prompt) return;
+    if (epoch !== orphansEpoch || S.palette || S.confirm || S.prompt || S.settingsOpen) return;
     S.orphans = scan;
   } catch (e) {
     logError(e, 'find orphans');
@@ -874,6 +875,72 @@ export function closeOrphans(): void {
   orphansEpoch++;
   S.orphans = null;
   notify();
+}
+
+// ---------- settings ----------
+/** One at a time: two saves in flight could land in either order, and a read between a save and
+ *  its result would show the old value. */
+let settingsQueue: Promise<unknown> = Promise.resolve();
+function inOrder<T>(fn: () => Promise<T>): Promise<T> {
+  const run = settingsQueue.then(fn);
+  settingsQueue = run.catch(() => {});
+  return run;
+}
+
+/** What the file holds, as far as this window knows. A failed save goes back to it, not to the value
+ *  before its own click: an earlier click may have failed too. */
+let confirmed: Settings = { ...DEFAULTS };
+
+function loadSettings(): Promise<void> {
+  return inOrder(async () => {
+    S.settings = confirmed = await git.settings();
+    notify();
+  });
+}
+
+/** Bumped per opening, so an earlier opening still reading the file cannot reopen it after Escape. */
+let settingsEpoch = 0;
+
+/** Reads the file first, so an edit made to it by hand shows up. */
+export async function openSettings(): Promise<void> {
+  const epoch = ++settingsEpoch;
+  try {
+    await loadSettings();
+  } catch (e) {
+    if (epoch === settingsEpoch) toast(`Settings could not be read: ${errText(e)}`, 'err');
+    return;
+  }
+  // something else took the screen while the file was read, or this was opened again
+  if (epoch !== settingsEpoch || !overlayIdle()) return;
+  S.settingsOpen = true;
+  notify();
+}
+
+export function closeSettings(): void {
+  settingsEpoch++;
+  S.settingsOpen = false;
+  notify();
+}
+
+const same = (a: Settings, b: Settings) => (Object.keys(a) as SettingKey[]).every((k) => a[k] === b[k]);
+
+export function setSetting<K extends SettingKey>(key: K, value: Settings[K]): Promise<void> {
+  S.settings = { ...S.settings, [key]: value };
+  notify();
+  return inOrder(async () => {
+    const sent = S.settings;
+    // nothing to write, e.g. a change queued behind a failed save, which undid it
+    if (same(sent, confirmed)) return;
+    try {
+      await git.saveSettings(sent);
+      confirmed = sent;
+    } catch (e) {
+      // a failed write leaves the file as it was
+      S.settings = confirmed;
+      toast(`Settings not saved: ${errText(e)}`, 'err');
+    }
+    notify();
+  });
 }
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
@@ -1026,7 +1093,7 @@ export async function pickRepo(): Promise<void> {
 
 /** An open overlay owns the keyboard; Radix handles its own Escape. */
 function overlayIdle(): boolean {
-  return !S.palette && !S.confirm && !S.prompt && !S.orphans;
+  return !S.palette && !S.confirm && !S.prompt && !S.orphans && !S.settingsOpen;
 }
 
 export function dispatch(a: Action): void {
@@ -1065,6 +1132,7 @@ export async function start(): Promise<void> {
     notify();
     return;
   }
+  loadSettings().catch((e: unknown) => logError(e, 'load settings'));
   installKeys(dispatch, (visible) => { S.chord = visible; notify(); });
   // not deferred to the first visit any more: the activity bar lists every session on every tab
   void connectTerminals();
@@ -1077,6 +1145,7 @@ export async function start(): Promise<void> {
   await listen('menu-open-folder', () => { if (overlayIdle()) void pickRepo(); });
   await listen<string>('menu-open-recent', (e) => { if (overlayIdle()) void openRepo(e.payload); });
   await listen('menu-orphans', () => { if (overlayIdle()) void findOrphans(); });
+  await listen('menu-settings', () => { if (overlayIdle()) void openSettings(); });
   const initial = (await git.initialRepo()) ?? localStorage.getItem('codebaer.lastRepo');
   if (initial) await openRepo(initial);
   else await pickRepo();

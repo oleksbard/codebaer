@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
 export type Rev = 'index' | 'head';
@@ -85,6 +86,8 @@ export const git = {
   discardAll: () => invoke<void>('discard_all'),
   commit: (message: string) => invoke<void>('commit', { message }),
   aiCommitMessage: () => invoke<string>('ai_commit_message'),
+  settings: () => invoke<Settings>('settings_get'),
+  saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),

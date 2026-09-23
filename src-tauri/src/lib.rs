@@ -5,6 +5,7 @@ pub mod git;
 pub mod logs;
 pub mod pty;
 pub mod recents;
+pub mod settings;
 pub mod status;
 pub mod watcher;
 
@@ -159,6 +160,8 @@ pub fn run_app() {
             let app_menu = Submenu::with_items(app, "CodeBär", true, &[
                 &PredefinedMenuItem::about(app, None, None)?,
                 &PredefinedMenuItem::separator(app)?,
+                &MenuItem::with_id(app, "app.settings", "Settings\u{2026}", true, Some("CmdOrCtrl+,"))?,
+                &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::quit(app, None)?,
             ])?;
             // macOS delivers Cut/Copy/Paste/Select All/Undo to the webview only through these
@@ -191,6 +194,8 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-folder", ());
             } else if id == "file.orphans" {
                 let _ = app.emit("menu-orphans", ());
+            } else if id == "app.settings" {
+                let _ = app.emit("menu-settings", ());
             } else if id == "recent.clear" {
                 recents::clear(app);
                 refresh_recent_menu(app);
@@ -199,7 +204,7 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, recent_repos, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, recent_repos, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message, settings::settings_get, settings::settings_set, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {

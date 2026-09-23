@@ -186,3 +186,85 @@
 
   tr.busy td { background: var(--sel); }
 }
+
+.settings { width: min(680px, calc(100vw - 32px)); }
+
+.settings .dialog-x { top: 14px; right: 14px; }
+
+.settings-body {
+  display: flex;
+  min-height: 300px;
+}
+
+.settings-side {
+  flex: none;
+  width: 164px;
+  padding: 14px 8px;
+  background: var(--panel2);
+  border-right: 1px solid var(--line);
+
+  .dialog-title { margin: 0 8px 12px; }
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-tab {
+  padding: 5px 8px;
+  border-radius: var(--r-3);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  text-align: left;
+
+  &:hover { color: var(--text); }
+  &[data-state="active"] { background: var(--sel); color: var(--text); }
+}
+
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  outline: none;
+}
+
+.settings-pane-title {
+  margin: 0 32px 10px 0;
+  font-size: var(--fs-4);
+  font-weight: 600;
+}
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setting-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-label {
+  font-size: var(--fs-3);
+  font-weight: 500;
+}
+
+.setting-key {
+  font: var(--fs-1) var(--mono);
+  color: var(--faint);
+}
+
+.setting-desc {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-2);
+  line-height: 1.45;
+}

@@ -3,6 +3,7 @@ import type { Eol, FileText, Status } from '../git';
 import type { ViewKind } from '../editor';
 import type { Item } from '../palette';
 import type { OrphanScan } from '../orphans';
+import { DEFAULTS } from '../settings';
 import type { Info, Menu } from '../terminal';
 
 export type Tab = 'changes' | 'files' | 'terminals';
@@ -77,6 +78,9 @@ export const S = {
   termFind: '',
   /** The debug orphan finder's last scan; set while its dialog is open. */
   orphans: null as OrphanScan | null,
+  /** The defaults until start() reads the file. */
+  settings: { ...DEFAULTS },
+  settingsOpen: false,
 };
 
 /** DOM nodes the controller focuses; components register them in ref callbacks. */

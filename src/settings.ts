@@ -1,0 +1,29 @@
+export type AiProvider = 'off' | 'claude';
+
+/** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
+export type Settings = { 'general.headless-ai-provider': AiProvider };
+export type SettingKey = keyof Settings;
+
+export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off' };
+
+export type Choice<K extends SettingKey> = { value: Settings[K]; label: string };
+export type Option = {
+  [K in SettingKey]: { key: K; label: string; description: string; choices: Choice<K>[] };
+}[SettingKey];
+export type Section = { id: string; label: string; options: Option[] };
+
+export const SECTIONS: Section[] = [
+  {
+    id: 'general',
+    label: 'General',
+    options: [
+      {
+        key: 'general.headless-ai-provider',
+        label: 'Headless AI provider',
+        description: 'The command-line AI that writes the commit message from the staged diff. '
+          + 'Off turns AI commit messages off. Claude runs the local claude CLI.',
+        choices: [{ value: 'off', label: 'Off' }, { value: 'claude', label: 'Claude' }],
+      },
+    ],
+  },
+];
