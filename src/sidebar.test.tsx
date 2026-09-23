@@ -40,7 +40,8 @@ beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
   S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
-  S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = '';
+  S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
+  S.ignoredKids = new Map();
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -64,8 +65,11 @@ const openFile = (path: string) => ({
   docOid: null, dirty: false, badge: null, panel: null, conflicted: false,
 }) as NonNullable<typeof S.open>;
 
-async function renderFiles(files: string[], active: string | null = null, open: string[] = []): Promise<void> {
+async function renderFiles(
+  files: string[], active: string | null = null, open: string[] = [], ignored: string[] = [],
+): Promise<void> {
   S.files = files;
+  S.ignored = ignored;
   S.open = active ? openFile(active) : null;
   S.filesOpen = new Set(open);
   S.tab = 'files';
@@ -105,6 +109,41 @@ describe('row layout', () => {
     expect(side.querySelector('.row.f .path .name')!.textContent).toBe('a.ts');
   });
 
+  it('Files tab lists an ignored file dimmed and an ignored directory as a dimmed directory', async () => {
+    await renderFiles(['README.md', 'src/a.ts'], null, ['src'], ['.env', 'node_modules/', 'src/gen/']);
+    const row = (p: string) => side.querySelector<HTMLElement>(`[data-key="plain:${p}"]`)!;
+    const dir = (p: string) => side.querySelector<HTMLElement>(`details[data-dir="${p}"]`)!;
+
+    expect(row('.env').classList.contains('ignored')).toBe(true);
+    expect(row('.env').getAttribute('role')).toBe('button');
+    expect(row('README.md').classList.contains('ignored')).toBe(false);
+
+    expect(dir('node_modules').querySelector('summary')!.classList.contains('ignored')).toBe(true);
+    expect(dir('src')!.querySelector('summary')!.classList.contains('ignored')).toBe(false);
+    // an ignored directory nested under a listed one still lands inside it
+    expect(dir('src/gen').parentElement).toBe(dir('src'));
+  });
+
+  it('opening a directory git collapsed asks for its contents, an already listed one does not', async () => {
+    await renderFiles(['src/a.ts'], null, [], ['node_modules/']);
+    const toggle = (p: string) => {
+      const d = side.querySelector<HTMLDetailsElement>(`details[data-dir="${p}"]`)!;
+      d.open = true;
+      d.dispatchEvent(new Event('toggle'));
+    };
+
+    toggle('node_modules');
+    expect(h.toggleDir!).toHaveBeenCalledWith('node_modules', true, true);
+    toggle('src');
+    expect(h.toggleDir!).toHaveBeenCalledWith('src', true, false);
+
+    // once it has been read, an ignored directory is not asked for again, empty or not
+    S.ignoredKids = new Map([['node_modules', []]]);
+    await renderFiles(['src/a.ts'], null, [], ['node_modules/']);
+    toggle('node_modules');
+    expect(h.toggleDir!).toHaveBeenLastCalledWith('node_modules', true, false);
+  });
+
   it('Files tab nests a directory per segment and indents by depth', async () => {
     await renderFiles(['src/app/a.ts', 'README.md'], null, ['src', 'src/app']);
     const dirs = [...side.querySelectorAll<HTMLDetailsElement>('details[data-dir]')];
@@ -125,7 +164,7 @@ describe('row layout', () => {
 
     side.querySelector<HTMLElement>('details[data-dir="src"] > summary')!.click();
     await tick();
-    expect(h.toggleDir).toHaveBeenCalledWith('src', true);
+    expect(h.toggleDir).toHaveBeenCalledWith('src', true, false);
 
     await renderFiles(['src/app/a.ts', 'src/app/b.ts', 'README.md'], null, ['src', 'src/app']);
     expect(side.querySelectorAll('.row.f').length).toBe(3);

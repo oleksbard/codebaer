@@ -20,7 +20,7 @@ import { TerminalRail } from './Terminals';
 
 function ChangesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
+    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
       aria-hidden="true">
       <circle cx="4.5" cy="3" r="1.75" />
       <circle cx="4.5" cy="13" r="1.75" />
@@ -32,7 +32,7 @@ function ChangesIcon() {
 
 function FilesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5"
+    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
       <path d="M9.5 1.75V5h3.25" />
@@ -41,16 +41,25 @@ function FilesIcon() {
   );
 }
 
-const TABS = [
-  { value: 'changes', label: 'Changes', icon: <ChangesIcon /> },
-  { value: 'files', label: 'Files', icon: <FilesIcon /> },
-];
-
 export function ActivityBar() {
   useApp();
+  const unstaged = S.status ? buildQueue(S.status).unstaged.length : 0;
+  const tabs = [
+    {
+      value: 'changes',
+      label: unstaged ? `Changes - ${unstaged} to review` : 'Changes',
+      icon: (
+        <span className="tab-icon">
+          <ChangesIcon />
+          {unstaged > 0 && <span className="tab-dot" />}
+        </span>
+      ),
+    },
+    { value: 'files', label: 'Files', icon: <FilesIcon /> },
+  ];
   return (
     <div className="act">
-      <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={TABS} />
+      <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs} />
       <TerminalRail />
     </div>
   );
@@ -71,7 +80,7 @@ export function Sidebar() {
   return (
     <aside className="side">
       {S.tab === 'files'
-        ? <FilesList files={S.files} active={S.open?.path ?? null} />
+        ? <FilesList files={S.files} ignored={S.ignored} active={S.open?.path ?? null} />
         : <QueueList q={q} selected={S.selected} open={open}
           onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
       <CommitBox staged={q.staged.length} hidden={S.tab !== 'changes'} />
@@ -181,34 +190,44 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
 
 /** `active` is the open file's path rather than S.selected, so a file opened from the Changes
  *  view is marked here too. */
-function FilesList({ files, active }: { files: string[]; active: string | null }) {
-  const tree = useMemo(() => buildTree(files), [files]);
+function FilesList({ files, ignored, active }: { files: string[]; ignored: string[]; active: string | null }) {
+  const set = useMemo(() => new Set(ignored), [ignored]);
+  const tree = useMemo(() => buildTree([...files, ...ignored]), [files, ignored]);
   // the row only exists once reveal() has opened its ancestors, so this waits on the same render
   useEffect(() => {
     const rows = refs.list?.querySelectorAll<HTMLElement>('.row.f') ?? [];
     [...rows].find((r) => r.dataset.path === active)?.scrollIntoView({ block: 'nearest' });
   }, [active, tree]);
-  return <List><TreeLevel node={tree} depth={0} active={active} /></List>;
+  return <List><TreeLevel node={tree} depth={0} active={active} ignored={set} /></List>;
 }
 
-function TreeLevel({ node, depth, active }: { node: TreeDir; depth: number; active: string | null }) {
+function TreeLevel(
+  { node, depth, active, ignored }:
+  { node: TreeDir; depth: number; active: string | null; ignored: ReadonlySet<string> },
+) {
   const indent = { '--depth': depth } as CSSProperties;
   return (
     <>
       {node.dirs.map((d) => {
         const open = S.filesOpen.has(d.path);
+        // git collapsed this one to a single entry, so opening it is what reads its contents;
+        // asking the map rather than the node keeps a genuinely empty directory to one read
+        const unlisted = ignored.has(`${d.path}/`) && !S.ignoredKids.has(d.path);
         return (
           // a closed directory renders no children at all: the tree holds every file in the repo,
           // and this is what keeps a render proportional to what is on screen
-          <details key={d.path} data-dir={d.path} open={open} onToggle={(e) => toggleDir(d.path, e.currentTarget.open)}>
-            <summary className="sec d" style={indent} title={d.path}><span className="l">{d.name}</span></summary>
-            {open && <TreeLevel node={d} depth={depth + 1} active={active} />}
+          <details key={d.path} data-dir={d.path} open={open}
+            onToggle={(e) => toggleDir(d.path, e.currentTarget.open, unlisted)}>
+            <summary className={`sec d${ignored.has(`${d.path}/`) ? ' ignored' : ''}`} style={indent} title={d.path}>
+              <span className="l">{d.name}</span>
+            </summary>
+            {open && <TreeLevel node={d} depth={depth + 1} active={active} ignored={ignored} />}
           </details>
         );
       })}
       {node.files.map((p) => (
-        <div key={p} className={`row f${p === active ? ' sel' : ''}`} data-key={`plain:${p}`} data-path={p}
-          style={indent}
+        <div key={p} className={`row f${p === active ? ' sel' : ''}${ignored.has(p) ? ' ignored' : ''}`}
+          data-key={`plain:${p}`} data-path={p} style={indent}
           role="button" aria-current={p === active || undefined} title={p} onClick={() => void openPlain(p)}>
           <FileIcon name={split(p)[1]} />
           <span className="path"><span className="name">{split(p)[1]}</span></span>

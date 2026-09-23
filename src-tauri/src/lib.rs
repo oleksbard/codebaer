@@ -44,6 +44,45 @@ fn initial_repo() -> Option<String> {
     repo_arg(&std::env::args().skip(1).collect::<Vec<_>>())
 }
 
+/// One recent repo, named and shortened the way the header names the open one.
+#[derive(serde::Serialize)]
+pub struct Recent {
+    path: String,
+    name: String,
+    label: String,
+}
+
+impl Recent {
+    fn new(path: String) -> Self {
+        let dir = std::path::Path::new(&path);
+        let name = git::repo_title(dir)
+            .unwrap_or_else(|| dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
+        let label = recents::label(&path);
+        Recent { path, name, label }
+    }
+
+    /// A menu-bar item carries one string, so the header's two columns join into it.
+    fn menu_label(&self) -> String {
+        format!("{} - {}", self.name, self.label)
+    }
+}
+
+/// The open repo is the top of the recents list, and reopening it is a no-op, so it is left out
+/// of both the File menu and the in-app switcher.
+fn recent_rows(app: &AppHandle) -> Vec<Recent> {
+    let open = app.state::<git::AppState>().root().ok();
+    recents::load(app)
+        .into_iter()
+        .filter(|p| open.as_deref() != Some(std::path::Path::new(p)))
+        .map(Recent::new)
+        .collect()
+}
+
+#[tauri::command(async)]
+fn recent_repos(app: AppHandle) -> Vec<Recent> {
+    recent_rows(&app)
+}
+
 fn recent_menu(app: &AppHandle) -> Option<Submenu<Wry>> {
     app.menu()?.get("file")?.as_submenu()?.get("file.recent")?.as_submenu().cloned()
 }
@@ -53,12 +92,13 @@ fn fill_recent(app: &AppHandle, menu: &Submenu<Wry>) -> tauri::Result<()> {
     for item in menu.items()? {
         menu.remove(&item)?;
     }
-    let paths = recents::load(app);
-    menu.set_enabled(!paths.is_empty())?;
-    for p in &paths {
-        menu.append(&MenuItem::with_id(app, format!("recent:{p}"), recents::label(p), true, None::<&str>)?)?;
+    let rows = recent_rows(app);
+    menu.set_enabled(!rows.is_empty())?;
+    for r in &rows {
+        let id = format!("recent:{}", r.path);
+        menu.append(&MenuItem::with_id(app, id, r.menu_label(), true, None::<&str>)?)?;
     }
-    if !paths.is_empty() {
+    if !rows.is_empty() {
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         menu.append(&MenuItem::with_id(app, "recent.clear", "Clear Menu", true, None::<&str>)?)?;
     }
@@ -155,7 +195,7 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, recent_repos, git::open_repo, git::status, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::cancel, ai::ai_commit_message, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {

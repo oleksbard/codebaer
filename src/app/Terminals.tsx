@@ -27,7 +27,7 @@ function ClaudeMark({ busy }: { busy: boolean }) {
 
 function CodexIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5"
+    <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5z" />
       <path d="M8 5.4 10.9 7v2.9L8 11.6 5.1 9.9V7z" />

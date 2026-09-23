@@ -252,6 +252,30 @@ pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, AppError> {
     Ok(full)
 }
 
+/// The directory counterpart of `resolve`: the same guards, but a directory is the thing being
+/// asked for rather than the `Special` refusal `resolve` ends on.
+pub fn resolve_dir(root: &Path, rel: &str) -> Result<PathBuf, AppError> {
+    let bad = |m: &str| -> Result<PathBuf, AppError> { Err(AppError::InvalidPath(format!("{m}: {rel:?}"))) };
+    match resolve(root, rel) {
+        Err(AppError::Special) => {}
+        Err(e) => return Err(e),
+        Ok(_) => return bad("not a directory"),
+    }
+    // resolve() stops short of canonicalizing the final component, so the check it cannot make
+    // is made here: a symlinked directory inside the repo is browsable, one leaving it is not
+    let root_c = root.canonicalize()?;
+    let full = root_c.join(rel).canonicalize()?;
+    let Ok(inside) = full.strip_prefix(&root_c) else { return bad("outside repository") };
+    if has_git_component(inside) {
+        return bad(".git component");
+    }
+    if full.is_dir() {
+        Ok(full)
+    } else {
+        Err(AppError::Special)
+    }
+}
+
 #[derive(Debug)]
 pub struct Repo {
     pub root: PathBuf,
@@ -352,7 +376,7 @@ fn package_name(root: &Path) -> Option<String> {
 
 /// A human name for the repo, for the header. The remote's basename is deliberately not consulted:
 /// it is the folder name in everything but `git clone <url> <other-dir>`, and it costs a subprocess.
-fn repo_title(root: &Path) -> Option<String> {
+pub(crate) fn repo_title(root: &Path) -> Option<String> {
     readme_title(root).or_else(|| package_name(root))
 }
 
@@ -783,9 +807,43 @@ pub fn stash_pop_impl(root: &Path) -> Result<(), AppError> {
     run_locked(root, &["stash", "pop", "--index"], None, Some(LOCAL)).map(|_| ())
 }
 
-pub fn list_files_impl(root: &Path) -> Result<Vec<String>, AppError> {
-    let out = run(root, &["ls-files", "-co", "--exclude-standard", "--deduplicate", "-z"], None, Some(LOCAL))?;
-    Ok(out.stdout.split(|&b| b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect())
+/// `ignored` carries a trailing slash on a wholly ignored directory, which is how the tree tells
+/// a collapsed directory from a single ignored file.
+#[derive(Debug, serde::Serialize)]
+pub struct Listing {
+    pub files: Vec<String>,
+    pub ignored: Vec<String>,
+}
+
+fn nul_separated(out: &[u8]) -> Vec<String> {
+    out.split(|&b| b == 0).filter(|s| !s.is_empty()).map(|s| String::from_utf8_lossy(s).into_owned()).collect()
+}
+
+pub fn list_files_impl(root: &Path) -> Result<Listing, AppError> {
+    let listed = run(root, &["ls-files", "-co", "--exclude-standard", "--deduplicate", "-z"], None, Some(LOCAL))?;
+    // --directory keeps this bounded: without it an ignored node_modules lists every file under it
+    let ignored = run(root, &["ls-files", "-oi", "--exclude-standard", "--directory", "-z"], None, Some(LOCAL))?;
+    Ok(Listing { files: nul_separated(&listed.stdout), ignored: nul_separated(&ignored.stdout) })
+}
+
+/// One level of a directory `list_files_impl` collapsed, so an ignored tree can still be browsed.
+/// Subdirectories keep the trailing slash, which is what marks them as not listed yet.
+pub fn list_dir_impl(root: &Path, rel: &str) -> Result<Vec<String>, AppError> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(resolve_dir(root, rel)?)? {
+        // one entry lost to a package manager churning the directory must not lose the rest
+        let Ok(e) = e else { continue };
+        let name = e.file_name().to_string_lossy().into_owned();
+        // resolve() refuses any path through .git, so listing one would only offer dead rows
+        if name.eq_ignore_ascii_case(".git") {
+            continue;
+        }
+        // is_dir() follows the link, which is what makes a pnpm-style symlinked package a directory
+        let slash = if e.path().is_dir() { "/" } else { "" };
+        out.push(format!("{rel}/{name}{slash}"));
+    }
+    out.sort();
+    Ok(out)
 }
 
 #[tauri::command(async)]
@@ -818,8 +876,13 @@ locked_cmd!(stash_push, stash_push_impl, ());
 locked_cmd!(stash_pop, stash_pop_impl, ());
 
 #[tauri::command(async)]
-pub fn list_files(state: State<AppState>) -> Result<Vec<String>, AppError> {
+pub fn list_files(state: State<AppState>) -> Result<Listing, AppError> {
     list_files_impl(&state.root()?)
+}
+
+#[tauri::command(async)]
+pub fn list_dir(state: State<AppState>, path: String) -> Result<Vec<String>, AppError> {
+    list_dir_impl(&state.root()?, &path)
 }
 
 fn default_push_remote(root: &Path) -> Result<String, AppError> {

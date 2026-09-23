@@ -2,7 +2,9 @@
   height: 100%;
   display: grid;
   grid-template-rows: 38px minmax(0,1fr) 30px;
-  grid-template-columns: 44px min(var(--side-w,272px),calc(100% - 444px)) minmax(0,1fr);
+  /* the terminals layout re-templates the same columns, so the width lives here only */
+  --act-w: 56px;
+  grid-template-columns: var(--act-w) min(var(--side-w,272px),calc(100% - 444px)) minmax(0,1fr);
   grid-template-areas: "head head head" "act side main" "foot foot foot";
 
   &.nosidebar { grid-template-columns: 0 0 minmax(0,1fr); }
@@ -22,6 +24,24 @@
   border-right: 1px solid var(--line);
   background: var(--panel);
   overflow: hidden;
+}
+
+.tab-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/* the marker the terminal rail uses, on the tab holding work nobody has looked at */
+.tab-dot {
+  position: absolute;
+  right: -1px;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--panel);
 }
 
 .gutter {
@@ -57,6 +77,14 @@
 
 .repo {
   display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* the header row and every row of the switcher menu */
+.repo-label {
+  display: flex;
   align-items: baseline;
   gap: 7px;
   min-width: 0;
@@ -86,6 +114,17 @@
     color: var(--muted);
   }
 }
+
+.repo-switch {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  font-size: var(--fs-5);
+
+  &[data-state="open"] { background: var(--line); color: var(--text); }
+}
+
+.repo-menu { min-width: 300px; }
 
 .branch {
   display: flex;

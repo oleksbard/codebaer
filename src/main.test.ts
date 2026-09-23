@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BlameLine, Blob, FileText, Status } from './git';
 import { tick } from './test-setup';
+import { ACT_W } from './app/Shell';
 
 vi.mock('./git', async () => {
   const actual = await vi.importActual<typeof import('./git')>('./git');
@@ -89,6 +90,86 @@ describe('autosave flush before a flush-set command', () => {
     expect(order).toEqual(['write', 'stage']);
     expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
     expect(S.open!.dirty).toBe(false);
+  });
+});
+
+describe('the Files tree', () => {
+  afterEach(() => {
+    S.tab = 'changes';
+    S.files = [];
+    S.ignored = [];
+    S.ignoredBase = [];
+    S.ignoredKids = new Map();
+    S.filesOpen = new Set();
+  });
+
+  /** Puts the Files tab on a repo whose only ignored entry is a collapsed `node_modules/`. */
+  async function filesTab(): Promise<void> {
+    S.tab = 'files';
+    g.status!.mockResolvedValue(S.status);
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/'] });
+    await m.refresh();
+  }
+
+  it('reads an ignored directory on demand and re-reads it on the next refresh', async () => {
+    g.listDir!.mockResolvedValue(['node_modules/pkg/', 'node_modules/x.js']);
+    await filesTab();
+    expect(S.ignored).toEqual(['node_modules/']);
+
+    m.toggleDir('node_modules', true, true);
+    await tick();
+    expect(g.listDir!).toHaveBeenCalledWith('node_modules');
+    expect(S.ignored).toEqual(['node_modules/', 'node_modules/pkg/', 'node_modules/x.js']);
+
+    // the contents came from disk rather than git's listing, so a refresh has to ask again
+    g.listDir!.mockResolvedValue(['node_modules/x.js']);
+    await m.refresh();
+    expect(S.ignored).toEqual(['node_modules/', 'node_modules/x.js']);
+  });
+
+  it('reads once when a directory is reopened before the first read lands', async () => {
+    let settle = (_: string[]) => {};
+    g.listDir!.mockReturnValue(new Promise<string[]>((r) => { settle = r; }));
+    await filesTab();
+
+    m.toggleDir('node_modules', true, true);
+    m.toggleDir('node_modules', false);
+    m.toggleDir('node_modules', true, true);
+    settle(['node_modules/x.js']);
+    await tick();
+
+    expect(g.listDir!).toHaveBeenCalledTimes(1);
+    expect(S.ignored).toEqual(['node_modules/', 'node_modules/x.js']);
+  });
+
+  it('drops a directory that has gone rather than re-reading it on every refresh', async () => {
+    g.listDir!.mockResolvedValue(['node_modules/x.js']);
+    await filesTab();
+    m.toggleDir('node_modules', true, true);
+    await tick();
+
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: [] });
+    g.listDir!.mockRejectedValue({ kind: 'InvalidPath', detail: 'gone' });
+    await m.refresh();
+    expect(S.ignoredKids.size).toBe(0);
+    expect(S.ignored).toEqual([]);
+
+    g.listDir!.mockClear();
+    await m.refresh();
+    expect(g.listDir!).not.toHaveBeenCalled();
+  });
+
+  it('stops re-reading a directory once it is collapsed', async () => {
+    g.listDir!.mockResolvedValue(['node_modules/x.js']);
+    await filesTab();
+    m.toggleDir('node_modules', true, true);
+    await tick();
+
+    m.toggleDir('node_modules', false);
+    g.listDir!.mockClear();
+    await m.refresh();
+    expect(g.listDir!).not.toHaveBeenCalled();
+    expect(S.ignored).toEqual(['node_modules/']);
   });
 });
 
@@ -213,7 +294,6 @@ describe('sidebar resize', () => {
 
   // the activity bar occupies the first 44px of the shell, so a pointer at clientX sizes the
   // sidebar to clientX - 44
-  const ACT_W = 44;
   const maxWidth = globalThis.innerWidth - 400 - ACT_W;
 
   it('follows the pointer between 180px and window width minus the rails, and stores the width on release',

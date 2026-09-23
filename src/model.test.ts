@@ -23,6 +23,14 @@ describe('buildTree', () => {
     expect(app.dirs[0]!.path).toBe('src/app/api');
     expect(app.dirs[0]!.files).toEqual(['src/app/api/q.ts']);
   });
+
+  it('a trailing slash makes an empty directory node, not a file', () => {
+    const t = buildTree(['README.md', 'node_modules/', 'src/a.ts', 'src/gen/']);
+    expect(t.files).toEqual(['README.md']);
+    expect(t.dirs.map((d) => d.name)).toEqual(['node_modules', 'src']);
+    expect(t.dirs[0]!).toMatchObject({ path: 'node_modules', dirs: [], files: [] });
+    expect(t.dirs[1]!.dirs.map((d) => d.path)).toEqual(['src/gen']);
+  });
 });
 
 describe('buildQueue', () => {

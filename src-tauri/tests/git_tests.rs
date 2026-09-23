@@ -1,7 +1,7 @@
 use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
-use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{cancel_impl, push_args, run_net, AppState};
 use codebaer_lib::AppError;
 use std::fs;
@@ -429,9 +429,53 @@ fn discard_all_is_refused_while_a_path_is_conflicted() {
 }
 
 #[test]
+fn list_dir_lists_one_level_and_marks_subdirectories() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), "node_modules/\n").unwrap();
+    fs::create_dir_all(r.join("node_modules/pkg/deep")).unwrap();
+    fs::write(r.join("node_modules/x.js"), "1").unwrap();
+    fs::write(r.join("node_modules/pkg/y.js"), "2").unwrap();
+
+    assert_eq!(list_files_impl(r).unwrap().ignored, vec!["node_modules/"]);
+    assert_eq!(list_dir_impl(r, "node_modules").unwrap(), vec!["node_modules/pkg/", "node_modules/x.js"]);
+    assert_eq!(list_dir_impl(r, "node_modules/pkg").unwrap(), vec!["node_modules/pkg/deep/", "node_modules/pkg/y.js"]);
+}
+
+#[test]
+fn list_dir_follows_a_symlinked_directory_inside_the_repo_but_not_one_leaving_it() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), "node_modules/\n").unwrap();
+    fs::create_dir_all(r.join("node_modules/.store/pkg")).unwrap();
+    fs::write(r.join("node_modules/.store/pkg/index.js"), "1").unwrap();
+    std::os::unix::fs::symlink(r.join("node_modules/.store/pkg"), r.join("node_modules/pkg")).unwrap();
+    let out = d.path().parent().unwrap().join("outside");
+    fs::create_dir_all(&out).unwrap();
+    std::os::unix::fs::symlink(&out, r.join("node_modules/escape")).unwrap();
+
+    // a symlinked package is a directory, so pnpm-style trees stay browsable
+    let top = list_dir_impl(r, "node_modules").unwrap();
+    assert!(top.contains(&"node_modules/pkg/".to_string()), "{top:?}");
+    assert_eq!(list_dir_impl(r, "node_modules/pkg").unwrap(), vec!["node_modules/pkg/index.js"]);
+    assert!(matches!(list_dir_impl(r, "node_modules/escape"), Err(AppError::InvalidPath(_))));
+}
+
+#[test]
+fn list_dir_refuses_a_file_and_anything_outside_the_repo() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "1").unwrap();
+    assert!(matches!(list_dir_impl(r, "a.txt"), Err(AppError::InvalidPath(_))));
+    assert!(matches!(list_dir_impl(r, "../.."), Err(AppError::InvalidPath(_))));
+    assert!(matches!(list_dir_impl(r, ".git"), Err(AppError::InvalidPath(_))));
+    assert!(matches!(list_dir_impl(r, "nope"), Err(AppError::InvalidPath(_))));
+}
+
+#[test]
 fn list_files_lists_a_conflicted_path_once() {
     let d = conflicted_repo();
-    let files = list_files_impl(d.path()).unwrap();
+    let files = list_files_impl(d.path()).unwrap().files;
     assert_eq!(files.iter().filter(|f| *f == "a.txt").count(), 1, "{files:?}");
 }
 
@@ -717,9 +761,26 @@ fn list_files_dedupes_conflicts_and_keeps_deleted_for_ui_filtering() {
     let r = d.path();
     fs::write(r.join("u.txt"), "u\n").unwrap();
     fs::remove_file(r.join("a.txt")).unwrap();
-    let files = list_files_impl(r).unwrap();
+    let files = list_files_impl(r).unwrap().files;
     assert!(files.contains(&"u.txt".to_string()));
     assert_eq!(files.iter().filter(|f| *f == "a.txt").count(), 1);
+}
+
+#[test]
+fn list_files_collapses_an_ignored_directory_and_keeps_it_out_of_files() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), "node_modules/\nsecret.env\n").unwrap();
+    fs::create_dir(r.join("node_modules")).unwrap();
+    fs::write(r.join("node_modules/a.js"), "a\n").unwrap();
+    fs::write(r.join("node_modules/b.js"), "b\n").unwrap();
+    fs::write(r.join("secret.env"), "k=v\n").unwrap();
+
+    let listing = list_files_impl(r).unwrap();
+
+    assert_eq!(listing.ignored, vec!["node_modules/".to_string(), "secret.env".to_string()]);
+    assert!(!listing.files.iter().any(|f| f.starts_with("node_modules")), "{:?}", listing.files);
+    assert!(listing.files.contains(&".gitignore".to_string()));
 }
 
 #[test]

@@ -39,6 +39,11 @@ summary.sec {
   }
 }
 
+/* listed so the tree matches the working copy, dimmed because git is not tracking them */
+.ignored {
+  opacity: 0.45;
+}
+
 summary::-webkit-details-marker {
   display: none;
 }

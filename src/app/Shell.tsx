@@ -1,20 +1,52 @@
+import { useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
+import { DropdownMenu } from 'radix-ui';
+import { git, type Recent } from '../git';
 import { split } from '../model';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
-import { cancel, checkout, network, palette } from './controller';
+import { cancel, checkout, network, openRepo, palette, pickRepo } from './controller';
 import { notify, S, useApp } from './store';
 import { TermStatus } from './Terminals';
 
-function RepoLabel() {
+function RepoLabel({ name, path }: { name: string; path: string }) {
+  return (
+    <span className="repo-label">
+      <span className="name">{name}</span>
+      <span className="dash">-</span>
+      <span className="path">{path}</span>
+    </span>
+  );
+}
+
+function Repo() {
+  const [recent, setRecent] = useState<Recent[]>([]);
   if (!S.root) return null;
   return (
     <span className="repo">
-      <span className="name">{S.title ?? split(S.root)[1]}</span>
-      <span className="dash">-</span>
-      <span className="path">{S.root}</span>
+      <RepoLabel name={S.title ?? split(S.root)[1]} path={S.root} />
+      <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="ico repo-switch" title="Switch project" aria-label="Switch project">
+            ⇄
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={6}>
+            <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
+              Open Folder…<span className="detail">⌘O</span>
+            </DropdownMenu.Item>
+            {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
+            {recent.map((r) => (
+              <DropdownMenu.Item key={r.path} className="menu-item" onSelect={() => void openRepo(r.path)}>
+                <RepoLabel name={r.name} path={r.label} />
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </span>
   );
 }
@@ -24,7 +56,7 @@ export function Header() {
   return (
     <header className="head">
       <img className="brand" src="/icon.png" alt="" />
-      <RepoLabel />
+      <Repo />
       <div className="right">
         <Button variant="ghost" onClick={() => void palette()}>Commands <Kbd>⌘⇧P</Kbd></Button>
       </div>
@@ -81,7 +113,7 @@ export function Footer() {
 }
 
 // mirrors the activity-bar column in layout.css: clientX counts it, --side-w does not
-const ACT_W = 44;
+export const ACT_W = 56;
 
 export function Gutter() {
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {

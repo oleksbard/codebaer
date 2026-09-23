@@ -1,6 +1,6 @@
 /* the activity bar stays, the sidebar panel does not: a terminal gets the whole main area */
 .app.terminals {
-  grid-template-columns: 44px 0 minmax(0, 1fr);
+  grid-template-columns: var(--act-w) 0 minmax(0, 1fr);
 }
 
 .app.terminals .side,
@@ -49,22 +49,6 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-
-  .menu-sep {
-    height: 1px;
-    margin: 4px 0;
-    background: var(--line);
-  }
-
-  .detail {
-    margin-left: auto;
-    padding-left: 12px;
-    font: var(--fs-1) var(--mono);
-    color: var(--faint);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 .blank .dim { color: var(--faint); font-family: var(--mono); }
@@ -86,8 +70,8 @@
 .rail-b {
   position: relative;
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: var(--r-3);
@@ -95,15 +79,15 @@
 
   &:hover { background: var(--panel2); color: var(--text); }
   &.on { background: var(--sel); color: var(--text); }
-  &.new { font-size: var(--fs-4); }
+  &.new { font-size: 22px; }
 
-  .num { font: var(--fs-2) var(--mono); }
+  .num { font: var(--fs-4) var(--mono); }
   .agent { display: grid; }
   .agent.claude { color: var(--whiskey); }
   .agent.codex { color: var(--sage); }
-  .mark { font-size: 21px; line-height: 1; }
+  .mark { font-size: 26px; line-height: 1; }
 
-  .term-dot { position: absolute; right: 3px; bottom: 3px; }
+  .term-dot { position: absolute; right: 5px; bottom: 5px; }
 
   /* a session producing output is thinking; one at its prompt is silent */
   &.busy .agent:not(.claude),
@@ -111,8 +95,8 @@
 
   .bell {
     position: absolute;
-    top: 3px;
-    right: 3px;
+    top: 5px;
+    right: 5px;
     width: 6px;
     height: 6px;
     border-radius: var(--r-pill);

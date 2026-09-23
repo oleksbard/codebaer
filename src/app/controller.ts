@@ -31,7 +31,7 @@ export async function refresh(): Promise<void> {
   S.refreshing = true;
   try {
     S.status = await git.status();
-    if (S.tab === 'files') S.files = visibleFiles(await git.listFiles(), S.status);
+    if (S.tab === 'files') await loadFiles();
     await refreshOpen();
     // refreshOpen's replaceDoc/replaceOriginal map every fold away, and this is the path an agent
     // editing the open file takes
@@ -265,9 +265,27 @@ function reveal(path: string): void {
   for (let i = path.indexOf('/'); i >= 0; i = path.indexOf('/', i + 1)) S.filesOpen.add(path.slice(0, i));
 }
 
-export function toggleDir(path: string, open: boolean): void {
+export function toggleDir(path: string, open: boolean, unlisted = false): void {
   if (open) S.filesOpen.add(path);
   else S.filesOpen.delete(path);
+  notify();
+  if (open && unlisted) void expandIgnored(path);
+}
+
+const rebuildIgnored = (): void => { S.ignored = [S.ignoredBase, ...S.ignoredKids.values()].flat(); };
+
+/** git collapses a wholly ignored directory to one entry, so opening one reads it off disk.
+ *  The key is claimed before the await, so a reopen during the read does not read it twice. */
+async function expandIgnored(path: string): Promise<void> {
+  if (S.ignoredKids.has(path)) return;
+  S.ignoredKids.set(path, []);
+  try {
+    S.ignoredKids.set(path, await git.listDir(path));
+  } catch (e) {
+    S.ignoredKids.delete(path);
+    toast(errText(e), 'err');
+  }
+  rebuildIgnored();
   notify();
 }
 
@@ -698,9 +716,23 @@ export async function palette(): Promise<void> {
   if (c) void c.run();
 }
 
+/** The Files tree; ignored entries are listed too, so the tab shows what git is hiding. */
+async function loadFiles(): Promise<void> {
+  const listing = await git.listFiles();
+  S.files = visibleFiles(listing.files, S.status!);
+  S.ignoredBase = listing.ignored;
+  // these came off disk rather than out of git's listing, so a refresh has to ask again. Only
+  // the ones still on screen: a collapsed or deleted directory drops out instead of being
+  // re-read on every refresh for the rest of the session
+  const opened = [...S.ignoredKids.keys()].filter((p) => S.filesOpen.has(p));
+  const kids = await Promise.all(opened.map((p) => git.listDir(p).catch(() => null)));
+  S.ignoredKids = new Map(opened.flatMap((p, i) => (kids[i] ? [[p, kids[i]!] as [string, string[]]] : [])));
+  rebuildIgnored();
+}
+
 async function quickOpen(): Promise<void> {
   try {
-    const files = visibleFiles(await git.listFiles(),
+    const files = visibleFiles((await git.listFiles()).files,
       S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, files: [] });
     const p = await pick(files.map((f) => ({ label: f, value: f })), 'Search files by name');
     if (p) await openPlain(p);
@@ -712,7 +744,7 @@ async function quickOpen(): Promise<void> {
 export async function setTab(tab: Tab): Promise<void> {
   S.tab = tab;
   if (tab === 'files' && S.status) {
-    try { S.files = visibleFiles(await git.listFiles(), S.status); } catch (e) { toast(errText(e), 'err'); }
+    try { await loadFiles(); } catch (e) { toast(errText(e), 'err'); }
   }
   notify();
   if (tab === 'terminals') await connectTerminals();
@@ -834,7 +866,7 @@ async function findInTerminal(): Promise<void> {
 }
 
 // ---------- startup and repo switching ----------
-async function openRepo(path: string): Promise<void> {
+export async function openRepo(path: string): Promise<void> {
   if (!(await flush())) {
     toast('This file changed on disk. Reload or Keep mine before switching repos.', 'warn');
     return;
@@ -848,6 +880,7 @@ async function openRepo(path: string): Promise<void> {
     S.open = null;
     S.selected = null;
     S.filesOpen.clear();
+    S.ignoredKids.clear();
     await refresh();
     const first = S.status ? buildQueue(S.status).unstaged[0] : undefined;
     if (first) await openRow(first);
@@ -858,7 +891,7 @@ async function openRepo(path: string): Promise<void> {
   }
 }
 
-async function pickRepo(): Promise<void> {
+export async function pickRepo(): Promise<void> {
   const dir = await openDialog({ directory: true, multiple: false, title: 'Open a git repository' });
   if (typeof dir === 'string') await openRepo(dir);
 }

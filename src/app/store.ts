@@ -34,8 +34,14 @@ export const S = {
   title: null as string | null,
   status: null as Status | null,
   files: [] as string[],
+  /** Ignored entries for the Files tree, greyed out; a directory keeps its trailing slash. */
+  ignored: [] as string[],
+  /** What git reported ignored; S.ignored is this plus every directory read on demand. */
+  ignoredBase: [] as string[],
   /** Directory paths expanded in the Files tree; outlives the tab switch that unmounts the tree. */
   filesOpen: new Set<string>(),
+  /** Contents of the ignored directories git collapsed, read on demand and kept across a refresh. */
+  ignoredKids: new Map<string, string[]>(),
   tab: 'changes' as Tab,
   open: null as Open | null,
   selected: null as string | null,

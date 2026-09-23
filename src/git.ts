@@ -7,6 +7,9 @@ export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
 export type Opened = { root: string; title: string | null };
+export type Recent = { path: string; name: string; label: string };
+/** A wholly ignored directory arrives as one entry with a trailing slash. */
+export type Listing = { files: string[]; ignored: string[] };
 export type BlameLine = { oid: string; author: string; time: number; summary: string };
 
 export type FileEntry = {
@@ -62,6 +65,7 @@ export function staleText(e: unknown): FileText | null {
 export const git = {
   gitVersion: () => invoke<string>('git_version'),
   initialRepo: () => invoke<string | null>('initial_repo'),
+  recentRepos: () => invoke<Recent[]>('recent_repos'),
   openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
   status: () => invoke<Status>('status'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
@@ -90,5 +94,6 @@ export const git = {
   cancel: () => invoke<void>('cancel'),
   stashPush: () => invoke<void>('stash_push'),
   stashPop: () => invoke<void>('stash_pop'),
-  listFiles: () => invoke<string[]>('list_files'),
+  listFiles: () => invoke<Listing>('list_files'),
+  listDir: (path: string) => invoke<string[]>('list_dir', { path }),
 };
