@@ -138,11 +138,6 @@ summary::-webkit-details-marker {
   }
 
   .r { display: flex; align-items: center; gap: 6px; }
-
-  /* + and − are drawn on the font's math axis, ~1px under the centre of the button box.
-     Scoped to these two, because every other .ico child (the SVG, ↶, ⊟) is already centred.
-     1px is what the offset measured in Chrome; re-measure if the UI font or --fs-2 changes. */
-  .ico[data-all] { padding-bottom: 2px; }
 }
 
 details:not([open])>.sec .l::before {
@@ -256,6 +251,8 @@ details:not([open])>.sec .l::before {
     align-items: center;
     gap: 6px;
     min-width: 0;
+    /* fixed, because which actions show changes with the branch state and the row must not jump */
+    height: 28px;
     font: var(--fs-2) var(--mono);
     color: var(--muted);
 
@@ -286,11 +283,9 @@ details:not([open])>.sec .l::before {
       .on { color: var(--accent); font-weight: 600; }
     }
 
-    /* ⤓ and ⤒ carry the meaning here, so they run larger than the 12px .ico default */
     .remote,
     .busy { display: flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
     .busy { gap: 6px; }
-    .remote .ico { font-size: var(--fs-4); }
   }
 
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -43,6 +43,8 @@
 .ico {
   width: 20px;
   height: 20px;
+  /* the UA's 6px side padding leaves a 20px box too narrow to centre an icon wider than 8px */
+  padding: 0;
   border-radius: var(--r-2);
   display: grid;
   place-items: center;

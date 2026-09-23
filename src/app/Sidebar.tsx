@@ -43,6 +43,22 @@ function FilesIcon() {
   );
 }
 
+function StrokeIcon({ d, size = 16 }: { d: string; size?: number }) {
+  return (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const FETCH = 'M13.25 8a5.25 5.25 0 1 1-1.54-3.71M13.25 2.5v2.75H10.5';
+const PULL = 'M8 2v8M4.75 6.75 8 10l3.25-3.25M2.75 13.5h10.5';
+const PUSH = 'M8 10V3M4.75 6.25 8 3l3.25 3.25M2.75 13.5h10.5';
+const PLUS = 'M8 3v10M3 8h10';
+const MINUS = 'M3 8h10';
+const DISCARD = 'M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7';
+
 export function ActivityBar() {
   useApp();
   const unstaged = S.status ? buildQueue(S.status).unstaged.length : 0;
@@ -164,11 +180,13 @@ function QueueList({ q, selected, open, onToggle }: {
         selected={selected} open={open.unstaged} onToggle={onToggle}
         all={<IconButton label="Stage all changes" title="Stage all changes (⌘⌥Y)" data-all="stage"
           disabled={!q.unstaged.length}
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>+</IconButton>} />
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>
+          <StrokeIcon d={PLUS} size={14} /></IconButton>} />
       <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
         selected={selected} open={open.staged} onToggle={onToggle}
         all={<IconButton label="Unstage all changes" data-all="unstage" disabled={!q.staged.length}
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); void unstageAll(); }}>−</IconButton>} />
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); void unstageAll(); }}>
+          <StrokeIcon d={MINUS} size={14} /></IconButton>} />
     </List>
   );
 }
@@ -210,13 +228,16 @@ function menuFor(r: Row): MenuItem[] {
 function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
   const [dirSlash, name] = split(r.path);
   const acts = r.section === 'staged'
-    ? <IconButton label="Unstage file" data-act="unstage" onClick={stop(() => unstageFile(r.path))}>−</IconButton>
+    ? <IconButton label="Unstage file" data-act="unstage" onClick={stop(() => unstageFile(r.path))}>
+      <StrokeIcon d={MINUS} size={14} /></IconButton>
     : r.conflicted
-      ? <IconButton label="Mark resolved" data-act="stage" onClick={stop(() => acceptFile(r.path))}>+</IconButton>
+      ? <IconButton label="Mark resolved" data-act="stage" onClick={stop(() => acceptFile(r.path))}>
+        <StrokeIcon d={PLUS} size={14} /></IconButton>
       : <>
-          <IconButton label="Stage file (⌘⇧Y)" data-act="stage" onClick={stop(() => acceptFile(r.path))}>+</IconButton>
+          <IconButton label="Stage file (⌘⇧Y)" data-act="stage" onClick={stop(() => acceptFile(r.path))}>
+            <StrokeIcon d={PLUS} size={14} /></IconButton>
           <IconButton label="Discard changes (⌘⇧N)" data-act="revert"
-            onClick={stop(() => rejectFile(r.path))}>↶</IconButton>
+            onClick={stop(() => rejectFile(r.path))}><StrokeIcon d={DISCARD} size={14} /></IconButton>
         </>;
   return (
     <ContextMenu items={menuFor(r)}>
@@ -304,13 +325,14 @@ function RemoteActions() {
   return (
     <span className="remote">
       {st.upstream !== null &&
-        <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>↻</IconButton>}
+        <IconButton label="Fetch from remote" disabled={S.busy} onClick={() => void network('fetch')}>
+          <StrokeIcon d={FETCH} /></IconButton>}
       {st.behind > 0 &&
         <IconButton label={`Pull ${commits(st.behind)}`}
-          disabled={S.busy} onClick={() => void network('pull')}>⤓</IconButton>}
+          disabled={S.busy} onClick={() => void network('pull')}><StrokeIcon d={PULL} /></IconButton>}
       {push &&
         <IconButton label={st.upstream === null ? 'Push and set upstream' : `Push ${commits(st.ahead)}`}
-          disabled={S.busy} onClick={() => void network('push')}>⤒</IconButton>}
+          disabled={S.busy} onClick={() => void network('push')}><StrokeIcon d={PUSH} /></IconButton>}
     </span>
   );
 }
