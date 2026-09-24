@@ -1,0 +1,114 @@
+/* github.com/folke/tokyonight.nvim, Night and Day */
+[data-theme="tokyo-night"] {
+  color-scheme: dark;
+
+  --chrome: #0c0e14;
+  --bg: #1a1b26;
+  --panel: #16161e;
+  --panel2: #292e42;
+  --line: #292e42;
+  --faint: #565f89;
+  --muted: #737aa2;
+  --text: #c0caf5;
+
+  --accent: #7aa2f7;
+  --accent-ink: #16161e;
+  --accent-soft: #7aa2f733;
+  --sel: #7aa2f71f;
+  --focus: #7aa2f7;
+
+  --add: #9ece6a;
+  --add-bg: #9ece6a1f;
+  --del: #f7768e;
+  --del-bg: #f7768e24;
+
+  --warn: #ff9e64;
+  --info: #7dcfff;
+  --mod: #e0af68;
+  --scrim: #0c0e1499;
+  --shadow: 0 14px 44px #00000080;
+
+  --syn-keyword: #bb9af7;
+  --syn-name: #c0caf5;
+  --syn-function: #7aa2f7;
+  --syn-constant: #ff9e64;
+  --syn-type: #2ac3de;
+  --syn-operator: #89ddff;
+  --syn-comment: #565f89;
+  --syn-string: #9ece6a;
+  --syn-invalid: #db4b4b;
+
+  --ansi-black: #15161e;
+  --ansi-red: #f7768e;
+  --ansi-green: #9ece6a;
+  --ansi-yellow: #e0af68;
+  --ansi-blue: #7aa2f7;
+  --ansi-magenta: #bb9af7;
+  --ansi-cyan: #7dcfff;
+  --ansi-white: #a9b1d6;
+  --ansi-bright-black: #414868;
+  --ansi-bright-red: #ff899d;
+  --ansi-bright-green: #9fe044;
+  --ansi-bright-yellow: #faba4a;
+  --ansi-bright-blue: #8db0ff;
+  --ansi-bright-magenta: #c7a9ff;
+  --ansi-bright-cyan: #a4daff;
+  --ansi-bright-white: #c0caf5;
+}
+
+[data-theme="tokyo-night-day"] {
+  color-scheme: light;
+
+  --chrome: #d0d5e3;
+  --bg: #e1e2e7;
+  --panel: #d8dbe5;
+  --panel2: #c4c8da;
+  --line: #b4b5b9;
+  --faint: #848cb5;
+  --muted: #6172b0;
+  --text: #3760bf;
+
+  --accent: #2e7de9;
+  --accent-ink: #ffffff;
+  --accent-soft: #2e7de92b;
+  --sel: #2e7de917;
+  --focus: #2e7de9;
+
+  --add: #587539;
+  --add-bg: #58753926;
+  --del: #f52a65;
+  --del-bg: #f52a651f;
+
+  --warn: #b15c00;
+  --info: #2e7de9;
+  --mod: #8c6c3e;
+  --scrim: #3760bf4d;
+  --shadow: 0 12px 36px #3760bf33;
+
+  --syn-keyword: #9854f1;
+  --syn-name: #3760bf;
+  --syn-function: #2e7de9;
+  --syn-constant: #b15c00;
+  --syn-type: #188092;
+  --syn-operator: #006a83;
+  --syn-comment: #848cb5;
+  --syn-string: #587539;
+  --syn-invalid: #c64343;
+
+  --ansi-black: #b4b5b9;
+  --ansi-red: #f52a65;
+  --ansi-green: #587539;
+  --ansi-yellow: #8c6c3e;
+  --ansi-blue: #2e7de9;
+  --ansi-magenta: #9854f1;
+  --ansi-cyan: #007197;
+  --ansi-white: #6172b0;
+  --ansi-bright-black: #a1a6c5;
+  --ansi-bright-red: #ff4774;
+  --ansi-bright-green: #5c8524;
+  --ansi-bright-yellow: #a27629;
+  --ansi-bright-blue: #358aff;
+  --ansi-bright-magenta: #a463ff;
+  --ansi-bright-cyan: #007ea8;
+  --ansi-bright-white: #3760bf;
+}

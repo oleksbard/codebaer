@@ -1,0 +1,114 @@
+/* rosepinetheme.com/palette, main and Dawn; the theme is flat, so --chrome is a step below Base */
+[data-theme="rose-pine"] {
+  color-scheme: dark;
+
+  --chrome: #13111c;
+  --bg: #191724;
+  --panel: #1f1d2e;
+  --panel2: #26233a;
+  --line: #26233a;
+  --faint: #6e6a86;
+  --muted: #908caa;
+  --text: #e0def4;
+
+  --accent: #c4a7e7;
+  --accent-ink: #191724;
+  --accent-soft: #c4a7e733;
+  --sel: #c4a7e71f;
+  --focus: #c4a7e7;
+
+  --add: #9ccfd8;
+  --add-bg: #9ccfd81f;
+  --del: #eb6f92;
+  --del-bg: #eb6f9224;
+
+  --warn: #f6c177;
+  --info: #9ccfd8;
+  --mod: #ebbcba;
+  --scrim: #0d0c1499;
+  --shadow: 0 14px 44px #00000080;
+
+  --syn-keyword: #31748f;
+  --syn-name: #e0def4;
+  --syn-function: #ebbcba;
+  --syn-constant: #f6c177;
+  --syn-type: #9ccfd8;
+  --syn-operator: #908caa;
+  --syn-comment: #6e6a86;
+  --syn-string: #f6c177;
+  --syn-invalid: #eb6f92;
+
+  --ansi-black: #26233a;
+  --ansi-red: #eb6f92;
+  --ansi-green: #31748f;
+  --ansi-yellow: #f6c177;
+  --ansi-blue: #9ccfd8;
+  --ansi-magenta: #c4a7e7;
+  --ansi-cyan: #ebbcba;
+  --ansi-white: #e0def4;
+  --ansi-bright-black: #6e6a86;
+  --ansi-bright-red: #eb6f92;
+  --ansi-bright-green: #31748f;
+  --ansi-bright-yellow: #f6c177;
+  --ansi-bright-blue: #9ccfd8;
+  --ansi-bright-magenta: #c4a7e7;
+  --ansi-bright-cyan: #ebbcba;
+  --ansi-bright-white: #e0def4;
+}
+
+[data-theme="rose-pine-dawn"] {
+  color-scheme: light;
+
+  --chrome: #f2e9e1;
+  --bg: #faf4ed;
+  --panel: #fffaf3;
+  --panel2: #dfdad9;
+  --line: #dfdad9;
+  --faint: #9893a5;
+  --muted: #797593;
+  --text: #575279;
+
+  --accent: #907aa9;
+  --accent-ink: #fffaf3;
+  --accent-soft: #907aa929;
+  --sel: #907aa917;
+  --focus: #907aa9;
+
+  --add: #56949f;
+  --add-bg: #56949f24;
+  --del: #b4637a;
+  --del-bg: #b4637a1f;
+
+  --warn: #ea9d34;
+  --info: #56949f;
+  --mod: #d7827e;
+  --scrim: #57527959;
+  --shadow: 0 12px 36px #57527933;
+
+  --syn-keyword: #286983;
+  --syn-name: #575279;
+  --syn-function: #d7827e;
+  --syn-constant: #ea9d34;
+  --syn-type: #56949f;
+  --syn-operator: #797593;
+  --syn-comment: #9893a5;
+  --syn-string: #ea9d34;
+  --syn-invalid: #b4637a;
+
+  --ansi-black: #f2e9e1;
+  --ansi-red: #b4637a;
+  --ansi-green: #286983;
+  --ansi-yellow: #ea9d34;
+  --ansi-blue: #56949f;
+  --ansi-magenta: #907aa9;
+  --ansi-cyan: #d7827e;
+  --ansi-white: #575279;
+  --ansi-bright-black: #9893a5;
+  --ansi-bright-red: #b4637a;
+  --ansi-bright-green: #286983;
+  --ansi-bright-yellow: #ea9d34;
+  --ansi-bright-blue: #56949f;
+  --ansi-bright-magenta: #907aa9;
+  --ansi-bright-cyan: #d7827e;
+  --ansi-bright-white: #575279;
+}

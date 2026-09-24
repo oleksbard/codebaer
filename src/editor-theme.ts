@@ -1,8 +1,18 @@
+import { Compartment, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 
-// ponytail: dark is fixed; a Compartment swaps this flag when a non-dark palette exists
+/** Colours come from the tokens, so a theme switch repaints them for free; this flag is what picks
+ *  the light or dark half of CodeMirror's own base styles (search panel, merge, tooltips). */
+const darkMode = new Compartment();
+
+export const editorDark = (dark: boolean): Extension => darkMode.of(EditorView.darkTheme.of(dark));
+
+export function setEditorDark(view: EditorView, dark: boolean): void {
+  view.dispatch({ effects: darkMode.reconfigure(EditorView.darkTheme.of(dark)) });
+}
+
 export const editorTheme = EditorView.theme(
   {
     '&': { color: 'var(--text)', backgroundColor: 'var(--bg)' },
@@ -32,7 +42,6 @@ export const editorTheme = EditorView.theme(
     '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--add)' },
     '.cm-deletedLineGutter': { background: 'var(--del)' },
   },
-  { dark: true },
 );
 
 export const editorHighlight = HighlightStyle.define([

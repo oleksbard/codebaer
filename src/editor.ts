@@ -5,8 +5,9 @@ import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/s
 import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { commentsExtension } from './editor-comments';
-import { editorHighlight, editorTheme } from './editor-theme';
+import { editorDark, editorHighlight, editorTheme } from './editor-theme';
 import { logError } from './log';
+import { getTheme, isDark } from './ui/theme';
 import {
   acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   unifiedMergeView, updateOriginalDoc,
@@ -40,12 +41,16 @@ export async function buildState(
   onDocChange: () => void,
   controls?: { accept(): void; reject(): void },
 ): Promise<EditorState> {
+  // the one await, before the theme is read: callers apply the state without awaiting again, so a
+  // theme switch while the language loads is still seen
+  const language = await languageFor(path);
   const ext: Extension[] = [
     lineNumbers(),
     highlightActiveLine(),
     drawSelection(),
     highlightSelectionMatches(),
     editorTheme,
+    editorDark(isDark(getTheme())),
     syntaxHighlighting(editorHighlight),
     codeFolding({
       preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number + 1,
@@ -62,7 +67,7 @@ export async function buildState(
         return el;
       },
     }),
-    await languageFor(path),
+    language,
     commentsExtension,
     keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap, { key: 'Ctrl-g', run: gotoLine }]),
     EditorView.editable.of(kind !== 'staged'),

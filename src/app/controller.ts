@@ -17,6 +17,7 @@ import {
   goToPreviousChunk, onCursor, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
 import { foldToChanges } from '../context-view';
+import { setEditorDark } from '../editor-theme';
 import { commentSpan, lineRange, marksOf, onComments, setMarks, type Mark } from '../editor-comments';
 import { pick } from '../palette';
 import { logError } from '../log';
@@ -26,6 +27,7 @@ import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
 import { DEFAULTS, type SettingKey, type Settings } from '../settings';
 import * as term from '../terminal';
 import { homeFrom, statusLabel } from '../terminal-status';
+import { getTheme, isDark, setTheme } from '../ui/theme';
 import { notify, refs, S, type Open, type Tab } from './store';
 
 const PANEL_KINDS = new Set(['Binary', 'NotUtf8', 'TooLarge', 'Special']);
@@ -906,9 +908,20 @@ function inOrder<T>(fn: () => Promise<T>): Promise<T> {
  *  before its own click: an earlier click may have failed too. */
 let confirmed: Settings = { ...DEFAULTS };
 
+/** The page follows S.settings, so a failed save that puts the old value back also puts back its theme.
+ *  Tokens repaint on their own; the editor's base styles and xterm's palette are read once and need telling. */
+function showTheme(): void {
+  const t = S.settings['appearance.theme'];
+  if (t === getTheme()) return;
+  setTheme(t);
+  setEditorDark(view, isDark(t));
+  term.retheme();
+}
+
 function loadSettings(): Promise<void> {
   return inOrder(async () => {
     S.settings = confirmed = await git.settings();
+    showTheme();
     notify();
   });
 }
@@ -941,6 +954,7 @@ const same = (a: Settings, b: Settings) => (Object.keys(a) as SettingKey[]).ever
 
 export function setSetting<K extends SettingKey>(key: K, value: Settings[K]): Promise<void> {
   S.settings = { ...S.settings, [key]: value };
+  showTheme();
   notify();
   return inOrder(async () => {
     const sent = S.settings;
@@ -952,6 +966,7 @@ export function setSetting<K extends SettingKey>(key: K, value: Settings[K]): Pr
     } catch (e) {
       // a failed write leaves the file as it was
       S.settings = confirmed;
+      showTheme();
       toast(`Settings not saved: ${errText(e)}`, 'err');
     }
     notify();

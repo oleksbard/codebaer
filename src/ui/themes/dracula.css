@@ -1,0 +1,57 @@
+/* spec.draculatheme.com */
+[data-theme="dracula"] {
+  color-scheme: dark;
+
+  --chrome: #191a21;
+  --bg: #282a36;
+  --panel: #343746;
+  --panel2: #44475a;
+  --line: #44475a;
+  --faint: #6272a4;
+  --muted: #a9b0cc;
+  --text: #f8f8f2;
+
+  --accent: #bd93f9;
+  --accent-ink: #21222c;
+  --accent-soft: #bd93f933;
+  --sel: #bd93f91f;
+  --focus: #bd93f9;
+
+  --add: #50fa7b;
+  --add-bg: #50fa7b1f;
+  --del: #ff5555;
+  --del-bg: #ff555526;
+
+  --warn: #ffb86c;
+  --info: #8be9fd;
+  --mod: #f1fa8c;
+  --scrim: #00000099;
+  --shadow: 0 14px 44px #00000080;
+
+  --syn-keyword: #ff79c6;
+  --syn-name: #f8f8f2;
+  --syn-function: #50fa7b;
+  --syn-constant: #bd93f9;
+  --syn-type: #8be9fd;
+  --syn-operator: #ff79c6;
+  --syn-comment: #6272a4;
+  --syn-string: #f1fa8c;
+  --syn-invalid: #ff5555;
+
+  --ansi-black: #21222c;
+  --ansi-red: #ff5555;
+  --ansi-green: #50fa7b;
+  --ansi-yellow: #f1fa8c;
+  --ansi-blue: #bd93f9;
+  --ansi-magenta: #ff79c6;
+  --ansi-cyan: #8be9fd;
+  --ansi-white: #f8f8f2;
+  --ansi-bright-black: #6272a4;
+  --ansi-bright-red: #ff6e6e;
+  --ansi-bright-green: #69ff94;
+  --ansi-bright-yellow: #ffffa5;
+  --ansi-bright-blue: #d6acff;
+  --ansi-bright-magenta: #ff92df;
+  --ansi-bright-cyan: #a4ffff;
+  --ansi-bright-white: #ffffff;
+}

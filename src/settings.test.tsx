@@ -12,17 +12,22 @@ vi.mock('./git', async () => {
 const { git } = await import('./git');
 const { S } = await import('./app/store');
 const { DEFAULTS, SECTIONS } = await import('./settings');
-const { dispatch, openSettings, setSetting } = await import('./app/controller');
+const { dispatch, openSettings, setSetting, view } = await import('./app/controller');
+const { buildState } = await import('./editor');
+const { EditorView } = await import('@codemirror/view');
 const { confirmDialog } = await import('./toast');
 const { Overlays } = await import('./app/Overlays');
 
 const KEY = 'general.headless-ai-provider';
+const THEME = 'appearance.theme';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete document.documentElement.dataset.theme;
+  localStorage.removeItem('codebaer.theme');
   document.body.innerHTML = '<div id="host"></div>';
   S.palette = null; S.confirm = null; S.prompt = null; S.orphans = null; S.toasts = []; S.sidebarHidden = false;
   S.settings = { ...DEFAULTS };
@@ -67,7 +72,7 @@ describe('settings dialog', () => {
     await openSettings();
     await tick();
     const d = dialog()!;
-    expect([...d.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['General']);
+    expect([...d.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['General', 'Appearance']);
     const row = d.querySelector<HTMLElement>('.setting')!;
     expect(row.querySelector('.setting-label')!.textContent).toBe('Headless AI provider');
     expect(row.querySelector('.setting-key')!.textContent).toBe(KEY);
@@ -82,7 +87,7 @@ describe('settings dialog', () => {
   });
 
   it('reads the file again on every opening', async () => {
-    disk = { [KEY]: 'claude' };
+    disk = { ...DEFAULTS, [KEY]: 'claude' };
     await openSettings();
     await tick();
     expect(git.settings).toHaveBeenCalledTimes(1);
@@ -94,7 +99,7 @@ describe('settings dialog', () => {
     await tick();
     choice('Claude').click();
     await tick();
-    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ [KEY]: 'claude' });
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ [KEY]: 'claude', [THEME]: 'codebaer' });
     expect(disk[KEY]).toBe('claude');
     expect(S.settings[KEY]).toBe('claude');
     expect(pressed()).toEqual(['Claude']);
@@ -178,6 +183,84 @@ describe('settings dialog', () => {
     await tick();
     dispatch('toggleSidebar');
     expect(S.sidebarHidden).toBe(false);
+  });
+});
+
+describe('appearance', () => {
+  const cards = () => [...document.querySelectorAll<HTMLButtonElement>('.settings [role="radio"]')];
+  const name = (c: Element) => c.querySelector('.theme-name')!.textContent;
+  const card = (label: string) => cards().find((c) => name(c) === label)!;
+  const checked = () => cards().filter((c) => c.getAttribute('aria-checked') === 'true').map(name);
+  const group = (title: string) => {
+    const g = [...document.querySelectorAll<HTMLElement>('.settings [role="group"]')]
+      .find((e) => e.querySelector('.theme-group-title')!.textContent === title)!;
+    return [...g.querySelectorAll('[role="radio"]')].map(name);
+  };
+
+  async function openAppearance() {
+    await openSettings();
+    await tick();
+    const tab = [...document.querySelectorAll<HTMLElement>('.settings [role="tab"]')]
+      .find((t) => t.textContent === 'Appearance')!;
+    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    await tick();
+  }
+
+  it('offers every theme as a card, dark and light apart, with the saved one checked', async () => {
+    await openAppearance();
+    expect(cards()).toHaveLength(19);
+    expect(group('Dark')).toHaveLength(11);
+    expect(group('Dark')[0]).toBe('CodeBär');
+    expect(group('Light')).toEqual([
+      'GitHub Light', 'One Light', 'Catppuccin Latte', 'Tokyo Night Day',
+      'Gruvbox Light', 'Solarized Light', 'Ayu Light', 'Rosé Pine Dawn',
+    ]);
+    expect(checked()).toEqual(['CodeBär']);
+  });
+
+  it('paints each preview in its own theme, whatever the app is in', async () => {
+    await openAppearance();
+    expect(card('Nord').querySelector('.theme-preview')!.getAttribute('data-theme')).toBe('nord');
+    expect(card('CodeBär').querySelector('.theme-preview')!.getAttribute('data-theme')).toBe('codebaer');
+  });
+
+  it('applies a picked theme at once and saves it', async () => {
+    await openAppearance();
+    card('Catppuccin Latte').click();
+    await tick();
+    expect(document.documentElement.dataset.theme).toBe('catppuccin-latte');
+    expect(localStorage.getItem('codebaer.theme')).toBe('catppuccin-latte');
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ [KEY]: 'off', [THEME]: 'catppuccin-latte' });
+    expect(checked()).toEqual(['Catppuccin Latte']);
+  });
+
+  it('switches the open editor between its light and dark styles', async () => {
+    view.setState(await buildState('plain', 'a.ts', 'const a = 1;\n', null, () => {}));
+    await openAppearance();
+    card('GitHub Light').click();
+    await tick();
+    expect(view.state.facet(EditorView.darkTheme)).toBe(false);
+    card('Dracula').click();
+    await tick();
+    expect(view.state.facet(EditorView.darkTheme)).toBe(true);
+  });
+
+  it('goes back to the saved theme when the save fails', async () => {
+    vi.mocked(git.saveSettings).mockRejectedValue({ kind: 'Io', detail: 'disk full' });
+    await openAppearance();
+    card('Nord').click();
+    await tick();
+    await tick();
+    expect(document.documentElement.dataset.theme).toBe('codebaer');
+    expect(checked()).toEqual(['CodeBär']);
+    expect(S.toasts.map((t) => t.kind)).toEqual(['err']);
+  });
+
+  it('applies the theme the file holds when it is read', async () => {
+    disk = { ...DEFAULTS, [THEME]: 'gruvbox-light' };
+    await openAppearance();
+    expect(document.documentElement.dataset.theme).toBe('gruvbox-light');
+    expect(checked()).toEqual(['Gruvbox Light']);
   });
 });
 

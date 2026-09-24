@@ -1,10 +1,12 @@
+import { DEFAULT_THEME, THEMES, type Theme } from './ui/theme';
+
 export type AiProvider = 'off' | 'claude';
 
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
-export type Settings = { 'general.headless-ai-provider': AiProvider };
+export type Settings = { 'general.headless-ai-provider': AiProvider; 'appearance.theme': Theme };
 export type SettingKey = keyof Settings;
 
-export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off' };
+export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };
 
 export type Choice<K extends SettingKey> = { value: Settings[K]; label: string };
 export type Option = {
@@ -23,6 +25,19 @@ export const SECTIONS: Section[] = [
         description: 'The command-line AI that writes the commit message from the staged diff. '
           + 'Off turns AI commit messages off. Claude runs the local claude CLI.',
         choices: [{ value: 'off', label: 'Off' }, { value: 'claude', label: 'Claude' }],
+      },
+    ],
+  },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    options: [
+      {
+        key: 'appearance.theme',
+        label: 'Theme',
+        description: 'Colours for the whole window: the editor, the diff and the terminals. '
+          + 'A light theme turns the editor light too.',
+        choices: THEMES.map((t) => ({ value: t.id, label: t.label })),
       },
     ],
   },

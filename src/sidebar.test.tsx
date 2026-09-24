@@ -42,7 +42,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="host"></div>';
   S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
   S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
-  S.ignoredKids = new Map(); S.settings = { 'general.headless-ai-provider': 'claude' };
+  S.ignoredKids = new Map(); S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -390,7 +390,7 @@ describe('AI commit message button', () => {
   });
 
   it('stays disabled with the reason on hover while the AI provider is off', async () => {
-    S.settings = { 'general.headless-ai-provider': 'off' };
+    S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
     await render([], [row('a.ts', 'M', 'staged')]);
     expect(btn().disabled).toBe(true);
     const reason = 'Turn on an AI provider in Settings to write commit messages';
@@ -398,7 +398,7 @@ describe('AI commit message button', () => {
     // a disabled .ico takes no pointer events, so its own title would never show
     expect(btn().parentElement!.getAttribute('title')).toBe(reason);
 
-    S.settings = { 'general.headless-ai-provider': 'claude' }; notify(); await tick();
+    S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' }; notify(); await tick();
     expect(btn().disabled).toBe(false);
     expect(btn().getAttribute('aria-label')).toBe('Write the commit message with Claude');
   });

@@ -1,0 +1,115 @@
+/* Atom: github.com/atom/one-dark-syntax and one-light-syntax. One Light has no terminal port of its
+   own, so its ANSI slots are its syntax hues. */
+[data-theme="one-dark"] {
+  color-scheme: dark;
+
+  --chrome: #21252b;
+  --bg: #282c34;
+  --panel: #2c313a;
+  --panel2: #353b45;
+  --line: #3e4452;
+  --faint: #5c6370;
+  --muted: #828997;
+  --text: #abb2bf;
+
+  --accent: #61afef;
+  --accent-ink: #21252b;
+  --accent-soft: #61afef33;
+  --sel: #61afef1f;
+  --focus: #61afef;
+
+  --add: #98c379;
+  --add-bg: #98c37924;
+  --del: #e06c75;
+  --del-bg: #e06c7524;
+
+  --warn: #d19a66;
+  --info: #61afef;
+  --mod: #e5c07b;
+  --scrim: #00000099;
+  --shadow: 0 14px 44px #00000080;
+
+  --syn-keyword: #c678dd;
+  --syn-name: #e06c75;
+  --syn-function: #61afef;
+  --syn-constant: #d19a66;
+  --syn-type: #e5c07b;
+  --syn-operator: #56b6c2;
+  --syn-comment: #7f848e;
+  --syn-string: #98c379;
+  --syn-invalid: #ffffff;
+
+  --ansi-black: #21252b;
+  --ansi-red: #e06c75;
+  --ansi-green: #98c379;
+  --ansi-yellow: #e5c07b;
+  --ansi-blue: #61afef;
+  --ansi-magenta: #c678dd;
+  --ansi-cyan: #56b6c2;
+  --ansi-white: #abb2bf;
+  --ansi-bright-black: #767676;
+  --ansi-bright-red: #e06c75;
+  --ansi-bright-green: #98c379;
+  --ansi-bright-yellow: #e5c07b;
+  --ansi-bright-blue: #61afef;
+  --ansi-bright-magenta: #c678dd;
+  --ansi-bright-cyan: #56b6c2;
+  --ansi-bright-white: #abb2bf;
+}
+
+[data-theme="one-light"] {
+  color-scheme: light;
+
+  --chrome: #e7e7e8;
+  --bg: #fafafa;
+  --panel: #f0f0f1;
+  --panel2: #dfdfe0;
+  --line: #d3d3d5;
+  --faint: #9d9d9f;
+  --muted: #696c77;
+  --text: #383a42;
+
+  --accent: #4078f2;
+  --accent-ink: #ffffff;
+  --accent-soft: #4078f22b;
+  --sel: #4078f217;
+  --focus: #4078f2;
+
+  --add: #50a14f;
+  --add-bg: #50a14f26;
+  --del: #e45649;
+  --del-bg: #e4564924;
+
+  --warn: #c18401;
+  --info: #4078f2;
+  --mod: #986801;
+  --scrim: #383a4259;
+  --shadow: 0 12px 36px #383a4233;
+
+  --syn-keyword: #a626a4;
+  --syn-name: #e45649;
+  --syn-function: #4078f2;
+  --syn-constant: #986801;
+  --syn-type: #c18401;
+  --syn-operator: #0184bc;
+  --syn-comment: #a0a1a7;
+  --syn-string: #50a14f;
+  --syn-invalid: #ca1243;
+
+  --ansi-black: #383a42;
+  --ansi-red: #e45649;
+  --ansi-green: #50a14f;
+  --ansi-yellow: #c18401;
+  --ansi-blue: #4078f2;
+  --ansi-magenta: #a626a4;
+  --ansi-cyan: #0184bc;
+  --ansi-white: #a0a1a7;
+  --ansi-bright-black: #696c77;
+  --ansi-bright-red: #ca1243;
+  --ansi-bright-green: #50a14f;
+  --ansi-bright-yellow: #986801;
+  --ansi-bright-blue: #4078f2;
+  --ansi-bright-magenta: #a626a4;
+  --ansi-bright-cyan: #0997b3;
+  --ansi-bright-white: #c2c2c3;
+}

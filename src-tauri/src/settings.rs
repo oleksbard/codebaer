@@ -16,12 +16,40 @@ pub enum AiProvider {
     Claude,
 }
 
+/// The ids of the frontend's `THEMES` in `src/ui/theme.ts`; a theme added there needs its variant here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Theme {
+    #[default]
+    Codebaer,
+    GithubDark,
+    GithubLight,
+    OneDark,
+    OneLight,
+    Dracula,
+    CatppuccinMocha,
+    CatppuccinLatte,
+    TokyoNight,
+    TokyoNightDay,
+    SolarizedDark,
+    SolarizedLight,
+    Nord,
+    GruvboxDark,
+    GruvboxLight,
+    AyuMirage,
+    AyuLight,
+    RosePine,
+    RosePineDawn,
+}
+
 /// Keyed by the option key, which is also the shape of the file. Deserialize is strict and serves the
 /// command argument only; the file goes through `from_file`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(rename = "general.headless-ai-provider")]
     pub headless_ai_provider: AiProvider,
+    #[serde(rename = "appearance.theme")]
+    pub theme: Theme,
 }
 
 /// A hand-edited file can hold anything, so each option falls back alone. Only a string is taken:
@@ -34,7 +62,10 @@ fn choice<T: DeserializeOwned + Default>(map: &Map<String, Value>, key: &str) ->
 }
 
 fn from_file(map: &Map<String, Value>) -> Settings {
-    Settings { headless_ai_provider: choice(map, "general.headless-ai-provider") }
+    Settings {
+        headless_ai_provider: choice(map, "general.headless-ai-provider"),
+        theme: choice(map, "appearance.theme"),
+    }
 }
 
 fn store(app: &AppHandle) -> Result<PathBuf, AppError> {
@@ -134,7 +165,7 @@ mod tests {
         (d, f)
     }
 
-    const CLAUDE: Settings = Settings { headless_ai_provider: AiProvider::Claude };
+    const CLAUDE: Settings = Settings { headless_ai_provider: AiProvider::Claude, theme: Theme::Codebaer };
 
     #[test]
     fn a_missing_file_reads_as_the_defaults() {
@@ -162,6 +193,21 @@ mod tests {
     }
 
     #[test]
+    fn a_valid_theme_is_read() {
+        let (_d, f) = file(r#"{"appearance.theme": "catppuccin-latte"}"#);
+        assert_eq!(read_at(&f), Settings { theme: Theme::CatppuccinLatte, ..Settings::default() });
+        assert_eq!(Settings::default().theme, Theme::Codebaer);
+    }
+
+    #[test]
+    fn an_invalid_theme_falls_back_alone() {
+        for v in [r#""solarised""#, r#""Nord""#, "1", "null", r#"{"nord": null}"#] {
+            let (_d, f) = file(&format!(r#"{{"general.headless-ai-provider": "claude", "appearance.theme": {v}}}"#));
+            assert_eq!(read_at(&f), CLAUDE, "value {v}");
+        }
+    }
+
+    #[test]
     fn a_blank_file_reads_as_the_defaults_and_takes_a_write() {
         for body in ["", "  \n"] {
             let (_d, f) = file(body);
@@ -185,7 +231,11 @@ mod tests {
         let f = d.path().join("settings-codebaer.json");
         write_at(&f, &CLAUDE).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(on_disk, serde_json::json!({ "general.headless-ai-provider": "claude" }));
+        assert_eq!(on_disk, serde_json::json!({ "general.headless-ai-provider": "claude", "appearance.theme": "codebaer" }));
+        let rose = Settings { theme: Theme::RosePineDawn, ..CLAUDE };
+        write_at(&f, &rose).unwrap();
+        let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(on_disk["appearance.theme"], "rose-pine-dawn");
     }
 
     #[test]
@@ -202,7 +252,10 @@ mod tests {
         let (_d, f) = file(r#"{"general.future": [1, 2], "general.headless-ai-provider": "off"}"#);
         write_at(&f, &CLAUDE).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(on_disk, serde_json::json!({ "general.future": [1, 2], "general.headless-ai-provider": "claude" }));
+        let want = serde_json::json!({
+            "general.future": [1, 2], "general.headless-ai-provider": "claude", "appearance.theme": "codebaer",
+        });
+        assert_eq!(on_disk, want);
     }
 
     #[test]
@@ -291,9 +344,11 @@ mod tests {
     #[test]
     fn the_command_argument_is_strict() {
         use serde_json::json;
-        assert!(serde_json::from_value::<Settings>(json!({ "general.headless-ai-provider": "gpt" })).is_err());
+        let with = |ai: &str, theme: &str| json!({ "general.headless-ai-provider": ai, "appearance.theme": theme });
+        assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());
+        assert!(serde_json::from_value::<Settings>(with("claude", "solarised")).is_err());
+        assert!(serde_json::from_value::<Settings>(json!({ "general.headless-ai-provider": "claude" })).is_err());
         assert!(serde_json::from_value::<Settings>(json!({})).is_err());
-        let ok = serde_json::from_value::<Settings>(json!({ "general.headless-ai-provider": "claude" })).unwrap();
-        assert_eq!(ok, CLAUDE);
+        assert_eq!(serde_json::from_value::<Settings>(with("claude", "codebaer")).unwrap(), CLAUDE);
     }
 }

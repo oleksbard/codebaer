@@ -5,7 +5,7 @@ import {
   acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, rejectChunk,
   replaceDoc, replaceOriginal,
 } from './editor';
-import { editorHighlight } from './editor-theme';
+import { editorHighlight, setEditorDark } from './editor-theme';
 
 const ORIGINAL = 'a\nb\nc\nd\n';
 const DOC = 'A\nb\nc\nD\n';
@@ -63,6 +63,35 @@ describe('CodeMirror merge contract', () => {
     const keyword = editorHighlight.style([tags.keyword]);
     expect(keyword).toBeTruthy();
     expect(editorHighlight.style([tags.comment])).not.toBe(keyword);
+  });
+
+  it('the dark flag follows the theme the state is built under', async () => {
+    document.documentElement.dataset.theme = 'github-light';
+    try {
+      expect((await mount('unstaged')).state.facet(EditorView.darkTheme)).toBe(false);
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
+    expect((await mount('unstaged')).state.facet(EditorView.darkTheme)).toBe(true);
+  });
+
+  it('the dark flag is read once the language has loaded, so a switch while it loads is not lost', async () => {
+    const building = buildState('unstaged', 'x.txt', DOC, ORIGINAL, () => {});
+    document.documentElement.dataset.theme = 'github-light';
+    try {
+      expect((await building).facet(EditorView.darkTheme)).toBe(false);
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
+  });
+
+  it('setEditorDark flips an open view and leaves its document alone', async () => {
+    const view = await mount('unstaged');
+    setEditorDark(view, false);
+    expect(view.state.facet(EditorView.darkTheme)).toBe(false);
+    setEditorDark(view, true);
+    expect(view.state.facet(EditorView.darkTheme)).toBe(true);
+    expect(view.state.doc.toString()).toBe(DOC);
   });
 
   it('the merge chunk rules name the merge root, so they outrank @codemirror/merge own base theme', async () => {

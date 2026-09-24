@@ -1,6 +1,19 @@
-/* No attribute means dark. A new theme is one more [data-theme] block overriding these names. */
-:root,
-:root[data-theme="dark"] {
+@import './themes/github.css';
+@import './themes/one.css';
+@import './themes/dracula.css';
+@import './themes/catppuccin.css';
+@import './themes/tokyo-night.css';
+@import './themes/nord.css';
+@import './themes/gruvbox.css';
+@import './themes/solarized.css';
+@import './themes/ayu.css';
+@import './themes/rose-pine.css';
+
+/* No attribute means CodeBär. A theme is one [data-theme] block setting every name below; :where()
+   keeps the root match at zero specificity, so that block wins wherever it is imported, and a
+   [data-theme] on any element, not just the root, repaints what is inside it (the theme previews). */
+:where(:root),
+[data-theme="codebaer"] {
   color-scheme: dark;
 
   --chrome: var(--gray-0);
@@ -38,4 +51,34 @@
   --syn-comment: var(--stone);
   --syn-string: var(--sage);
   --syn-invalid: white;
+
+  --ansi-black: var(--gray-3);
+  --ansi-red: var(--red);
+  --ansi-green: var(--green);
+  --ansi-yellow: var(--amber);
+  --ansi-blue: var(--blue);
+  --ansi-magenta: var(--violet);
+  --ansi-cyan: var(--cyan);
+  --ansi-white: var(--gray-6);
+  --ansi-bright-black: var(--gray-5);
+  --ansi-bright-red: var(--coral);
+  --ansi-bright-green: var(--sage);
+  --ansi-bright-yellow: var(--chalk);
+  --ansi-bright-blue: var(--sky);
+  --ansi-bright-magenta: var(--violet);
+  --ansi-bright-cyan: var(--cyan);
+  --ansi-bright-white: var(--gray-7);
+}
+
+/* Named hues for file icons and agent marks, taken from the ANSI slots every theme defines; ANSI has no
+   orange, and the constant colour is the orange of most themes. A separate zero-specificity rule, so
+   a theme whose slots are not hues (Solarized's bright ones are its greys) overrides only these. */
+:where(:root) {
+  --hue-blue: var(--ansi-bright-blue);
+  --hue-green: var(--ansi-bright-green);
+  --hue-orange: var(--syn-constant);
+  --hue-pink: var(--ansi-bright-red);
+  --hue-purple: var(--ansi-magenta);
+  --hue-red: var(--ansi-red);
+  --hue-yellow: var(--ansi-bright-yellow);
 }

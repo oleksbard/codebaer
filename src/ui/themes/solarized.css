@@ -1,0 +1,129 @@
+/* ethanschoonover.com/solarized; both variants share one terminal table. Text is a step brighter than
+   the canonical body tone (base1 over base0) so the UI keeps a readable primary. */
+[data-theme="solarized-dark"] {
+  color-scheme: dark;
+
+  --chrome: #00212b;
+  --bg: #002b36;
+  --panel: #073642;
+  --panel2: #0e4250;
+  --line: #0e4250;
+  --faint: #586e75;
+  --muted: #839496;
+  --text: #93a1a1;
+
+  --accent: #268bd2;
+  --accent-ink: #002b36;
+  --accent-soft: #268bd240;
+  --sel: #268bd224;
+  --focus: #268bd2;
+
+  --add: #859900;
+  --add-bg: #85990029;
+  --del: #dc322f;
+  --del-bg: #dc322f2e;
+
+  --warn: #cb4b16;
+  --info: #268bd2;
+  --mod: #b58900;
+  --scrim: #00141a99;
+  --shadow: 0 14px 44px #00000080;
+
+  --syn-keyword: #859900;
+  --syn-name: #268bd2;
+  --syn-function: #268bd2;
+  --syn-constant: #d33682;
+  --syn-type: #cb4b16;
+  --syn-operator: #859900;
+  --syn-comment: #586e75;
+  --syn-string: #2aa198;
+  --syn-invalid: #dc322f;
+
+  --ansi-black: #073642;
+  --ansi-red: #dc322f;
+  --ansi-green: #859900;
+  --ansi-yellow: #b58900;
+  --ansi-blue: #268bd2;
+  --ansi-magenta: #d33682;
+  --ansi-cyan: #2aa198;
+  --ansi-white: #eee8d5;
+  --ansi-bright-black: #002b36;
+  --ansi-bright-red: #cb4b16;
+  --ansi-bright-green: #586e75;
+  --ansi-bright-yellow: #657b83;
+  --ansi-bright-blue: #839496;
+  --ansi-bright-magenta: #6c71c4;
+  --ansi-bright-cyan: #93a1a1;
+  --ansi-bright-white: #fdf6e3;
+
+  --hue-blue: #268bd2;
+  --hue-green: #859900;
+  --hue-orange: #cb4b16;
+  --hue-pink: #d33682;
+  --hue-purple: #6c71c4;
+  --hue-yellow: #b58900;
+}
+
+[data-theme="solarized-light"] {
+  color-scheme: light;
+
+  --chrome: #e9e2cc;
+  --bg: #fdf6e3;
+  --panel: #eee8d5;
+  --panel2: #ddd6c1;
+  --line: #d9d2bc;
+  --faint: #93a1a1;
+  --muted: #657b83;
+  --text: #586e75;
+
+  --accent: #268bd2;
+  --accent-ink: #ffffff;
+  --accent-soft: #268bd22e;
+  --sel: #268bd21a;
+  --focus: #268bd2;
+
+  --add: #859900;
+  --add-bg: #85990029;
+  --del: #dc322f;
+  --del-bg: #dc322f1f;
+
+  --warn: #cb4b16;
+  --info: #268bd2;
+  --mod: #b58900;
+  --scrim: #07364259;
+  --shadow: 0 12px 36px #07364233;
+
+  --syn-keyword: #859900;
+  --syn-name: #268bd2;
+  --syn-function: #268bd2;
+  --syn-constant: #d33682;
+  --syn-type: #cb4b16;
+  --syn-operator: #859900;
+  --syn-comment: #93a1a1;
+  --syn-string: #2aa198;
+  --syn-invalid: #dc322f;
+
+  --ansi-black: #073642;
+  --ansi-red: #dc322f;
+  --ansi-green: #859900;
+  --ansi-yellow: #b58900;
+  --ansi-blue: #268bd2;
+  --ansi-magenta: #d33682;
+  --ansi-cyan: #2aa198;
+  --ansi-white: #eee8d5;
+  --ansi-bright-black: #002b36;
+  --ansi-bright-red: #cb4b16;
+  --ansi-bright-green: #586e75;
+  --ansi-bright-yellow: #657b83;
+  --ansi-bright-blue: #839496;
+  --ansi-bright-magenta: #6c71c4;
+  --ansi-bright-cyan: #93a1a1;
+  --ansi-bright-white: #fdf6e3;
+
+  --hue-blue: #268bd2;
+  --hue-green: #859900;
+  --hue-orange: #cb4b16;
+  --hue-pink: #d33682;
+  --hue-purple: #6c71c4;
+  --hue-yellow: #b58900;
+}
