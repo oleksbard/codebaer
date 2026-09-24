@@ -15,7 +15,8 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import {
-  acceptFile, aiMessage, cancel, checkout, commit, findOrphans, network, openPlain, openRepo, openRow, openSettings,
+  acceptFile, aiMessage, cancel, checkout, commit, copyPath, findOrphans, network, openPlain, openRepo, openRow,
+  openSettings,
   pickRepo, rejectFile,
   setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
@@ -228,14 +229,21 @@ function SectionBlock({ id, label, rows, empty, all, selected, open, onToggle }:
   );
 }
 
+const copyItem = (path: string): MenuItem => ({ label: 'Copy relative path', onSelect: () => void copyPath(path) });
+
 function menuFor(r: Row): MenuItem[] {
   const openFile: MenuItem = { label: 'Open file', onSelect: () => void openPlain(r.path) };
-  if (r.section === 'staged') return [{ label: 'Unstage file', onSelect: () => void unstageFile(r.path) }, openFile];
-  if (r.conflicted) return [{ label: 'Mark resolved', onSelect: () => void acceptFile(r.path) }, openFile];
+  if (r.section === 'staged') {
+    return [{ label: 'Unstage file', onSelect: () => void unstageFile(r.path) }, openFile, copyItem(r.path)];
+  }
+  if (r.conflicted) {
+    return [{ label: 'Mark resolved', onSelect: () => void acceptFile(r.path) }, openFile, copyItem(r.path)];
+  }
   return [
     { label: 'Stage file', onSelect: () => void acceptFile(r.path) },
     { label: 'Discard changes', onSelect: () => void rejectFile(r.path) },
     openFile,
+    copyItem(r.path),
   ];
 }
 
@@ -308,12 +316,14 @@ function TreeLevel(
         );
       })}
       {node.files.map((p) => (
-        <div key={p} className={`row f${p === active ? ' sel' : ''}${ignored.has(p) ? ' ignored' : ''}`}
-          data-key={`plain:${p}`} data-path={p} style={indent}
-          role="button" aria-current={p === active || undefined} title={p} onClick={() => void openPlain(p)}>
-          <FileIcon name={split(p)[1]} />
-          <span className="path"><span className="name">{split(p)[1]}</span></span>
-        </div>
+        <ContextMenu key={p} items={[copyItem(p)]}>
+          <div className={`row f${p === active ? ' sel' : ''}${ignored.has(p) ? ' ignored' : ''}`}
+            data-key={`plain:${p}`} data-path={p} style={indent}
+            role="button" aria-current={p === active || undefined} title={p} onClick={() => void openPlain(p)}>
+            <FileIcon name={split(p)[1]} />
+            <span className="path"><span className="name">{split(p)[1]}</span></span>
+          </div>
+        </ContextMenu>
       ))}
     </>
   );

@@ -22,7 +22,7 @@ export function Overlays() {
           <div key={t.id} className={`toast ${t.kind}`} onClick={() => removeToast(t.id)}>{t.message}</div>
         ))}
       </div>
-      {S.chord && <div className="chord">⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage</div>}
+      {S.chord && <div className="chord">⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage · ⌘⌥C comment</div>}
     </>
   );
 }

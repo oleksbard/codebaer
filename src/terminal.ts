@@ -202,11 +202,11 @@ function create(id: number, el: HTMLDivElement): Term {
     // refusing the event returns before xterm's own cancel(), and an Enter whose default still
     // runs produces a keypress that sends the bare CR this exists to replace
     e.preventDefault();
-    void invoke('term_input', { id, data: '\x1b\r' });
+    void input(id, '\x1b\r');
     return false;
   });
   term.attachCustomWheelEventHandler(wheelHandler(term));
-  term.onData((data) => void invoke('term_input', { id, data }));
+  term.onData((data) => void input(id, data));
   // legacy X10 and 1005 mouse reports are not UTF-8 and arrive here instead of onData
   term.onBinary((data) => {
     const bytes = Array.from(data, (ch) => ch.charCodeAt(0) & 0xff);
@@ -385,6 +385,7 @@ export async function subscribe(onEvent: (m: ServerMsg) => void): Promise<void> 
   await invoke('term_subscribe', { out, ev });
 }
 
+export const input = (id: number, data: string): Promise<void> => invoke('term_input', { id, data });
 export const menu = (): Promise<Menu> => invoke<Menu>('term_menu');
 export const kill = (id: number): Promise<void> => invoke('term_kill', { id });
 export const close = (id: number): Promise<void> => invoke('term_close', { id });

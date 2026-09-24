@@ -183,4 +183,29 @@ describe('installKeys', () => {
     press({ key: 'r', code: 'KeyR', metaKey: true });
     expect(calls).toEqual(['reject']);
   });
+
+  it('the comment chord does nothing in a terminal, and Escape in a comment box skips the global escape', () => {
+    const at = (cls: string) => {
+      const host = document.body.appendChild(document.createElement('div'));
+      host.className = cls;
+      return host.appendChild(document.createElement('textarea'));
+    };
+    const send = (el: Element, init: Init) => el.dispatchEvent(new KeyboardEvent('keydown', {
+      key: init.key, code: init.code, metaKey: !!init.metaKey, altKey: !!init.altKey, bubbles: true, cancelable: true,
+    }));
+    const inTerm = at('term-host');
+    send(inTerm, { key: 'k', code: 'KeyK', metaKey: true });
+    send(inTerm, { key: 'ç', code: 'KeyC', metaKey: true, altKey: true });
+    send(at('comment-box'), { key: 'Escape', code: 'Escape' });
+    expect(calls).toEqual([]);
+    document.body.replaceChildren();
+  });
+
+  it('chord Meta+KeyK then Meta+Alt+KeyC -> comment, and Meta+Alt+KeyC alone does nothing', () => {
+    press({ key: 'ç', code: 'KeyC', metaKey: true, altKey: true });
+    expect(calls).toEqual([]);
+    press({ key: 'k', code: 'KeyK', metaKey: true });
+    press({ key: 'ç', code: 'KeyC', metaKey: true, altKey: true });
+    expect(calls).toEqual(['comment']);
+  });
 });

@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { commentsExtension } from './editor-comments';
 import { editorHighlight, editorTheme } from './editor-theme';
 import { logError } from './log';
 import {
@@ -62,6 +63,7 @@ export async function buildState(
       },
     }),
     await languageFor(path),
+    commentsExtension,
     keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap, { key: 'Ctrl-g', run: gotoLine }]),
     EditorView.editable.of(kind !== 'staged'),
     EditorView.updateListener.of((u) => {
@@ -100,11 +102,16 @@ export async function buildState(
 
 export function replaceDoc(view: EditorView, text: string): void {
   const head = Math.min(view.state.selection.main.head, text.length);
+  // rebuilding every line moves the widgets' DOM, and the comment box being typed in loses focus with it
+  const active = document.activeElement;
+  const typing = active instanceof HTMLElement && active !== view.contentDOM && view.contentDOM.contains(active)
+    ? active : null;
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: text },
     selection: { anchor: head },
     annotations: Transaction.addToHistory.of(false),
   });
+  if (typing?.isConnected && document.activeElement !== typing) typing.focus({ preventScroll: true });
 }
 
 export function replaceOriginal(view: EditorView, text: string): void {

@@ -6,6 +6,8 @@ A small, fast macOS desktop editor for reviewing what an AI agent changed in a l
 
 **A staged hunk is a reviewed hunk.** Accept stages it, reject reverts it, edit changes the file. Git already has the two states the review needs. The app adds no state of its own.
 
+Select code in the editor to comment on it. Comments collect across files, and Send pastes them into one of the repo's terminals, `claude:1` say, with each file, line range and quoted code, so the agent knows exactly what you mean. Right-click a file in the sidebar to copy its relative path.
+
 ## Requirements
 
 - macOS 12 or later

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { DropdownMenu } from 'radix-ui';
+import { termLabels } from '../comments';
 import * as term from '../terminal';
 import { agentOf, awayLabel, homeFrom, isExited, statusLabel, type Agent } from '../terminal-status';
 import { Button } from '../ui/Button';
@@ -109,6 +110,7 @@ function Dot({ session }: { session: term.Info }) {
 
 export function TerminalRail() {
   const active = S.tab === 'terminals' ? S.activeTerm : null;
+  const names = termLabels(S.terminals);
   return (
     <div className="rail">
       {S.terminals.map((s) => {
@@ -116,7 +118,7 @@ export function TerminalRail() {
         const home = homeFrom(s.cwd);
         const away = awayLabel(s, S.root, home);
         // the number and the glyph are both decorative once the label carries the same words
-        const label = `${s.title} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
+        const label = `${names.get(s.id) ?? s.title} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
           + `${wants ? ' · wants attention' : ''}`;
         return (
           <ContextMenu

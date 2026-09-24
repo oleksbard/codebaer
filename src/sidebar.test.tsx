@@ -8,7 +8,7 @@ import type { Row } from './model';
 vi.mock('./app/controller', () => ({
   openRow: vi.fn(), openPlain: vi.fn(), acceptFile: vi.fn(), rejectFile: vi.fn(), unstageFile: vi.fn(),
   stageAll: vi.fn(), unstageAll: vi.fn(), commit: vi.fn(), aiMessage: vi.fn(), setTab: vi.fn(), toggleDir: vi.fn(),
-  openSettings: vi.fn(), findOrphans: vi.fn(),
+  openSettings: vi.fn(), findOrphans: vi.fn(), copyPath: vi.fn(),
 }));
 
 const c = await import('./app/controller');
@@ -294,28 +294,44 @@ describe('context menu', () => {
     return [...document.querySelectorAll<HTMLElement>('.menu-item')];
   };
 
-  it('an unstaged row offers Stage file, Discard changes, Open file', async () => {
+  it('an unstaged row offers Stage file, Discard changes, Open file, Copy relative path', async () => {
     await render([row('a.ts', 'M')]);
     const items = await open('.row');
-    expect(items.map((i) => i.textContent)).toEqual(['Stage file', 'Discard changes', 'Open file']);
+    expect(items.map((i) => i.textContent))
+      .toEqual(['Stage file', 'Discard changes', 'Open file', 'Copy relative path']);
     items[1]!.click();
     expect(h.rejectFile).toHaveBeenCalledWith('a.ts');
   });
 
-  it('a staged row offers Unstage file, Open file', async () => {
+  it('a staged row offers Unstage file, Open file, Copy relative path', async () => {
     await render([], [row('b.ts', 'M', 'staged')]);
     const items = await open('.row');
-    expect(items.map((i) => i.textContent)).toEqual(['Unstage file', 'Open file']);
+    expect(items.map((i) => i.textContent)).toEqual(['Unstage file', 'Open file', 'Copy relative path']);
     items[1]!.click();
     expect(h.openPlain).toHaveBeenCalledWith('b.ts');
   });
 
-  it('a conflicted row offers Mark resolved, Open file', async () => {
+  it('a conflicted row offers Mark resolved, Open file, Copy relative path', async () => {
     await render([row('c.ts', '!', 'unstaged', { conflicted: true })]);
     const items = await open('.row');
-    expect(items.map((i) => i.textContent)).toEqual(['Mark resolved', 'Open file']);
+    expect(items.map((i) => i.textContent)).toEqual(['Mark resolved', 'Open file', 'Copy relative path']);
     items[0]!.click();
     expect(h.acceptFile).toHaveBeenCalledWith('c.ts');
+  });
+
+  it('Copy relative path copies the row path, which is relative to the repo root', async () => {
+    await render([row('src/lib/auth/login.ts', 'M')]);
+    (await open('.row')).find((i) => i.textContent === 'Copy relative path')!.click();
+    expect(h.copyPath).toHaveBeenCalledExactlyOnceWith('src/lib/auth/login.ts');
+  });
+
+  it('a file row in the Files tree offers Copy relative path, and a directory row offers nothing', async () => {
+    await renderFiles(['src/a.ts'], null, ['src']);
+    expect(await open('summary.sec.d')).toEqual([]);
+    const items = await open('.row.f');
+    expect(items.map((i) => i.textContent)).toEqual(['Copy relative path']);
+    items[0]!.click();
+    expect(h.copyPath).toHaveBeenCalledExactlyOnceWith('src/a.ts');
   });
 });
 

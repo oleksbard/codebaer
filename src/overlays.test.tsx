@@ -189,6 +189,7 @@ describe('toasts and chord hint', () => {
     S.chord = true;
     (await import('./app/store')).notify();
     await tick();
-    expect(document.querySelector('.chord')!.textContent).toBe('⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage');
+    expect(document.querySelector('.chord')!.textContent)
+      .toBe('⌘K, then ⌘⌥S stage · ⌘R revert · ⌘N unstage · ⌘⌥C comment');
   });
 });

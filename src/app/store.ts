@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { Comment, Draft } from '../comments';
 import type { Eol, FileText, Status } from '../git';
 import type { ViewKind } from '../editor';
 import type { Item } from '../palette';
@@ -81,6 +82,10 @@ export const S = {
   /** The defaults until start() reads the file. */
   settings: { ...DEFAULTS },
   settingsOpen: false,
+  /** Comments waiting to be sent to a terminal. Drafts for an agent, not review state: memory only. */
+  comments: [] as Comment[],
+  draft: null as Draft | null,
+  lastTarget: null as number | null,
 };
 
 /** DOM nodes the controller focuses; components register them in ref callbacks. */

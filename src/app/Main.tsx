@@ -10,6 +10,7 @@ import {
   accept, acceptFile, closeFile, hasUnstaged, keepMine, nextHunk, reject, rejectFile, reload,
   toggleChangesOnly, unstageFile, unstageHunk, view, viewChanges,
 } from './controller';
+import { CommentLayer, PendingPill } from './Comments';
 import { S, useApp } from './store';
 
 const PANEL_TEXT: Record<string, string> = {
@@ -25,6 +26,7 @@ export function Main() {
       <TitleBar />
       <Banner />
       <EditorHost hidden={!showEditor} />
+      <CommentLayer />
       {!showEditor && <Blank />}
     </main>
   );
@@ -53,7 +55,7 @@ function WholeFileButtons({ path, kind }: { path: string; kind: 'unstaged' | 'st
 function TitleBar() {
   useApp();
   const o = S.open;
-  if (!o) return <div className="tbar" />;
+  if (!o) return <div className="tbar"><div className="right"><PendingPill /></div></div>;
   const [dir, name] = split(o.path);
   const title = <span className="file"><FileIcon name={name} />
     <span className="txt"><span className="dir">{dir}</span>{name}</span></span>;
@@ -68,12 +70,12 @@ function TitleBar() {
   const close = <IconButton label="Close file" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
     return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span>
-      <div className="right">{badge}{close}</div></div>;
+      <div className="right"><PendingPill />{badge}{close}</div></div>;
   }
   if (o.conflicted) {
     return (
       <div className="tbar">{title}<span className="pos">conflict</span>{blame}
-        <div className="right">{badge}
+        <div className="right"><PendingPill />{badge}
           <Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
       </div>
     );
@@ -103,7 +105,7 @@ function TitleBar() {
   );
   return (
     <div className="tbar">{title}<span className="pos">{pos}</span>{blame}
-      <div className="right">{badge}{nav}<Pill>{pill}</Pill>{btns}{close}</div>
+      <div className="right"><PendingPill />{badge}{nav}<Pill>{pill}</Pill>{btns}{close}</div>
     </div>
   );
 }

@@ -1,10 +1,13 @@
 import { listen } from '@tauri-apps/api/event';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { EditorView } from '@codemirror/view';
-import { EditorState, type Text } from '@codemirror/state';
+import { EditorState, type StateEffect, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
-import { unfoldAll } from '@codemirror/language';
+import { foldedRanges, unfoldAll, unfoldEffect } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
+import {
+  eligible, format, locate, location, pastePayload, submits, termLabels, type Draft, type Side,
+} from '../comments';
 import {
   acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase, rowKey,
   unstageText, visibleFiles, type Row,
@@ -14,6 +17,7 @@ import {
   goToPreviousChunk, onCursor, rejectChunk, replaceDoc, replaceOriginal, type ViewKind,
 } from '../editor';
 import { foldToChanges } from '../context-view';
+import { commentSpan, lineRange, marksOf, onComments, setMarks, type Mark } from '../editor-comments';
 import { pick } from '../palette';
 import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
@@ -21,6 +25,7 @@ import { installKeys, type Action } from '../keys';
 import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
 import { DEFAULTS, type SettingKey, type Settings } from '../settings';
 import * as term from '../terminal';
+import { homeFrom, statusLabel } from '../terminal-status';
 import { notify, refs, S, type Open, type Tab } from './store';
 
 const PANEL_KINDS = new Set(['Binary', 'NotUtf8', 'TooLarge', 'Special']);
@@ -326,6 +331,7 @@ export async function openRow(row: Row): Promise<void> {
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
+    showComments();
     selectChunk(0);
   } catch (e) {
     if (epoch !== S.openEpoch) return;
@@ -363,6 +369,7 @@ export async function openPlain(path: string): Promise<void> {
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
+    showComments();
   } catch (e) {
     if (epoch !== S.openEpoch) return;
     S.open = {
@@ -400,6 +407,7 @@ async function openConflict(path: string): Promise<void> {
     if (epoch !== S.openEpoch) return;
     S.open = opened;
     view.setState(state);
+    showComments();
   } catch (e) {
     if (epoch !== S.openEpoch) return;
     const opened: Open = {
@@ -698,6 +706,13 @@ export async function palette(): Promise<void> {
     { label: 'Git: Stage File', hint: '⌘⇧Y', run: () => S.open && acceptFile(S.open.path) },
     { label: 'Git: Discard File', hint: '⌘⇧N', run: () => S.open && rejectFile(S.open.path) },
     { label: 'Git: Unstage File', run: () => S.open && unstageFile(S.open.path) },
+    { label: 'Comment on Selection', hint: '⌘K ⌘⌥C', run: startComment },
+    ...(S.comments.length
+      ? [
+        { label: 'Send Pending Comments…', run: sendComments },
+        { label: 'Discard Pending Comments', run: discardComments },
+      ]
+      : []),
     { label: 'Open Repository…', run: pickRepo },
     { label: 'Terminal: New Terminal', hint: '⌘T', run: () => newTerminal() },
     ...(S.termMenu?.shells ?? []).map((sh) => ({
@@ -1057,8 +1072,285 @@ async function findInTerminal(): Promise<void> {
   onTerminal((id) => term.find(id, q));
 }
 
+// ---------- copy path ----------
+export async function copyPath(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path);
+    toast(`Copied ${path}`, 'ok');
+  } catch (e) {
+    toast(`Could not copy the path: ${errText(e)}`, 'err');
+  }
+}
+
+// ---------- review comments ----------
+/** Some TUIs read an Enter that arrives in the same read as a paste as part of the paste. */
+const SUBMIT_DELAY_MS = 120;
+let nextComment = 1;
+
+const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const sideOf = (o: Open): Side => (o.view === 'staged' ? 'index' : 'work');
+
+type Shown = { path: string; side: Side };
+
+/** The open file and side, when its editor can show comments at all. */
+function shown(): Shown | null {
+  const o = S.open;
+  return o && !o.panel ? { path: o.path, side: sideOf(o) } : null;
+}
+
+const here = (c: Shown, at: Shown | null): boolean => !!at && c.path === at.path && c.side === at.side;
+
+/** Text differs from what the box opened with, so closing it would lose something. */
+function unsaved(d: Draft): boolean {
+  const text = d.text.trim();
+  const was = d.editing === null ? '' : S.comments.find((c) => c.id === d.editing)?.text ?? '';
+  return !!text && text !== was;
+}
+
+function placeComments(): void {
+  const at = shown();
+  if (!at) return;
+  const marks: { key: string; fromLine: number; toLine: number; lost?: boolean }[] = S.comments
+    .filter((c) => here(c, at) && !c.moved && S.draft?.editing !== c.id)
+    .map((c) => ({ key: `c:${c.id}`, fromLine: c.from, toLine: c.to }));
+  const d = S.draft;
+  if (d && here(d, at)) marks.push({ key: 'draft', fromLine: d.from, toLine: d.to, lost: d.lost });
+  view.dispatch({ effects: setMarks.of(marks) });
+}
+
+/** A file may have changed while it was closed, so each comment is checked against its anchor
+ *  before it is placed in a freshly opened editor. */
+function showComments(): void {
+  const at = shown();
+  // the card being edited goes where its draft goes
+  const mine = S.comments.filter((c) => here(c, at) && !c.moved && S.draft?.editing !== c.id);
+  const d = S.draft && here(S.draft, at) ? S.draft : null;
+  if (!mine.length && !d) return;
+  const lines = view.state.doc.toString().split('\n');
+  for (const c of mine) {
+    const r = locate(lines, c);
+    if (r) { c.from = r.from; c.to = r.to; } else c.moved = true;
+  }
+  const r = d && !d.lost ? locate(lines, d) : null;
+  if (d && r) { d.from = r.from; d.to = r.to; } else if (d) d.lost = true;
+  placeComments();
+}
+
+/** The editor maps the marks through every edit; this copies their lines back into S. */
+function syncComments(): void {
+  const at = shown();
+  if (!at) return;
+  const doc = view.state.doc;
+  const marks = new Map(marksOf(view.state).map((m) => [m.key, m]));
+  const read = (m: Mark) => {
+    const from = doc.lineAt(m.from).number;
+    const to = doc.lineAt(m.to).number;
+    return { from, to, anchor: doc.sliceString(doc.line(from).from, doc.line(to).to) };
+  };
+  for (const c of S.comments) {
+    if (!here(c, at) || c.moved || S.draft?.editing === c.id) continue;
+    const m = marks.get(`c:${c.id}`);
+    if (m) Object.assign(c, read(m));
+    else c.moved = true;
+  }
+  const d = S.draft;
+  const dm = marks.get('draft');
+  if (d && dm && here(d, at)) {
+    const r = read(dm);
+    Object.assign(d, r);
+    if (dm.lost) d.lost = true;
+    // the card being edited has no mark of its own, and Cancel puts it back where the draft is now
+    const edited = d.editing === null ? undefined : S.comments.find((c) => c.id === d.editing);
+    if (edited && d.lost) edited.moved = true;
+    else if (edited) Object.assign(edited, r);
+  }
+  notify();
+}
+
+onComments.run = syncComments;
+
+/** A box scrolled out of the viewport has no DOM, so this scrolls it back and lets the box take
+ *  focus when it mounts. */
+function focusDraft(d: Draft): void {
+  d.focus = true;
+  const doc = view.state.doc;
+  view.dispatch({ effects: EditorView.scrollIntoView(doc.line(Math.min(d.to, doc.lines)).to, { y: 'nearest' }) });
+  notify();
+}
+
+export function startComment(): void {
+  const at = shown();
+  if (!at || S.tab === 'terminals') return;
+  const d = S.draft;
+  if (d && here(d, at)) { focusDraft(d); return; }
+  if (d && unsaved(d)) { toast(`Finish or cancel the comment on ${location(d)} first`, 'info'); return; }
+  const sel = view.state.selection.main;
+  const lines = lineRange(view.state.doc, sel.from, sel.to);
+  const span = commentSpan(view.state, at.path, lines.from, lines.to);
+  S.draft = { ...at, ...span, text: '', editing: null, focus: true, lost: false };
+  placeComments();
+  notify();
+}
+
+export function editComment(id: number): void {
+  const c = S.comments.find((x) => x.id === id);
+  if (!c) return;
+  const d = S.draft;
+  if (d?.editing === id) { focusDraft(d); return; }
+  if (d && unsaved(d)) { toast(`Finish or cancel the comment on ${location(d)} first`, 'info'); return; }
+  S.draft = {
+    path: c.path, side: c.side, from: c.from, to: c.to, anchor: c.anchor, quote: c.quote, text: c.text,
+    editing: id, focus: true, lost: false,
+  };
+  placeComments();
+  notify();
+}
+
+/** A blank draft is left open. */
+export function saveDraft(): void {
+  const d = S.draft;
+  const text = d?.text.trim();
+  if (!d || !text) return;
+  const at = shown();
+  const c = d.editing === null ? null : S.comments.find((x) => x.id === d.editing);
+  if (c) {
+    c.text = text;
+    if (d.lost) c.moved = true;
+    else Object.assign(c, { from: d.from, to: d.to, anchor: d.anchor, moved: false });
+  } else {
+    // re-read when the file is on screen: its lines may have changed since the box opened
+    const span = here(d, at) && !d.lost ? commentSpan(view.state, d.path, d.from, d.to) : d;
+    S.comments.push({
+      id: nextComment++, path: d.path, side: d.side, from: span.from, to: span.to, anchor: span.anchor,
+      quote: span.quote, text, moved: d.lost,
+    });
+  }
+  S.draft = null;
+  placeComments();
+  notify();
+  if (d.lost) toast('Saved. Its lines are no longer in the file, so it waits in the pending list as moved.', 'info');
+  if (here(d, at)) view.focus();
+}
+
+export async function cancelDraft(): Promise<void> {
+  const d = S.draft;
+  if (!d) return;
+  const ask = d.editing === null ? 'Discard this comment?' : 'Discard the changes to this comment?';
+  if (unsaved(d) && !(await confirmDialog(ask))) return;
+  if (S.draft !== d) return;
+  S.draft = null;
+  placeComments();
+  notify();
+  if (here(d, shown())) view.focus();
+}
+
+export function deleteComment(id: number): void {
+  S.comments = S.comments.filter((c) => c.id !== id);
+  if (S.draft?.editing === id) S.draft = null;
+  placeComments();
+  notify();
+}
+
+export async function discardComments(): Promise<void> {
+  const n = S.comments.length;
+  if (!n || !(await confirmDialog(`Discard ${plural(n, 'pending comment')}?`))) return;
+  S.comments = [];
+  if (S.draft && S.draft.editing !== null) S.draft = null;
+  placeComments();
+  notify();
+}
+
+/** A comment that lost its place is put back at its old lines, where it can be edited or deleted. */
+export async function jumpToComment(id: number): Promise<void> {
+  const c = S.comments.find((x) => x.id === id);
+  if (!c || !S.status) return;
+  let side = c.side;
+  if (!here(c, shown())) {
+    const q = buildQueue(S.status);
+    const row = (c.side === 'index' ? q.staged : q.unstaged).find((r) => r.path === c.path);
+    if (row) await openRow(row);
+    else { await openPlain(c.path); side = 'work'; }
+  }
+  // anything else on screen now was opened by the user while this one loaded, and wins
+  const at = shown();
+  if (!at || at.path !== c.path || at.side !== side || !S.comments.includes(c)) return;
+  const doc = view.state.doc;
+  if (c.side !== side) { c.side = side; c.moved = true; }
+  if (c.moved) {
+    c.from = Math.min(c.from, doc.lines);
+    c.to = Math.max(c.from, Math.min(c.to, doc.lines));
+    c.anchor = doc.sliceString(doc.line(c.from).from, doc.line(c.to).to);
+    c.moved = false;
+    placeComments();
+  }
+  const a = doc.line(Math.min(c.from, doc.lines)).from;
+  const b = doc.line(Math.min(c.to, doc.lines)).to;
+  const effects: StateEffect<unknown>[] = [EditorView.scrollIntoView(a, { y: 'center' })];
+  // Changes only folds away lines outside a hunk, and a comment can sit on those
+  foldedRanges(view.state).between(a, b, (from, to) => { effects.push(unfoldEffect.of({ from, to })); });
+  view.dispatch({ effects });
+  notify();
+}
+
+export async function sendComments(): Promise<void> {
+  const d = S.draft;
+  if (d && d.editing !== null && !d.text.trim()) {
+    toast(`Finish or cancel the comment on ${location(d)} first`, 'info');
+    return;
+  }
+  if (d && unsaved(d)) saveDraft();
+  else if (d) { S.draft = null; placeComments(); notify(); }
+  const sent = [...S.comments];
+  if (!sent.length) return;
+  // the agent reads the file from disk, which has to hold what the comments were written against
+  if (!(await flush())) {
+    toast(S.open?.badge
+      ? 'This file changed on disk. Reload or Keep mine first.'
+      : 'not saved, see the error above', 'warn');
+    return;
+  }
+  const labels = termLabels(S.terminals);
+  const targets = eligible(S.terminals, S.root)
+    .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));
+  if (!targets.length) { toast('No agent, or zsh or fish at its prompt, is open in this repo.', 'warn'); return; }
+  const id = await pick(targets.map((s) => ({
+    label: labels.get(s.id) ?? s.title,
+    detail: statusLabel(s, Date.now(), homeFrom(s.cwd)),
+    hint: [s.id === S.lastTarget ? 'last used' : '', submits(s) ? '' : 'paste only'].filter(Boolean).join(' · '),
+    value: s.id,
+  })), `Send ${plural(sent.length, 'comment')} to…`);
+  if (id === null) return;
+  const label = labels.get(id) ?? `#${id}`;
+  const target = eligible(S.terminals, S.root).find((s) => s.id === id);
+  if (!target) { toast(`${label} is no longer open`, 'err'); return; }
+  try {
+    await term.input(id, pastePayload(format(sent)));
+  } catch (e) {
+    toast(errText(e), 'err');
+    return;
+  }
+  let pressed = true;
+  if (submits(target)) {
+    await sleep(SUBMIT_DELAY_MS);
+    // an agent that quit in the meantime leaves its shell to read the Enter
+    const still = S.terminals.find((s) => s.id === id);
+    if (still && submits(still)) {
+      try { await term.input(id, '\r'); } catch { pressed = false; }
+    } else pressed = false;
+  }
+  const done = new Set(sent.map((c) => c.id));
+  S.comments = S.comments.filter((c) => !done.has(c.id));
+  S.lastTarget = id;
+  placeComments();
+  selectTerminal(id);
+  if (pressed) toast(`Sent ${plural(sent.length, 'comment')} to ${label}`, 'ok');
+  else toast(`Pasted into ${label} but could not press Enter`, 'warn');
+}
+
 // ---------- startup and repo switching ----------
 export async function openRepo(path: string): Promise<void> {
+  const pending = S.comments.length + (S.draft?.editing === null && S.draft.text.trim() ? 1 : 0);
+  if (pending && !(await confirmDialog(`Discard ${plural(pending, 'pending comment')}?`))) return;
   if (!(await flush())) {
     toast('This file changed on disk. Reload or Keep mine before switching repos.', 'warn');
     return;
@@ -1074,6 +1366,8 @@ export async function openRepo(path: string): Promise<void> {
     clearTimeout(S.saveTimer);
     S.open = null;
     S.selected = null;
+    S.comments = [];
+    S.draft = null;
     S.filesOpen.clear();
     S.ignoredKids.clear();
     await refresh();
@@ -1120,6 +1414,7 @@ export function dispatch(a: Action): void {
     newTerminal: () => void newTerminal(),
     terminalsTab: () => void setTab('terminals'),
     focusTerminal: () => { if (S.activeTerm !== null) term.focus(S.activeTerm); },
+    comment: startComment,
   };
   void map[a]();
 }

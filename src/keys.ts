@@ -3,7 +3,7 @@ export type Action =
   | 'acceptFile' | 'rejectFile' | 'stageAll' | 'nextFile' | 'prevFile'
   | 'quickOpen' | 'palette' | 'save' | 'toggleSidebar'
   | 'focusList' | 'focusEditor' | 'focusCommit' | 'filesTab' | 'escape'
-  | 'newTerminal' | 'terminalsTab' | 'focusTerminal';
+  | 'newTerminal' | 'terminalsTab' | 'focusTerminal' | 'comment';
 
 /** Everything else belongs to the terminal when it has focus: Escape, F7, Cmd-K, Cmd-N, Cmd-S
  *  and Cmd-Y are all keys vim, top and the agent CLIs expect to receive themselves. */
@@ -34,11 +34,14 @@ export function installKeys(dispatch: (a: Action) => void, onChord: (visible: bo
         if (meta && alt && code === 'KeyS') return fire('accept');
         if (meta && code === 'KeyR') return fire('reject');
         if (meta && code === 'KeyN') return fire('unstage');
+        if (meta && alt && code === 'KeyC') return fire('comment');
         return;
       }
       if (e.key === 'F5' && alt) return fire(shift ? 'prevHunk' : 'nextHunk');
       if (e.key === 'F7') return fire(shift ? 'prevHunk' : 'nextHunk');
-      if (e.key === 'Escape') { if (!inTerminal) dispatch('escape'); return; }
+      // the comment box cancels itself on Escape; the global one would also dismiss the changed-on-disk badge
+      const inComment = e.target instanceof Element && !!e.target.closest('.comment-box');
+      if (e.key === 'Escape') { if (!inTerminal && !inComment) dispatch('escape'); return; }
       if (ctrl && shift && code === 'KeyG') return fire('focusCommit');
       if (!meta || ctrl) return;
       if (code === 'KeyK' && !shift && !alt && !inTerminal) {

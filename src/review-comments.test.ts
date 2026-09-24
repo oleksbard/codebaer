@@ -1,0 +1,412 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Blob, FileText, Status } from './git';
+import type { Info } from './terminal';
+import { setValue, tick } from './test-setup';
+
+vi.mock('./git', async () => {
+  const actual = await vi.importActual<typeof import('./git')>('./git');
+  return { ...actual, git: Object.fromEntries(Object.keys(actual.git).map((k) => [k, vi.fn()])) };
+});
+vi.mock('./toast', async () => {
+  const actual = await vi.importActual<typeof import('./toast')>('./toast');
+  return { ...actual, confirmDialog: vi.fn() };
+});
+vi.mock('./palette', async () => {
+  const actual = await vi.importActual<typeof import('./palette')>('./palette');
+  return { ...actual, pick: vi.fn() };
+});
+// the terminal view mounts xterm when a send switches to it; none of that is under test here
+vi.mock('./terminal', async () => {
+  const actual = await vi.importActual<typeof import('./terminal')>('./terminal');
+  return { ...actual, checkCwd: vi.fn(), input: vi.fn(), mount: vi.fn(), focus: vi.fn(), fit: vi.fn() };
+});
+
+const { git } = await import('./git');
+const { confirmDialog } = await import('./toast');
+const { pick } = await import('./palette');
+const term = await import('./terminal');
+const g = git as unknown as Record<string, ReturnType<typeof vi.fn<(...args: never[]) => Promise<unknown>>>>;
+const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
+const pickMock = pick as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>>;
+const inputMock = term.input as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>>;
+
+let m: typeof import('./app/controller');
+let S: typeof import('./app/store').S;
+let notify: typeof import('./app/store').notify;
+
+const ROOT = '/Users/me/r';
+const INDEX = 'one\ntwo\nthree\nfour\n';
+const DISK = 'one\nTWO\nthree\nfour\n';
+const blob = (text: string): Blob => ({ text, eol: 'lf', oid: 'oid1', exists: true });
+const file = (text: string): FileText => ({ text, eol: 'lf', exists: true });
+const status = (): Status => ({
+  head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+  files: [{ path: 'a.ts', indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false }],
+});
+const session = (id: number, title: string, cwd = ROOT): Info =>
+  ({ id, title, cwd, tier: 'marks', state: { t: 'Idle' } });
+
+beforeAll(async () => {
+  document.body.innerHTML = '<div id="app"></div>';
+  await import('./main');
+  m = await import('./app/controller');
+  ({ S, notify } = await import('./app/store'));
+  await tick();
+});
+
+beforeEach(async () => {
+  for (const fn of Object.values(g)) fn.mockReset().mockResolvedValue(undefined);
+  confirmMock.mockReset().mockResolvedValue(true);
+  pickMock.mockReset();
+  inputMock.mockReset().mockResolvedValue(undefined);
+  S.tab = 'changes';
+  S.root = ROOT;
+  S.comments = [];
+  S.draft = null;
+  S.lastTarget = null;
+  S.toasts = [];
+  S.flushing = null;
+  S.terminals = [session(1, 'zsh'), session(2, 'claude'), session(3, 'claude', '/Users/me/other')];
+  S.status = status();
+  g.readBlob!.mockResolvedValue(blob(INDEX));
+  g.readFile!.mockResolvedValue(file(DISK));
+  g.status!.mockResolvedValue(S.status);
+  await m.openRow({ section: 'unstaged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+  await tick();
+});
+
+const select = (fromLine: number, toLine: number) => {
+  const doc = m.view.state.doc;
+  m.view.dispatch({ selection: { anchor: doc.line(fromLine).from, head: doc.line(toLine).to } });
+};
+
+const box = () => document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+
+async function comment(fromLine: number, toLine: number, text: string): Promise<void> {
+  select(fromLine, toLine);
+  m.startComment();
+  await tick();
+  setValue(box()!, text);
+  box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+  await tick();
+}
+
+describe('writing comments', () => {
+  it('opens a box under the selection with a diff quote; Add folds it into a card and the pending pill', async () => {
+    select(2, 3);
+    m.startComment();
+    await tick();
+    expect(document.activeElement).toBe(box());
+    expect(document.querySelector('.comment-head')!.textContent).toBe('Comment on a.ts:2-3');
+
+    setValue(box()!, 'Why uppercase?');
+    box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+    await tick();
+
+    expect(box()).toBeNull();
+    expect(S.comments).toMatchObject([{ path: 'a.ts', side: 'work', from: 2, to: 3, text: 'Why uppercase?',
+      quote: { t: 'diff', text: '-two\n+TWO\n three' } }]);
+    expect(document.querySelector('.comment-card .txt')!.textContent).toBe('Why uppercase?');
+    expect(document.querySelector('.pill.pending')!.textContent).toBe('✎ 1 pending ▾');
+  });
+
+  it('keeps a comment on its lines when a refresh rewrites the file above it', async () => {
+    await comment(4, 4, 'Rename four.');
+    g.readFile!.mockResolvedValue(file('zero\none\nTWO\nthree\nfour\n'));
+    await m.refresh();
+    expect(S.comments[0]).toMatchObject({ from: 5, to: 5, moved: false });
+  });
+
+  it('marks a comment moved when its lines are gone, and a jump puts it back at its old lines', async () => {
+    await comment(4, 4, 'Rename four.');
+    g.readFile!.mockResolvedValue(file('one\nTWO\nthree\n'));
+    await m.refresh();
+    expect(S.comments[0]!.moved).toBe(true);
+    expect(document.querySelector('.comment-card')).toBeNull();
+
+    await m.jumpToComment(S.comments[0]!.id);
+    await tick();
+    expect(S.comments[0]).toMatchObject({ from: 4, to: 4, moved: false });
+    expect(document.querySelector('.comment-card')).not.toBeNull();
+  });
+
+  it('asks before Escape throws away a comment that has text', async () => {
+    select(1, 1);
+    m.startComment();
+    await tick();
+    setValue(box()!, 'half a thought');
+    confirmMock.mockResolvedValue(false);
+    box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    expect(confirmMock).toHaveBeenCalledWith('Discard this comment?');
+    expect(S.draft?.text).toBe('half a thought');
+  });
+});
+
+describe('editing and showing comments', () => {
+  const button = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('.comment-actions button')].find((b) => b.textContent === label)!;
+
+  it('saves an edit from the card, and deletes from the edit box', async () => {
+    await comment(1, 1, 'Old.');
+    const id = S.comments[0]!.id;
+    document.querySelector<HTMLButtonElement>('.comment-open')!.click();
+    await tick();
+    expect(box()!.value).toBe('Old.');
+    setValue(box()!, 'New.');
+    box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+    await tick();
+    expect(S.comments).toMatchObject([{ id, text: 'New.', from: 1 }]);
+
+    m.editComment(id);
+    await tick();
+    button('Delete').click();
+    await tick();
+    expect(S.comments).toEqual([]);
+    expect(S.draft).toBeNull();
+    expect(document.querySelector('.comment-box, .comment-card')).toBeNull();
+  });
+
+  it('moves a card being edited with the refresh, so Cancel puts it back on its own line', async () => {
+    await comment(4, 4, 'Rename four.');
+    const id = S.comments[0]!.id;
+    m.editComment(id);
+    await tick();
+    g.readFile!.mockResolvedValue(file('zero\none\nTWO\nthree\nfour\n'));
+    await m.refresh();
+    await m.cancelDraft();
+    await tick();
+    expect(S.comments[0]).toMatchObject({ from: 5, to: 5, anchor: 'four', text: 'Rename four.' });
+    expect(document.querySelector('.comment-card')).not.toBeNull();
+  });
+
+  it('keeps focus in the box when a refresh rewrites the file under it', async () => {
+    select(4, 4);
+    m.startComment();
+    await tick();
+    expect(document.activeElement).toBe(box());
+    g.readFile!.mockResolvedValue(file('zero\none\nTWO\nthree\nfour\n'));
+    await m.refresh();
+    expect(document.activeElement).toBe(box());
+  });
+
+  it('keeps an edited card moved when its lines leave the file, instead of binding it to other text', async () => {
+    await comment(4, 4, 'Rename four.');
+    const id = S.comments[0]!.id;
+    m.editComment(id);
+    await tick();
+    g.readFile!.mockResolvedValue(file('one\nTWO\nsomething else\n'));
+    await m.refresh();
+    setValue(box()!, 'Rename four, wherever it went.');
+    m.saveDraft();
+    expect(S.comments[0]).toMatchObject({ id, moved: true, anchor: 'four', text: 'Rename four, wherever it went.' });
+    expect(S.toasts.at(-1)!.message).toContain('moved');
+  });
+
+  it('refuses to send while an edited card is blank, and to start a comment from the Terminals tab', async () => {
+    await comment(1, 1, 'Keep.');
+    m.editComment(S.comments[0]!.id);
+    await tick();
+    setValue(box()!, '  ');
+    await m.sendComments();
+    expect(pickMock).not.toHaveBeenCalled();
+    expect(S.comments[0]!.text).toBe('Keep.');
+    await m.cancelDraft();
+
+    S.tab = 'terminals';
+    select(2, 2);
+    m.startComment();
+    expect(S.draft).toBeNull();
+  });
+
+  it('turns a staged comment into a working-tree one when a jump finds no staged changes', async () => {
+    S.comments = [{
+      id: 98, path: 'a.ts', side: 'index', from: 3, to: 3, anchor: 'three',
+      quote: { t: 'code', lang: 'ts', text: 'three' }, text: 'Was staged.', moved: false,
+    }];
+    await m.closeFile();
+    await m.jumpToComment(98);
+    await tick();
+    expect(S.open?.view).toBe('plain');
+    expect(S.comments[0]).toMatchObject({ side: 'work', from: 3, moved: false });
+    expect(document.querySelector('.comment-card .txt')!.textContent).toBe('Was staged.');
+  });
+
+  it('ignores Send while the box is blank', async () => {
+    await comment(1, 1, 'Pending.');
+    select(4, 4);
+    m.startComment();
+    await tick();
+    expect(button('Send 2 ⌘⇧↩').disabled).toBe(true);
+    box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, shiftKey: true, bubbles: true }));
+    await tick();
+    expect(pickMock).not.toHaveBeenCalled();
+    expect(S.draft).not.toBeNull();
+  });
+
+  it('shows a staged comment only in the staged view of its file', async () => {
+    S.comments = [{
+      id: 99, path: 'a.ts', side: 'index', from: 1, to: 1, anchor: 'one',
+      quote: { t: 'code', lang: 'ts', text: 'one' }, text: 'Staged note.', moved: false,
+    }];
+    await m.openRow({ section: 'unstaged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+    await tick();
+    expect(document.querySelector('.comment-card')).toBeNull();
+    await m.openRow({ section: 'staged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+    await tick();
+    expect(document.querySelector('.comment-card .txt')!.textContent).toBe('Staged note.');
+  });
+
+  it('shows the Comment chip for a selection, and hides it while a draft is open anywhere', async () => {
+    select(1, 1);
+    await tick();
+    expect(document.querySelector('.comment-chip')).not.toBeNull();
+    S.draft = {
+      path: 'b.ts', side: 'work', from: 1, to: 1, anchor: '', quote: { t: 'code', lang: 'ts', text: '' },
+      text: 'elsewhere', editing: null, focus: false, lost: false,
+    };
+    notify();
+    await tick();
+    expect(document.querySelector('.comment-chip')).toBeNull();
+  });
+});
+
+describe('sending', () => {
+  it('offers repo terminals by label, pastes the batch, presses Enter for an agent and switches to it', async () => {
+    await comment(1, 1, 'First.');
+    await comment(4, 4, 'Second.');
+    pickMock.mockResolvedValue(2);
+
+    await m.sendComments();
+
+    const items = pickMock.mock.calls[0]![0] as { label: string; hint: string; value: number }[];
+    expect(items.map((i) => [i.label, i.hint])).toEqual([['zsh:1', 'paste only'], ['claude:1', '']]);
+    expect(pickMock.mock.calls[0]![1]).toBe('Send 2 comments to…');
+    const [paste, enter] = inputMock.mock.calls;
+    expect(paste![0]).toBe(2);
+    expect(paste![1]).toBe('\x1b[200~Review comments:\r\r'
+      + '1. a.ts:1\r```ts\rone\r```\rFirst.\r\r'
+      + '2. a.ts:4\r```ts\rfour\r```\rSecond.\x1b[201~');
+    expect(enter).toEqual([2, '\r']);
+    expect(S.comments).toEqual([]);
+    expect(S.tab).toBe('terminals');
+    expect(S.activeTerm).toBe(2);
+    expect(S.lastTarget).toBe(2);
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'Sent 2 comments to claude:1', kind: 'ok' });
+  });
+
+  it('adds the open draft first, and only pastes into a shell', async () => {
+    select(1, 1);
+    m.startComment();
+    await tick();
+    setValue(box()!, 'Send me now.');
+    pickMock.mockResolvedValue(1);
+    box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, shiftKey: true, bubbles: true }));
+    await vi.waitFor(() => expect(S.tab).toBe('terminals'));
+    expect(inputMock).toHaveBeenCalledOnce();
+    expect(inputMock.mock.calls[0]![1]).toContain('Send me now.');
+    expect(S.comments).toEqual([]);
+  });
+
+  it('puts the last target first on the next send', async () => {
+    S.lastTarget = 2;
+    await comment(1, 1, 'Again.');
+    pickMock.mockResolvedValue(null);
+    await m.sendComments();
+    const items = pickMock.mock.calls[0]![0] as { label: string; hint: string }[];
+    expect(items.map((i) => [i.label, i.hint])).toEqual([['claude:1', 'last used'], ['zsh:1', 'paste only']]);
+    expect(S.comments).toHaveLength(1);
+  });
+
+  it('keeps everything pending when the paste fails or no terminal is in the repo', async () => {
+    await comment(1, 1, 'Keep me.');
+    pickMock.mockResolvedValue(2);
+    inputMock.mockRejectedValue({ kind: 'Unknown', detail: 'host gone' });
+    await m.sendComments();
+    expect(S.comments).toHaveLength(1);
+    expect(S.tab).toBe('changes');
+
+    S.terminals = [session(3, 'claude', '/Users/me/other')];
+    pickMock.mockClear();
+    await m.sendComments();
+    expect(pickMock).not.toHaveBeenCalled();
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'No agent, or zsh or fish at its prompt, is open in this repo.' });
+    expect(S.comments).toHaveLength(1);
+  });
+
+  it('warns when the paste landed but Enter could not be pressed', async () => {
+    await comment(1, 1, 'Half sent.');
+    pickMock.mockResolvedValue(2);
+    inputMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce({ kind: 'Unknown', detail: 'gone' });
+    await m.sendComments();
+    expect(S.comments).toEqual([]);
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'Pasted into claude:1 but could not press Enter', kind: 'warn' });
+  });
+
+  it('does not press Enter when the agent quit between the paste and the Enter', async () => {
+    S.terminals = [{ ...session(4, 'zsh'), state: { t: 'Running', command: 'claude', since_ms: 0 } }];
+    await comment(1, 1, 'Quick.');
+    pickMock.mockResolvedValue(4);
+    inputMock.mockImplementationOnce(() => {
+      S.terminals = [session(4, 'zsh')];
+      return Promise.resolve();
+    });
+    await m.sendComments();
+    expect(inputMock).toHaveBeenCalledOnce();
+    expect(S.toasts.at(-1)).toMatchObject({ kind: 'warn' });
+  });
+
+  it('sends nothing while the open file cannot be saved', async () => {
+    await comment(1, 1, 'Needs the disk.');
+    m.view.dispatch({ changes: { from: 0, insert: 'x' } });
+    clearTimeout(S.saveTimer);
+    g.writeFile!.mockRejectedValue({ kind: 'Stale', detail: file('agent\n') });
+    await m.sendComments();
+    expect(pickMock).not.toHaveBeenCalled();
+    expect(S.comments).toHaveLength(1);
+    expect(S.toasts.at(-1)).toMatchObject({ kind: 'warn' });
+    S.open!.dirty = false;
+    S.open!.badge = null;
+  });
+
+  it('refuses a target that closed while the picker was open', async () => {
+    await comment(1, 1, 'Late.');
+    pickMock.mockImplementation(() => {
+      S.terminals = S.terminals.filter((s) => s.id !== 2);
+      return Promise.resolve(2);
+    });
+    await m.sendComments();
+    expect(inputMock).not.toHaveBeenCalled();
+    expect(S.comments).toHaveLength(1);
+  });
+});
+
+describe('repo switch and copy path', () => {
+  it('asks before a repo switch drops pending comments', async () => {
+    await comment(1, 1, 'Pending.');
+    confirmMock.mockResolvedValue(false);
+    await m.openRepo('/Users/me/other');
+    expect(confirmMock).toHaveBeenCalledWith('Discard 1 pending comment?');
+    expect(g.openRepo).not.toHaveBeenCalled();
+    expect(S.comments).toHaveLength(1);
+
+    confirmMock.mockResolvedValue(true);
+    vi.mocked(term.checkCwd).mockResolvedValue(undefined);
+    g.openRepo!.mockResolvedValue({ root: ROOT, label: '~/r', title: 'r' });
+    await m.openRepo(ROOT);
+    expect(S.comments).toEqual([]);
+    expect(S.draft).toBeNull();
+  });
+
+  it('copies a path to the clipboard and says so, or says why not', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await m.copyPath('src/a.ts');
+    expect(writeText).toHaveBeenCalledWith('src/a.ts');
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'Copied src/a.ts', kind: 'ok' });
+
+    writeText.mockRejectedValue(new Error('denied'));
+    await m.copyPath('src/a.ts');
+    expect(S.toasts.at(-1)).toMatchObject({ kind: 'err' });
+  });
+});
