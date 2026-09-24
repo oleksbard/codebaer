@@ -21,6 +21,7 @@ const trigger = () => head().querySelector<HTMLButtonElement>('.repo-trigger');
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(git.recentRepos).mockResolvedValue([]);
+  localStorage.removeItem('codebaer.avatars');
   document.body.innerHTML = '<div id="host"></div>';
   S.root = null; S.rootLabel = null; S.title = null;
   root = createRoot(document.getElementById('host')!);
@@ -67,7 +68,7 @@ describe('header repo switcher', () => {
     ]);
     await openRepoAt('/Users/me/projects/reviewbaer', '~/projects/reviewbaer', null);
     const items = await openMenu();
-    expect(items.map((i) => i.textContent)).toEqual(['Open Folder…⌘O', 'other-~/projects/other']);
+    expect(items.map((i) => i.textContent)).toEqual(['Open Folder…⌘O', 'OTother-~/projects/other']);
     items[1]!.click();
     expect(c.openRepo).toHaveBeenCalledWith('/Users/me/projects/other');
   });
@@ -76,5 +77,33 @@ describe('header repo switcher', () => {
     await openRepoAt('/Users/me/projects/reviewbaer', '~/projects/reviewbaer', null);
     (await openMenu())[0]!.click();
     expect(c.pickRepo).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the open repo with an avatar from its displayed name, in a theme hue', async () => {
+    await openRepoAt('/Users/me/projects/reviewbaer', '~/projects/reviewbaer', 'CodeBär');
+    const avatar = trigger()!.querySelector<HTMLElement>('.repo-avatar')!;
+    expect(avatar.textContent).toBe('CB');
+    expect(avatar.style.getPropertyValue('--hue')).toMatch(/^var\(--hue-[a-z]+\)$/);
+  });
+
+  it('gives every recent repo an avatar no other repo in the menu has', async () => {
+    vi.mocked(git.recentRepos).mockResolvedValue([
+      { path: '/Users/me/work/reviewbaer', name: 'reviewbaer', label: '~/work/reviewbaer' },
+      { path: '/Users/me/projects/bunch-portal', name: 'bunch-portal', label: '~/projects/bunch-portal' },
+    ]);
+    await openRepoAt('/Users/me/projects/reviewbaer', '~/projects/reviewbaer', null);
+    await openMenu();
+    const codes = [...document.querySelectorAll('.repo-avatar')].map((a) => a.textContent);
+    expect(codes).toEqual(['RE', 'RV', 'BP']);
+  });
+
+  it('forgets the avatars of repos that left the recents once the list loads', async () => {
+    localStorage.setItem('codebaer.avatars', JSON.stringify({ '/gone': { code: 'RE', name: 'reviewbaer' } }));
+    await openRepoAt('/Users/me/projects/reviewbaer', '~/projects/reviewbaer', null);
+    expect(trigger()!.querySelector('.repo-avatar')!.textContent).toBe('RV');
+    await openMenu();
+    expect(Object.keys(JSON.parse(localStorage.getItem('codebaer.avatars')!) as object))
+      .toEqual(['/Users/me/projects/reviewbaer']);
+    expect(trigger()!.querySelector('.repo-avatar')!.textContent).toBe('RV');
   });
 });

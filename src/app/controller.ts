@@ -19,7 +19,7 @@ import {
 import { foldToChanges } from '../context-view';
 import { setEditorDark } from '../editor-theme';
 import { commentSpan, lineRange, marksOf, onComments, setMarks, type Mark } from '../editor-comments';
-import { pick } from '../palette';
+import { pick, type Item } from '../palette';
 import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
@@ -671,11 +671,15 @@ async function discardAll(): Promise<void> {
 export async function checkout(): Promise<void> {
   let bs: Branch[] = [];
   try { bs = await git.branches(); } catch (e) { toast(errText(e), 'err'); return; }
-  const opts = pinDefaultBranches(bs).map((br) => ({
-    label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br,
-  }));
+  const opts: Item<Branch | 'create'>[] = [
+    { label: '+ Create new branch…', value: 'create' },
+    ...pinDefaultBranches(bs).map((br) => ({
+      label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br,
+    })),
+  ];
   const b = await pick(opts, 'Select a branch to checkout');
-  if (b) await guarded('switchBranch', () => git.switchBranch(b));
+  if (b === 'create') await createBranch();
+  else if (b) await guarded('switchBranch', () => git.switchBranch(b));
 }
 
 export async function createBranch(): Promise<void> {

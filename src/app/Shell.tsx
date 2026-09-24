@@ -1,5 +1,6 @@
-import { useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { DropdownMenu } from 'radix-ui';
+import { avatars, forgetAvatars, hueOf } from '../avatar';
 import { git, type Recent } from '../git';
 import { split } from '../model';
 import { Kbd } from '../ui/Kbd';
@@ -21,12 +22,18 @@ export function Header() {
   );
 }
 
-function RepoLabel({ name, path }: { name: string; path: string }) {
+function RepoAvatar({ path, code }: { path: string; code: string | undefined }) {
+  const style = { '--hue': `var(--hue-${hueOf(path)})` } as CSSProperties;
+  return <span className="repo-avatar" style={style} aria-hidden="true">{code}</span>;
+}
+
+function RepoLabel({ repo, code }: { repo: Recent; code: string | undefined }) {
   return (
     <span className="repo-label">
-      <span className="name">{name}</span>
+      <RepoAvatar path={repo.path} code={code} />
+      <span className="name">{repo.name}</span>
       <span className="dash">-</span>
-      <span className="path">{path}</span>
+      <span className="path">{repo.label}</span>
     </span>
   );
 }
@@ -34,11 +41,21 @@ function RepoLabel({ name, path }: { name: string; path: string }) {
 function RepoSwitcher() {
   const [recent, setRecent] = useState<Recent[]>([]);
   if (!S.root) return null;
+  const root = S.root;
+  const name = S.title ?? split(root)[1];
+  const codes = avatars([{ path: root, name }, ...recent]);
+  const load = async () => {
+    const list = await git.recentRepos();
+    // the only point where every repo the switcher can show is known
+    forgetAvatars([root, ...list.map((r) => r.path)]);
+    setRecent(list);
+  };
   return (
-    <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
+    <DropdownMenu.Root onOpenChange={(open) => { if (open) void load(); }}>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="repo-trigger" title={`${S.rootLabel ?? S.root} - switch project`}>
-          <span className="name">{S.title ?? split(S.root)[1]}</span>
+        <button type="button" className="repo-trigger" title={`${S.rootLabel ?? root} - switch project`}>
+          <RepoAvatar path={root} code={codes.get(root)} />
+          <span className="name">{name}</span>
           <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 6l4 4 4-4" />
@@ -53,7 +70,7 @@ function RepoSwitcher() {
           {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
           {recent.map((r) => (
             <DropdownMenu.Item key={r.path} className="menu-item" onSelect={() => void openRepo(r.path)}>
-              <RepoLabel name={r.name} path={r.label} />
+              <RepoLabel repo={r} code={codes.get(r.path)} />
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
