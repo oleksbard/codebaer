@@ -102,16 +102,11 @@ export async function buildState(
 
 export function replaceDoc(view: EditorView, text: string): void {
   const head = Math.min(view.state.selection.main.head, text.length);
-  // rebuilding every line moves the widgets' DOM, and the comment box being typed in loses focus with it
-  const active = document.activeElement;
-  const typing = active instanceof HTMLElement && active !== view.contentDOM && view.contentDOM.contains(active)
-    ? active : null;
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: text },
     selection: { anchor: head },
     annotations: Transaction.addToHistory.of(false),
   });
-  if (typing?.isConnected && document.activeElement !== typing) typing.focus({ preventScroll: true });
 }
 
 export function replaceOriginal(view: EditorView, text: string): void {

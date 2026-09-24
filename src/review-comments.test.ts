@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Blob, FileText, Status } from './git';
 import type { Info } from './terminal';
+import { foldEffect, foldedRanges, unfoldAll } from '@codemirror/language';
 import { setValue, tick } from './test-setup';
 
 vi.mock('./git', async () => {
@@ -232,6 +233,109 @@ describe('editing and showing comments', () => {
     expect(document.querySelector('.comment-card .txt')!.textContent).toBe('Was staged.');
   });
 
+  it('puts a card being edited back on its lines after its file was closed and changed', async () => {
+    await comment(4, 4, 'Rename four.');
+    const id = S.comments[0]!.id;
+    m.editComment(id);
+    await tick();
+    g.readFile!.mockResolvedValueOnce(file('other\n'));
+    await m.openPlain('b.ts');
+    g.readFile!.mockResolvedValue(file('zero\none\nTWO\nthree\nfour\n'));
+    await m.openRow({ section: 'unstaged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+    await m.cancelDraft();
+    await tick();
+    expect(S.comments[0]).toMatchObject({ id, from: 5, to: 5, anchor: 'four', moved: false });
+  });
+
+  it('keeps comments unfolded in Changes only, and the box focused through a refresh', async () => {
+    const long = (edit: Record<number, string>) =>
+      `${Array.from({ length: 40 }, (_, i) => edit[i + 1] ?? `line ${i + 1}`).join('\n')}\n`;
+    S.changesOnly = true;
+    S.comments = [{
+      id: 97, path: 'a.ts', side: 'work', from: 20, to: 20, anchor: 'line 20',
+      quote: { t: 'code', lang: 'ts', text: 'line 20' }, text: 'Far from the hunk.', moved: false,
+    }];
+    g.readBlob!.mockResolvedValue(blob(long({})));
+    g.readFile!.mockResolvedValue(file(long({ 2: 'changed' })));
+    await m.openRow({ section: 'unstaged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+    await tick();
+    const folded = (line: number) => {
+      const at = m.view.state.doc.line(line).from;
+      let hit = false;
+      foldedRanges(m.view.state).between(at, at, () => { hit = true; });
+      return hit;
+    };
+    expect(folded(30)).toBe(true);
+    expect(folded(20)).toBe(false);
+    expect(document.querySelector('.comment-card .txt')!.textContent).toBe('Far from the hunk.');
+
+    select(2, 2);
+    m.startComment();
+    await tick();
+    setValue(box()!, 'typing');
+    g.readFile!.mockResolvedValue(file(long({ 2: 'changed', 35: 'agent wrote this' })));
+    await m.refresh();
+    await tick();
+    expect(document.activeElement).toBe(box());
+    expect(box()!.value).toBe('typing');
+    S.changesOnly = false;
+  });
+
+  it('folds nothing in Changes only for a file with comments but no changes', async () => {
+    S.changesOnly = true;
+    const long = `${Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n')}\n`;
+    S.comments = [{
+      id: 96, path: 'a.ts', side: 'work', from: 15, to: 15, anchor: 'line 15',
+      quote: { t: 'code', lang: 'ts', text: 'line 15' }, text: 'Plain.', moved: false,
+    }];
+    g.readFile!.mockResolvedValue(file(long));
+    await m.openPlain('a.ts');
+    await m.refresh();
+    let folds = 0;
+    foldedRanges(m.view.state).between(0, m.view.state.doc.length, () => { folds++; });
+    expect(folds).toBe(0);
+    S.changesOnly = false;
+  });
+
+  it('does not take focus back from where the owner went while the box was folded away', async () => {
+    select(2, 2);
+    m.startComment();
+    await tick();
+    expect(document.activeElement).toBe(box());
+    const doc = m.view.state.doc;
+    m.view.dispatch({ effects: foldEffect.of({ from: doc.line(1).to, to: doc.line(3).to }) });
+    await tick();
+    expect(box()).toBeNull();
+    const commit = document.querySelector<HTMLTextAreaElement>('#commit-message')!;
+    commit.focus();
+    unfoldAll(m.view);
+    await tick();
+    expect(box()).not.toBeNull();
+    expect(document.activeElement).toBe(commit);
+  });
+
+  it('keeps the caret where it was when a refresh rebuilds the box', async () => {
+    const long = (edit: Record<number, string>) =>
+      `${Array.from({ length: 40 }, (_, i) => edit[i + 1] ?? `line ${i + 1}`).join('\n')}\n`;
+    S.changesOnly = true;
+    g.readBlob!.mockResolvedValue(blob(long({})));
+    g.readFile!.mockResolvedValue(file(long({ 2: 'changed' })));
+    await m.openRow({ section: 'unstaged', path: 'a.ts', letter: 'M', untracked: false, conflicted: false });
+    select(2, 2);
+    m.startComment();
+    await tick();
+    setValue(box()!, 'hello world');
+    box()!.setSelectionRange(5, 5);
+    // React derives onSelect from the key and mouse events that move a caret, not the native event
+    box()!.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
+    g.readFile!.mockResolvedValue(file(long({ 2: 'changed', 35: 'agent' })));
+    await m.refresh();
+    await tick();
+    expect(document.activeElement).toBe(box());
+    expect(box()!.selectionStart).toBe(5);
+    S.changesOnly = false;
+  });
+
   it('ignores Send while the box is blank', async () => {
     await comment(1, 1, 'Pending.');
     select(4, 4);
@@ -263,7 +367,7 @@ describe('editing and showing comments', () => {
     expect(document.querySelector('.comment-chip')).not.toBeNull();
     S.draft = {
       path: 'b.ts', side: 'work', from: 1, to: 1, anchor: '', quote: { t: 'code', lang: 'ts', text: '' },
-      text: 'elsewhere', editing: null, focus: false, lost: false,
+      text: 'elsewhere', editing: null, focus: false, caret: null, lost: false,
     };
     notify();
     await tick();
@@ -279,8 +383,8 @@ describe('sending', () => {
 
     await m.sendComments();
 
-    const items = pickMock.mock.calls[0]![0] as { label: string; hint: string; value: number }[];
-    expect(items.map((i) => [i.label, i.hint])).toEqual([['zsh:1', 'paste only'], ['claude:1', '']]);
+    const items = pickMock.mock.calls[0]![0] as { label: string; hint?: string; value: number }[];
+    expect(items.map((i) => [i.label, i.hint])).toEqual([['claude:1', undefined]]);
     expect(pickMock.mock.calls[0]![1]).toBe('Send 2 comments to…');
     const [paste, enter] = inputMock.mock.calls;
     expect(paste![0]).toBe(2);
@@ -295,26 +399,27 @@ describe('sending', () => {
     expect(S.toasts.at(-1)).toMatchObject({ message: 'Sent 2 comments to claude:1', kind: 'ok' });
   });
 
-  it('adds the open draft first, and only pastes into a shell', async () => {
+  it('adds the open draft first when sent from its box', async () => {
     select(1, 1);
     m.startComment();
     await tick();
     setValue(box()!, 'Send me now.');
-    pickMock.mockResolvedValue(1);
+    pickMock.mockResolvedValue(2);
     box()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, shiftKey: true, bubbles: true }));
     await vi.waitFor(() => expect(S.tab).toBe('terminals'));
-    expect(inputMock).toHaveBeenCalledOnce();
+    expect(inputMock).toHaveBeenCalledTimes(2);
     expect(inputMock.mock.calls[0]![1]).toContain('Send me now.');
     expect(S.comments).toEqual([]);
   });
 
   it('puts the last target first on the next send', async () => {
-    S.lastTarget = 2;
+    S.terminals = [session(2, 'claude'), session(5, 'codex')];
+    S.lastTarget = 5;
     await comment(1, 1, 'Again.');
     pickMock.mockResolvedValue(null);
     await m.sendComments();
-    const items = pickMock.mock.calls[0]![0] as { label: string; hint: string }[];
-    expect(items.map((i) => [i.label, i.hint])).toEqual([['claude:1', 'last used'], ['zsh:1', 'paste only']]);
+    const items = pickMock.mock.calls[0]![0] as { label: string; hint?: string }[];
+    expect(items.map((i) => [i.label, i.hint])).toEqual([['codex:1', 'last used'], ['claude:1', undefined]]);
     expect(S.comments).toHaveLength(1);
   });
 
@@ -330,7 +435,7 @@ describe('sending', () => {
     pickMock.mockClear();
     await m.sendComments();
     expect(pickMock).not.toHaveBeenCalled();
-    expect(S.toasts.at(-1)).toMatchObject({ message: 'No agent, or zsh or fish at its prompt, is open in this repo.' });
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'No claude or codex session is open in this repo.' });
     expect(S.comments).toHaveLength(1);
   });
 
@@ -347,8 +452,9 @@ describe('sending', () => {
     S.terminals = [{ ...session(4, 'zsh'), state: { t: 'Running', command: 'claude', since_ms: 0 } }];
     await comment(1, 1, 'Quick.');
     pickMock.mockResolvedValue(4);
+    // quits after the paste has gone out, inside the wait before Enter
     inputMock.mockImplementationOnce(() => {
-      S.terminals = [session(4, 'zsh')];
+      setTimeout(() => { S.terminals = [session(4, 'zsh')]; }, 40);
       return Promise.resolve();
     });
     await m.sendComments();

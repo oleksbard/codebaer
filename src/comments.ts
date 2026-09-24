@@ -30,8 +30,11 @@ export type Draft = {
   quote: Quote;
   text: string;
   editing: number | null;
-  /** Set when the box should take focus the next time it mounts, and cleared by the box. */
+  /** The box holds focus: set when it opens or gains focus, cleared when focus moves elsewhere. The
+   *  editor rebuilds the box's DOM on some refreshes, and the new one takes focus back. */
   focus: boolean;
+  /** Where the caret was, for a box the editor rebuilt. */
+  caret: number | null;
   /** Its lines left the file while it was open, so saving it leaves the comment moved. */
   lost: boolean;
 };
@@ -65,7 +68,7 @@ export const sortComments = (cs: readonly Comment[]): Comment[] =>
 /** By code point: a UTF-16 cut can split a surrogate pair. */
 function clip(l: string): string {
   if (l.length <= MAX_LINE) return l;
-  const cps = [...l];
+  const cps = Array.from(l);
   return cps.length <= MAX_LINE ? l : `${cps.slice(0, MAX_LINE).join('')}…`;
 }
 
@@ -122,25 +125,63 @@ export function termLabels(sessions: readonly Info[]): Map<number, string> {
   return out;
 }
 
-/** Shells whose line editor brackets pastes by default. macOS's /bin/bash is 3.2, which does not,
- *  and a program without it runs a pasted CR as Enter, one quoted line at a time. */
-const PASTE_SAFE = new Set(['zsh', 'fish']);
+type Cli = 'claude' | 'codex';
 
-/** A one-shot run in a shell never reads its terminal, so the shell would get the paste once it ends. */
-const ONE_SHOT = /(^|\s)(-p|--print)(\s|$)|^codex\s+(exec|e)(\s|$)/;
+/** Bare words that are the interactive interface itself. Every other bare word is taken for a
+ *  subcommand, which runs once without reading the terminal, so the shell under it would read the
+ *  paste and its Enter once it ends. A list of the one-shot subcommands would go stale unsafely. */
+const INTERACTIVE: Record<Cli, ReadonlySet<string>> = { claude: new Set(), codex: new Set(['resume']) };
 
-const agent = (s: Info): boolean =>
-  agentOf(s) !== null && !(s.state.t === 'Running' && ONE_SHOT.test(s.state.command?.trim() ?? ''));
+/** Flags whose value comes next. A value-taking flag missing here makes its value read as a
+ *  subcommand, which hides the session rather than offering a wrong one. */
+const VALUE_FLAGS: Record<Cli, ReadonlySet<string>> = {
+  claude: new Set(['--add-dir', '--plugin-dir', '--model', '--fallback-model', '--permission-mode', '--settings',
+    '--setting-sources', '--mcp-config', '--append-system-prompt', '--system-prompt', '--session-id', '--resume', '-r',
+    '--agent', '--agents', '--allowedTools', '--allowed-tools', '--disallowedTools', '--disallowed-tools', '--tools',
+    '--betas', '-w', '--worktree', '--from-pr', '--debug']),
+  codex: new Set(['-c', '--config', '-p', '--profile', '-m', '--model', '-i', '--image', '-s', '--sandbox', '-a',
+    '--ask-for-approval', '-C', '--cd', '--add-dir', '--enable', '--disable', '--local-provider']),
+};
 
-/** An agent takes comments at any time. A shell only at its own prompt, which Idle means because
- *  only the prompt marks report it: a REPL or ssh in its foreground would run each line. */
-export const canTake = (s: Info): boolean => agent(s) || (s.state.t === 'Idle' && PASTE_SAFE.has(kindOf(s)));
+/** The agent a shell command line runs interactively, or null. A quoted word is the prompt. */
+function interactiveCli(command: string): Cli | null {
+  const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  let i = 0;
+  while (i < words.length && /^[A-Za-z_]\w*=/.test(words[i]!)) i++;
+  const cli = words[i]?.split('/').pop()?.toLowerCase();
+  if (cli !== 'claude' && cli !== 'codex') return null;
+  const bare = (w: string | undefined) => w?.replace(/["']/g, '');
+  let resumed = false;
+  for (let k = i + 1; k < words.length; k++) {
+    const word = words[k]!;
+    // outside quotes, a redirect, pipe, list, background job, substitution or line continuation:
+    // the terminal's input may not be the agent's, or something else runs after it
+    if (/[<>|&;`$()\\]/.test(word.replace(/"[^"]*"|'[^']*'/g, ''))) return null;
+    const a = bare(word)!;
+    if (a.startsWith('-')) {
+      if (cli === 'claude' && (a === '--print' || a.startsWith('--print=') || /^-[a-zA-Z]*p[a-zA-Z]*$/.test(a))) {
+        return null;
+      }
+      // a value never starts with a dash, since claude's --resume takes one only optionally
+      if (VALUE_FLAGS[cli].has(a) && !(bare(words[k + 1]) ?? '-').startsWith('-')) k++;
+    } else if (!/^(?:"[^"]*"|'[^']*')$/.test(word) && !resumed) {
+      if (!INTERACTIVE[cli].has(a)) return null;
+      resumed = true;
+    }
+  }
+  return cli;
+}
+
+/** Only an interactive agent. A shell, or anything else in one's foreground, runs a pasted line as
+ *  a command as soon as an Enter arrives, and the quoted code with it. */
+export function takesComments(s: Info): boolean {
+  if (isExited(s)) return false;
+  const running = s.state.t === 'Running' ? s.state.command : null;
+  return running ? interactiveCli(running) !== null : agentOf(s) !== null;
+}
 
 export const eligible = (sessions: readonly Info[], root: string | null): Info[] =>
-  root ? sessions.filter((s) => !isExited(s) && !outsideRepo(s, root) && canTake(s)) : [];
-
-/** Enter would run the comment as commands in a shell, so only a known agent gets one. */
-export const submits = agent;
+  root ? sessions.filter((s) => takesComments(s) && !outsideRepo(s, root)) : [];
 
 /** The 1-based first line of the occurrence of `anchor` nearest `near`, or null. */
 export function reanchor(lines: readonly string[], anchor: string, near: number): number | null {

@@ -6,7 +6,7 @@ import { getChunks } from '@codemirror/merge';
 import { foldedRanges, unfoldAll, unfoldEffect } from '@codemirror/language';
 import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
 import {
-  eligible, format, locate, location, pastePayload, submits, termLabels, type Draft, type Side,
+  eligible, format, locate, location, pastePayload, takesComments, termLabels, type Draft, type Side,
 } from '../comments';
 import {
   acceptText, blameText, buildQueue, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase, rowKey,
@@ -1133,6 +1133,9 @@ function showComments(): void {
   }
   const r = d && !d.lost ? locate(lines, d) : null;
   if (d && r) { d.from = r.from; d.to = r.to; } else if (d) d.lost = true;
+  const edited = d?.editing == null ? undefined : S.comments.find((c) => c.id === d.editing);
+  if (edited && d?.lost) edited.moved = true;
+  else if (edited && r) Object.assign(edited, r);
   placeComments();
 }
 
@@ -1169,12 +1172,22 @@ function syncComments(): void {
 
 onComments.run = syncComments;
 
-/** A box scrolled out of the viewport has no DOM, so this scrolls it back and lets the box take
- *  focus when it mounts. */
+/** Scroll and unfold effects that bring lines from..to into view. */
+function revealLines(from: number, to: number, y: 'center' | 'nearest'): StateEffect<unknown>[] {
+  const doc = view.state.doc;
+  const a = doc.line(Math.min(from, doc.lines)).from;
+  const b = doc.line(Math.min(to, doc.lines)).to;
+  // the margin leaves room for the box drawn under the last line
+  const effects: StateEffect<unknown>[] = [EditorView.scrollIntoView(y === 'center' ? a : b, { y, yMargin: 140 })];
+  foldedRanges(view.state).between(a, b, (f, t) => { effects.push(unfoldEffect.of({ from: f, to: t })); });
+  return effects;
+}
+
+/** A box scrolled out of the viewport or folded away has no DOM, so this brings it back and lets
+ *  the box take focus when it mounts. */
 function focusDraft(d: Draft): void {
   d.focus = true;
-  const doc = view.state.doc;
-  view.dispatch({ effects: EditorView.scrollIntoView(doc.line(Math.min(d.to, doc.lines)).to, { y: 'nearest' }) });
+  view.dispatch({ effects: revealLines(d.from, d.to, 'nearest') });
   notify();
 }
 
@@ -1187,8 +1200,9 @@ export function startComment(): void {
   const sel = view.state.selection.main;
   const lines = lineRange(view.state.doc, sel.from, sel.to);
   const span = commentSpan(view.state, at.path, lines.from, lines.to);
-  S.draft = { ...at, ...span, text: '', editing: null, focus: true, lost: false };
+  S.draft = { ...at, ...span, text: '', editing: null, focus: true, caret: null, lost: false };
   placeComments();
+  view.dispatch({ effects: revealLines(span.from, span.to, 'nearest') });
   notify();
 }
 
@@ -1200,9 +1214,10 @@ export function editComment(id: number): void {
   if (d && unsaved(d)) { toast(`Finish or cancel the comment on ${location(d)} first`, 'info'); return; }
   S.draft = {
     path: c.path, side: c.side, from: c.from, to: c.to, anchor: c.anchor, quote: c.quote, text: c.text,
-    editing: id, focus: true, lost: false,
+    editing: id, focus: true, caret: null, lost: false,
   };
   placeComments();
+  if (here(c, shown())) view.dispatch({ effects: revealLines(c.from, c.to, 'nearest') });
   notify();
 }
 
@@ -1283,12 +1298,7 @@ export async function jumpToComment(id: number): Promise<void> {
     c.moved = false;
     placeComments();
   }
-  const a = doc.line(Math.min(c.from, doc.lines)).from;
-  const b = doc.line(Math.min(c.to, doc.lines)).to;
-  const effects: StateEffect<unknown>[] = [EditorView.scrollIntoView(a, { y: 'center' })];
-  // Changes only folds away lines outside a hunk, and a comment can sit on those
-  foldedRanges(view.state).between(a, b, (from, to) => { effects.push(unfoldEffect.of({ from, to })); });
-  view.dispatch({ effects });
+  view.dispatch({ effects: revealLines(c.from, c.to, 'center') });
   notify();
 }
 
@@ -1312,17 +1322,16 @@ export async function sendComments(): Promise<void> {
   const labels = termLabels(S.terminals);
   const targets = eligible(S.terminals, S.root)
     .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));
-  if (!targets.length) { toast('No agent, or zsh or fish at its prompt, is open in this repo.', 'warn'); return; }
+  if (!targets.length) { toast('No claude or codex session is open in this repo.', 'warn'); return; }
   const id = await pick(targets.map((s) => ({
     label: labels.get(s.id) ?? s.title,
     detail: statusLabel(s, Date.now(), homeFrom(s.cwd)),
-    hint: [s.id === S.lastTarget ? 'last used' : '', submits(s) ? '' : 'paste only'].filter(Boolean).join(' · '),
+    hint: s.id === S.lastTarget ? 'last used' : undefined,
     value: s.id,
   })), `Send ${plural(sent.length, 'comment')} to…`);
   if (id === null) return;
   const label = labels.get(id) ?? `#${id}`;
-  const target = eligible(S.terminals, S.root).find((s) => s.id === id);
-  if (!target) { toast(`${label} is no longer open`, 'err'); return; }
+  if (!eligible(S.terminals, S.root).some((s) => s.id === id)) { toast(`${label} is no longer open`, 'err'); return; }
   try {
     await term.input(id, pastePayload(format(sent)));
   } catch (e) {
@@ -1330,14 +1339,12 @@ export async function sendComments(): Promise<void> {
     return;
   }
   let pressed = true;
-  if (submits(target)) {
-    await sleep(SUBMIT_DELAY_MS);
-    // an agent that quit in the meantime leaves its shell to read the Enter
-    const still = S.terminals.find((s) => s.id === id);
-    if (still && submits(still)) {
-      try { await term.input(id, '\r'); } catch { pressed = false; }
-    } else pressed = false;
-  }
+  await sleep(SUBMIT_DELAY_MS);
+  // an agent that quit in the meantime leaves its shell to read the Enter
+  const still = S.terminals.find((s) => s.id === id);
+  if (still && takesComments(still)) {
+    try { await term.input(id, '\r'); } catch { pressed = false; }
+  } else pressed = false;
   const done = new Set(sent.map((c) => c.id));
   S.comments = S.comments.filter((c) => !done.has(c.id));
   S.lastTarget = id;

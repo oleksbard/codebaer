@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DropdownMenu } from 'radix-ui';
 import { firstLine, location, sortComments, type Comment, type Draft } from '../comments';
@@ -15,6 +15,15 @@ import { notify, S, useApp } from './store';
 export function CommentLayer() {
   useApp();
   useSyncExternalStore(subscribeHosts, hostsVersion, hostsVersion);
+  // a box whose DOM went away while it had focus sees no blur, and would take focus back from
+  // wherever the owner went when it next mounts
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      if (S.draft && !(e.target instanceof Element && e.target.closest('.comment-box'))) S.draft.focus = false;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
   const out: ReactNode[] = [];
   const chip = commentHost('chip');
   if (chip && !S.draft) out.push(createPortal(<Chip />, chip, 'chip'));
@@ -53,12 +62,18 @@ function DraftBox({ d }: { d: Draft }) {
       <div className="comment-head">{editing === null ? 'Comment on' : 'Editing'} {location(d)}</div>
       <textarea rows={3} placeholder="Tell the agent what to change" aria-label="Comment" value={d.text}
         ref={(el) => {
-          if (!el || !d.focus) return;
-          d.focus = false;
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
+          if (!el || !d.focus || document.activeElement === el) return;
+          el.focus({ preventScroll: true });
+          const at = d.caret ?? el.value.length;
+          el.setSelectionRange(at, at);
         }}
-        onChange={(e) => { d.text = e.target.value; notify(); }} onKeyDown={onKeyDown} />
+        onSelect={(e) => { d.caret = e.currentTarget.selectionStart; }}
+        onFocus={() => { d.focus = true; }}
+        // a textarea the editor just detached blurs too, and so does every element when the owner
+        // switches apps; both come back
+        onBlur={(e) => { if (e.currentTarget.isConnected && document.hasFocus()) d.focus = false; }}
+        onChange={(e) => { d.text = e.target.value; d.caret = e.target.selectionStart; notify(); }}
+        onKeyDown={onKeyDown} />
       <div className="comment-actions">
         {editing !== null && <Button variant="ghost" onClick={() => deleteComment(editing)}>Delete</Button>}
         <Button variant="ghost" onClick={() => void cancelDraft()}>Cancel</Button>

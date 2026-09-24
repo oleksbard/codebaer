@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canTake, eligible, fence, format, langOf, locate, location, pastePayload, reanchor, sanitize, submits, termLabels,
+  eligible, fence, format, langOf, locate, location, pastePayload, reanchor, sanitize, takesComments, termLabels,
   type Comment,
 } from './comments';
 import type { Info } from './terminal';
@@ -97,33 +97,46 @@ describe('terminal labels', () => {
       .toEqual(['zsh:1', 'claude:1', 'codex:1', 'claude:2', 'claude:3', 'claude:4', 'claude:5']);
   });
 
-  it('offers only live sessions inside the repo, and submits only to agents', () => {
+  it('offers only live agent sessions inside the repo', () => {
     const all = [
       session(1, 'zsh'),
       session(2, 'claude', { cwd: '/r/sub' }),
       session(3, 'claude', { cwd: '/elsewhere' }),
       session(4, 'claude', { state: { t: 'Exited', code: 1 } }),
+      session(5, 'codex'),
     ];
-    expect(eligible(all, '/r').map((s) => s.id)).toEqual([1, 2]);
+    expect(eligible(all, '/r').map((s) => s.id)).toEqual([2, 5]);
     expect(eligible(all, null)).toEqual([]);
-    expect(submits(all[0]!)).toBe(false);
-    expect(submits(all[1]!)).toBe(true);
   });
 
-  it('never offers a shell that would run the paste line by line', () => {
-    const running = { t: 'Running', command: 'python3', since_ms: 0 } as const;
-    expect(canTake(session(1, 'zsh'))).toBe(true);
-    expect(canTake(session(2, 'fish'))).toBe(true);
-    expect(canTake(session(3, 'bash'))).toBe(false);
-    expect(canTake(session(4, 'dash'))).toBe(false);
-    expect(canTake(session(5, 'zsh', { state: running }))).toBe(false);
-    expect(canTake(session(6, 'zsh', { state: { t: 'Running', command: null, since_ms: 0 }, tier: 'process' })))
-      .toBe(false);
-    expect(canTake(session(7, 'claude', { state: { t: 'Running', command: null, since_ms: 0 } }))).toBe(true);
-    expect(canTake(session(8, 'bash', { state: { t: 'Running', command: 'claude', since_ms: 0 } }))).toBe(true);
-    for (const command of ['claude -p "fix it"', 'claude --print x', 'codex exec fix', 'codex e fix']) {
-      const s = session(9, 'zsh', { state: { t: 'Running', command, since_ms: 0 } });
-      expect([command, canTake(s), submits(s)]).toEqual([command, false, false]);
+  it('never takes comments in a shell, or in a one-shot agent run a shell would read after', () => {
+    const running = (command: string | null) => ({ state: { t: 'Running', command, since_ms: 0 } as const });
+    for (const title of ['zsh', 'fish', 'bash', 'dash']) expect(takesComments(session(1, title))).toBe(false);
+    expect(takesComments(session(2, 'zsh', running('python3')))).toBe(false);
+    expect(takesComments(session(3, 'claude', running(null)))).toBe(true);
+    expect(takesComments(session(4, 'bash', running('claude --resume')))).toBe(true);
+    for (const command of [
+      'claude -p "fix it"', 'claude --print x', 'claude --print=true x', 'claude mcp list', 'claude update',
+      'codex exec fix', 'codex e fix', '/opt/homebrew/bin/codex exec fix', 'Codex exec', 'codex -c model=o3 exec fix',
+      'codex login', 'codex apply', 'claude -pc "x"', 'claude "-p" "fix it"', 'codex "exec" x', 'claude < prompt.txt',
+      'claude &', 'claude | tee log', 'FOO=1 claude -p x', 'codex \\  exec "x"', 'claude \\  mcp serve',
+      'claude upgrade', 'claude ultrareview', 'claude auth login', 'codex review', 'codex --add-dir ../lib exec "x"',
+      'codex --enable feat exec "x"', 'claude $(cat args)', 'claude "x"<prompt.txt', 'claude "x">out',
+      "claude 'x'|cat", 'claude "x";ls', 'claude "x"&&python3', 'codex resume && python3', 'codex resume < /dev/null',
+      'codex resume --last > log', 'codex resume | tee log', 'codex resume $(foo)', 'claude -r -p "x"',
+      'claude --resume --print "x"', "claude $'-p' \"q\"", 'claude "x"python3',
+    ]) {
+      expect([command, takesComments(session(5, 'zsh', running(command)))]).toEqual([command, false]);
+    }
+    for (const command of [
+      'claude', 'claude --resume', 'codex -p work', 'codex resume', '/usr/local/bin/claude -c',
+      'codex "add a test for login"', 'claude "please update the docs"', "claude 'fix the mcp config loader'",
+      'codex --profile a', 'claude --add-dir config', 'ANTHROPIC_MODEL=x claude', '  claude',
+      'FOO="a b" claude', 'claude --append-system-prompt update', 'claude --resume abc', 'codex resume --last',
+      'claude --model=opus "fix it"', 'claude -w feat', 'claude --worktree feat', 'claude --from-pr 12',
+      'claude --debug api', 'codex resume abc123', 'claude -r', 'claude --resume abc -c',
+    ]) {
+      expect([command, takesComments(session(6, 'zsh', running(command)))]).toEqual([command, true]);
     }
   });
 });

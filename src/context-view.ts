@@ -2,6 +2,7 @@ import { foldEffect, foldable, forceParsing, unfoldAll } from '@codemirror/langu
 import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { getChunks } from '@codemirror/merge';
+import { marksOf } from './editor-comments';
 
 export type LineRange = { first: number; last: number };
 
@@ -12,12 +13,16 @@ const WHOLE_MAX = 80;
 
 /**
  * Line ranges the changes-only view leaves visible: every chunk with the block it lives in
- * whole, and one header line for each outer block around it.
+ * whole, and one header line for each outer block around it, plus every comment and the draft.
  */
 export function keepRanges(state: EditorState): LineRange[] {
   const doc = state.doc;
-  const out: LineRange[] = [];
-  for (const c of getChunks(state)?.chunks ?? []) {
+  const chunks = getChunks(state)?.chunks ?? [];
+  // no chunks folds nothing at all, so comments alone never collapse a plain or accepted file
+  if (!chunks.length) return [];
+  const out: LineRange[] = marksOf(state)
+    .map((m) => ({ first: doc.lineAt(m.from).number, last: doc.lineAt(m.to).number }));
+  for (const c of chunks) {
     const first = doc.lineAt(c.fromB).number;
     const last = doc.lineAt(c.endB).number;
     out.push({ first, last });

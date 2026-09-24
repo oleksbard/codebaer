@@ -145,14 +145,128 @@ function replacesAll(tr: Transaction): boolean {
   return n === 1 && all;
 }
 
-/** One change removed all of from..to and put nothing in its place, as rejecting an added hunk
- *  does. touchesRange's "cover" misses a change that starts exactly at `from`. */
-function deletes(tr: Transaction, from: number, to: number): boolean {
-  let gone = false;
-  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-    if (fromA <= from && toA >= to && !inserted.length) gone = true;
-  });
-  return gone;
+export type Edit = { fromA: number; toA: number; fromB: number; toB: number };
+
+/** The edit that removed the character at pos, if one did; `edits` come sorted and apart. */
+function removedBy(edits: readonly Edit[], pos: number): Edit | undefined {
+  let lo = 0;
+  let hi = edits.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const e = edits[mid]!;
+    if (pos < e.fromA) hi = mid - 1;
+    else if (pos >= e.toA) lo = mid + 1;
+    else return e;
+  }
+  return undefined;
+}
+
+/** `tr.changes.mapPos` for positions asked in non-decreasing order, in time linear in the edits
+ *  overall rather than per call: an edit on every line would otherwise make mapping quadratic. */
+export class PosMapper {
+  private i = 0;
+  constructor(private readonly edits: readonly Edit[]) {}
+
+  map(pos: number, assoc: -1 | 1): number {
+    const es = this.edits;
+    while (this.i < es.length && es[this.i]!.toA < pos) this.i++;
+    const prev = es[this.i - 1];
+    let delta = prev ? prev.toB - prev.toA : 0;
+    for (let j = this.i; j < es.length; j++) {
+      const e = es[j]!;
+      if (e.fromA > pos) break;
+      if (e.toA > pos || (e.toA === e.fromA && assoc < 0)) return pos === e.fromA || assoc < 0 ? e.fromB : e.toB;
+      delta = e.toB - e.toA;
+    }
+    return pos + delta;
+  }
+}
+
+/**
+ * Where old line n went, by the characters of it that survived the edit: the new line of its
+ * first surviving non-blank character, or its last when `last` is set, so a line split by Enter
+ * spans both halves. Indenting, commenting out, typing, Enter at either edge and joining lines all
+ * keep some of a line's characters, and positions say exactly where they went. A line left with no
+ * text, or that had none, is still the same line while its line breaks are: clearing a line keeps
+ * it, and so does deleting whole lines above a blank one. Null when the line itself is gone.
+ */
+function survivor(
+  tr: Transaction, edits: readonly Edit[], map: PosMapper, n: number, last: boolean,
+): number | null {
+  const old = tr.startState.doc;
+  const line = old.line(n);
+  const t = line.text;
+  for (let k = 0; k < t.length; k++) {
+    const i = last ? t.length - 1 - k : k;
+    if (/\s/.test(t[i]!) || removedBy(edits, line.from + i)) continue;
+    return tr.newDoc.lineAt(map.map(line.from + i, 1)).number;
+  }
+  // a removed break joins this line to the text the removal started after, or ended before
+  const below = line.to < old.length ? removedBy(edits, line.to) : undefined;
+  if (below && (/\S/.test(t) || /\S/.test(old.sliceString(below.toA, old.lineAt(below.toA).to)))) return null;
+  const above = line.from > 0 ? removedBy(edits, line.from - 1) : undefined;
+  if (above && (/\S/.test(t) || /\S/.test(old.sliceString(old.lineAt(above.fromA).from, above.fromA)))) return null;
+  // text replaced in place, a paste over the line say, starts where its replacement starts
+  const lead = t.search(/\S/);
+  const at = !last && lead >= 0 ? map.map(line.from + lead, -1)
+    : line.to < old.length && !below ? map.map(line.to, 1) : map.map(line.from, -1);
+  return tr.newDoc.lineAt(at).number;
+}
+
+/** New lines made entirely of inserted text, by their text, where that text is unique. */
+function insertedLines(tr: Transaction, edits: readonly Edit[]): Map<string, number | null> {
+  const doc = tr.newDoc;
+  const out = new Map<string, number | null>();
+  for (const e of edits) {
+    if (e.toB === e.fromB) continue;
+    for (let l = doc.lineAt(e.fromB); ; l = doc.line(l.number + 1)) {
+      if (l.from >= e.fromB && l.to <= e.toB && /\S/.test(l.text)) out.set(l.text, out.has(l.text) ? null : l.number);
+      if (l.to >= e.toB || l.number === doc.lines) break;
+    }
+  }
+  return out;
+}
+
+/** Lines from..to after the edit. A line with nothing left of it goes to a unique inserted copy of
+ *  its text (a moved line), else to the replacement's line at its offset (a rejected hunk or a paste
+ *  over it), else nowhere. A moved line far from the rest no longer belongs to the comment. */
+function remapLines(
+  tr: Transaction, edits: readonly Edit[], inserted: () => Map<string, number | null>, from: number, to: number,
+): { from: number; to: number } | null {
+  const old = tr.startState.doc;
+  const doc = tr.newDoc;
+  const map = new PosMapper(edits);
+  const kept: number[] = [];
+  const moved: number[] = [];
+  for (let n = from; n <= to; n++) {
+    const first = survivor(tr, edits, map, n, false);
+    if (first !== null) {
+      kept.push(first, survivor(tr, edits, map, n, true) ?? first);
+      continue;
+    }
+    const line = old.line(n);
+    const copy = /\S/.test(line.text) ? inserted().get(line.text) : undefined;
+    if (copy) { moved.push(copy); continue; }
+    const lead = line.text.search(/\S/);
+    const e = removedBy(edits, lead < 0 ? Math.max(0, line.from - 1) : line.from + lead)
+      ?? removedBy(edits, line.to);
+    if (e && e.toB > e.fromB) {
+      const top = doc.lineAt(e.fromB).number;
+      const count = doc.lineAt(Math.max(e.fromB, e.toB - 1)).number - top + 1;
+      const offset = n - old.lineAt(e.fromA).number;
+      if (offset < count) kept.push(top + offset);
+    }
+  }
+  if (!kept.length && !moved.length) return null;
+  // a loop, not a spread: a comment over a whole large file has more lines than a call takes arguments
+  const base = kept.length ? kept : moved;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const n of base) { lo = Math.min(lo, n); hi = Math.max(hi, n); }
+  for (const m of [...moved].sort((a, b) => a - b)) {
+    if (m >= lo - 1 && m <= hi + 1) { lo = Math.min(lo, m); hi = Math.max(hi, m); }
+  }
+  return { from: lo, to: hi };
 }
 
 function remap(marks: readonly Mark[], tr: Transaction): readonly Mark[] {
@@ -160,15 +274,17 @@ function remap(marks: readonly Mark[], tr: Transaction): readonly Mark[] {
   const old = tr.startState.doc;
   const doc = tr.newDoc;
   if (!replacesAll(tr)) {
+    const edits: Edit[] = [];
+    tr.changes.iterChanges((fromA, toA, fromB, toB) => { edits.push({ fromA, toA, fromB, toB }); });
+    let found: Map<string, number | null> | null = null;
+    const inserted = () => (found ??= insertedLines(tr, edits));
     return marks.flatMap((m) => {
-      const gone = m.to > m.from && deletes(tr, m.from, m.to);
-      if (gone && m.key !== 'draft') return [];
-      // both ends after anything inserted at them, so a line added at either edge stays outside
-      const from = doc.lineAt(tr.changes.mapPos(m.from, 1)).from;
-      let to = Math.max(from, tr.changes.mapPos(m.to, 1));
-      if (to > from && to === doc.lineAt(to).from) to--;
-      const lost = gone || !!m.lost;
-      return [{ key: m.key, from, to: doc.lineAt(to).to, ...(lost ? { lost } : {}) }];
+      const r = remapLines(tr, edits, inserted, old.lineAt(m.from).number, old.lineAt(m.to).number);
+      if (r) return [marksFromLines(doc, m.key, r.from, r.to, !!m.lost)];
+      if (m.key !== 'draft') return [];
+      // every line of the draft went; it stays where they were, to keep what is being typed
+      const at = doc.lineAt(tr.changes.mapPos(m.from, 1)).number;
+      return [marksFromLines(doc, m.key, at, at, true)];
     });
   }
   const lines = doc.toString().split('\n');
