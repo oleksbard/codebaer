@@ -7,64 +7,6 @@
   min-height: 0;
 }
 
-.side-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 8px;
-}
-
-.repo-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 4px 8px;
-  border-radius: var(--r-3);
-  font-size: var(--fs-5);
-  font-weight: 700;
-
-  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  svg { flex: none; color: var(--muted); }
-
-  &:hover, &[data-state="open"] { background: var(--panel2); }
-}
-
-.repo-menu { min-width: 300px; }
-
-/* every row of the switcher menu */
-.repo-label {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  min-width: 0;
-  white-space: nowrap;
-
-  .name {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .dash {
-    flex: none;
-    color: var(--faint);
-  }
-
-  .path {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font: var(--fs-2) var(--mono);
-    color: var(--muted);
-  }
-}
-
 .list {
   flex: 1;
   overflow: auto;

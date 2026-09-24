@@ -93,18 +93,75 @@
 
 .head {
   grid-area: head;
-  display: flex;
+  display: grid;
+  /* equal outer columns keep the field centred however long the repo name gets */
+  grid-template-columns: minmax(0,1fr) minmax(0,560px) minmax(0,1fr);
+  column-gap: 12px;
   align-items: center;
-  justify-content: center;
   /* clears the macOS window buttons, which sit over this row; mirrored so the field stays centred */
   padding: 0 84px;
 }
 
+.repo-trigger {
+  grid-column: 1;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r-3);
+  font-size: var(--fs-3);
+  font-weight: 600;
+  color: var(--text);
+
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  svg { flex: none; color: var(--muted); }
+
+  &:hover, &[data-state="open"] { background: var(--panel2); }
+}
+
+.repo-menu { min-width: 300px; }
+
+/* every row of the switcher menu */
+.repo-label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+
+  .name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .dash {
+    flex: none;
+    color: var(--faint);
+  }
+
+  .path {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: var(--fs-2) var(--mono);
+    color: var(--muted);
+  }
+}
+
 .cmd-field {
+  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(560px, 100%);
+  width: 100%;
   height: 26px;
   padding: 0 10px;
   border-radius: var(--r-3);

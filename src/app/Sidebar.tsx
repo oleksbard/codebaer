@@ -3,7 +3,6 @@ import {
   type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode,
 } from 'react';
 import { DropdownMenu } from 'radix-ui';
-import { git, type Recent } from '../git';
 import { buildQueue, buildTree, rowKey, split, type Row, type Section, type TreeDir } from '../model';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -15,10 +14,8 @@ import { Kbd } from '../ui/Kbd';
 import { Spinner } from '../ui/Spinner';
 import { Tabs } from '../ui/Tabs';
 import {
-  acceptFile, aiMessage, cancel, checkout, commit, copyPath, findOrphans, network, openPlain, openRepo, openRow,
-  openSettings,
-  pickRepo, rejectFile,
-  setTab, stageAll, toggleDir, unstageAll, unstageFile,
+  acceptFile, aiMessage, cancel, checkout, commit, copyPath, findOrphans, network, openPlain, openRow, openSettings,
+  rejectFile, setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
 import { TerminalRail } from './Terminals';
@@ -99,49 +96,6 @@ export function ActivityBar() {
   );
 }
 
-function RepoLabel({ name, path }: { name: string; path: string }) {
-  return (
-    <span className="repo-label">
-      <span className="name">{name}</span>
-      <span className="dash">-</span>
-      <span className="path">{path}</span>
-    </span>
-  );
-}
-
-function RepoSwitcher() {
-  const [recent, setRecent] = useState<Recent[]>([]);
-  if (!S.root) return null;
-  return (
-    <div className="side-head">
-      <DropdownMenu.Root onOpenChange={(open) => { if (open) void git.recentRepos().then(setRecent); }}>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" className="repo-trigger" title={`${S.rootLabel ?? S.root} - switch project`}>
-            <span className="name">{S.title ?? split(S.root)[1]}</span>
-            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
-              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4}>
-            <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
-              Open Folder…<span className="detail">⌘O</span>
-            </DropdownMenu.Item>
-            {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
-            {recent.map((r) => (
-              <DropdownMenu.Item key={r.path} className="menu-item" onSelect={() => void openRepo(r.path)}>
-                <RepoLabel name={r.name} path={r.label} />
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </div>
-  );
-}
-
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
 
 // the status is a bare colour dot now, so the letter it replaced becomes its tooltip
@@ -156,7 +110,6 @@ export function Sidebar() {
   const q = S.status ? buildQueue(S.status) : { unstaged: [], staged: [] };
   return (
     <aside className="side">
-      <RepoSwitcher />
       {S.tab === 'files'
         ? <FilesList files={S.files} ignored={S.ignored} active={S.open?.path ?? null} />
         : <QueueList q={q} selected={S.selected} open={open}

@@ -419,3 +419,12 @@ describe('brand menu', () => {
     bar.unmount();
   });
 });
+
+describe('repo switcher', () => {
+  it('lives in the header, not the sidebar', async () => {
+    S.root = '/Users/me/projects/reviewbaer';
+    await render([]);
+    expect(side.querySelector('.repo-trigger')).toBeNull();
+    S.root = null;
+  });
+});
