@@ -1,5 +1,14 @@
 name: ci
-on: [push, pull_request]
+on:
+  push: { branches: ['**'] }
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+# Main never cancels a running release job, so two never race on one draft; a newer push replaces a queued run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   macos:
     runs-on: macos-latest
@@ -10,6 +19,8 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
         with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit
       - run: pnpm lint
@@ -17,3 +28,78 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: pnpm tauri build --ci
+      - name: Package
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          test "$(uname -m)" = arm64
+          bundle=src-tauri/target/release/bundle
+          app=$(basename "$bundle"/macos/*.app)
+          codesign --verify --deep --strict "$bundle/macos/$app"
+          mkdir "$RUNNER_TEMP/release"
+          COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/release/codebaer-macos-arm64.tar.gz" -C "$bundle/macos" "$app"
+          cp "$bundle"/dmg/*.dmg "$RUNNER_TEMP/release/codebaer-macos-arm64.dmg"
+      - if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: macos
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run: { shell: bash }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with: { name: macos-arm64, path: release }
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # A re-run of an older run would otherwise move the draft back to its commit. The live head comes
+          # from the API because actions/checkout points origin/main at this run's commit.
+          head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          if [ "$GITHUB_SHA" != "$head" ]; then
+            echo "::notice::main has moved on from this commit, a newer run drafts the release"
+            exit 0
+          fi
+          version=$(grep -m 1 '^version = "' src-tauri/Cargo.toml | cut -d '"' -f 2 || true)
+          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
+            echo "::error::no plain x.y.z package version in src-tauri/Cargo.toml"
+            exit 1
+          fi
+          tag="v$version"
+          # Publishing a draft creates its tag, so the newest tag is the newest published release.
+          latest=$(git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sed 's/^v//' |
+            sort -V | tail -n 1)
+          if [ -n "$latest" ] && [ "$(printf '%s\n' "$latest" "$version" | sort -V | tail -n 1)" != "$version" ]; then
+            echo "::error::version $version in Cargo.toml is lower than the latest release v$latest"
+            exit 1
+          fi
+
+          # Only this job makes drafts. Deleting them by id, never by tag, leaves no stale or duplicate draft
+          # and never resolves to a published release that shares the tag.
+          drafts=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft) | .id')
+          for id in $drafts; do
+            gh api -X DELETE "repos/$GH_REPO/releases/$id" > /dev/null
+          done
+
+          if [ "$latest" = "$version" ]; then
+            since=$(git rev-list --count "$tag..HEAD")
+            echo "::notice::$tag is released; the $since commits since then ship with the next version bump"
+            exit 0
+          fi
+          (cd release && sha256sum -- * > SHA256SUMS.txt)
+          range=HEAD
+          if [ -n "$latest" ]; then range="v$latest..HEAD"; fi
+          git log --no-merges --format='- %s' "$range" > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" release/* --draft --target "$GITHUB_SHA" \
+            --title "CodeBär $version" --notes-file "$RUNNER_TEMP/notes.md"

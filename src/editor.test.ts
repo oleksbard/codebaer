@@ -94,6 +94,16 @@ describe('CodeMirror merge contract', () => {
     expect(view.state.doc.toString()).toBe(DOC);
   });
 
+  it('every kind soft-wraps long lines', async () => {
+    const long = `${'x'.repeat(2000)}\n`;
+    for (const kind of ['unstaged', 'staged', 'plain'] as const) {
+      const parent = document.createElement('div');
+      document.body.appendChild(parent);
+      const view = new EditorView({ state: await buildState(kind, 'x.txt', long, long, () => {}), parent });
+      expect(view.lineWrapping).toBe(true);
+    }
+  });
+
   it('the merge chunk rules name the merge root, so they outrank @codemirror/merge own base theme', async () => {
     await mount('unstaged');
     const css = [...document.querySelectorAll('style')].map((s) => s.textContent).join('\n');

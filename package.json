@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "lint": "oxlint --type-aware src && eslint src",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bump": "node scripts/bump.mjs"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

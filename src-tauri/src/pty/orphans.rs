@@ -132,10 +132,15 @@ fn session_of(env: &str) -> Option<u32> {
     env.split(' ').find_map(|tok| tok.strip_prefix(TAG)?.parse().ok())
 }
 
+/// Cargo builds `CodeBär` and the bundle renames it (`mainBinaryName`), and a dev build and an
+/// installed one share the host socket, so either name is the app's own.
+const NAMES: [&str; 2] = ["CodeBär", "codebaer"];
+
 /// The arguments after `arg`, when the program before it is the app's own binary.
 fn ours<'a>(command: &'a str, arg: &str, exe: &str) -> Option<&'a str> {
     let (argv0, rest) = command.split_once(arg)?;
-    (argv0.rsplit('/').next() == Some(exe)).then_some(rest)
+    let name = argv0.rsplit('/').next()?;
+    (name == exe || NAMES.contains(&name)).then_some(rest)
 }
 
 /// The socket path has spaces in it ("Application Support"), so the target is taken from the end.
@@ -868,6 +873,13 @@ mod tests {
         let by_pid = relay_of(&format!("/app/CodeBär --pty-relay {OLD} pid:201"), EXE);
         assert_eq!(by_pid, Some(Relay { sock: OLD.into(), id: None, pid: Some(201) }));
         assert_eq!(relay_of(&format!("/usr/bin/grep --pty-relay {OLD} 1"), EXE), None);
+    }
+
+    #[test]
+    fn a_dev_build_and_the_bundle_count_each_others_processes_as_the_apps_own() {
+        let bundled = format!("/Applications/CodeBär.app/Contents/MacOS/codebaer --pty-relay {OLD} 1");
+        assert!(relay_of(&bundled, "CodeBär").is_some());
+        assert!(relay_of(&format!("/repo/src-tauri/target/debug/CodeBär --pty-relay {OLD} 1"), "codebaer").is_some());
     }
 
     #[test]

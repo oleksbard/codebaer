@@ -48,6 +48,7 @@ export async function buildState(
     lineNumbers(),
     highlightActiveLine(),
     drawSelection(),
+    EditorView.lineWrapping,
     highlightSelectionMatches(),
     editorTheme,
     editorDark(isDark(getTheme())),
