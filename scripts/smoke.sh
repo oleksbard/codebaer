@@ -9,7 +9,7 @@ if [ -z "${CI:-}" ]; then
   exit 1
 fi
 
-apps=(src-tauri/target/release/bundle/macos/*.app)
+apps=(workspace/backend/target/release/bundle/macos/*.app)
 exe="$PWD/${apps[0]}/Contents/MacOS/codebaer"
 logs="$HOME/Library/Logs/com.codebaer.app"
 out="${RUNNER_TEMP:?}/smoke"

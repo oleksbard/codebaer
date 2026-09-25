@@ -4,10 +4,10 @@
   "mainBinaryName": "codebaer",
   "identifier": "com.codebaer.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm --filter @codebaer/ui dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "pnpm --filter @codebaer/ui build",
+    "frontendDist": "../ui/dist"
   },
   "app": {
     "windows": [{

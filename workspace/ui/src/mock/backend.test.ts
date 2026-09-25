@@ -2,7 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import lib from '../../src-tauri/src/lib.rs?raw';
+import lib from '../../../backend/src/lib.rs?raw';
 import { errKind, type Blob, type FileText, type Status } from '../git';
 import type { ServerMsg } from '../terminal';
 import { createBackend } from './backend';

@@ -22,7 +22,7 @@ type Session = {
   info: Info; line: string; ring: Uint8Array[]; ringSize: number; cancel?: (() => void) | undefined;
 };
 
-/** `PROTO` in src-tauri/src/pty/proto.rs. */
+/** `PROTO` in workspace/backend/src/pty/proto.rs. */
 const PROTO = 3;
 const RING_MAX = 256 * 1024;
 const enc = new TextEncoder();

@@ -9,27 +9,28 @@ Naming: the product is "CodeBär", and the repo, crate, bundled executable and b
 ```sh
 pnpm install --frozen-lockfile
 pnpm tauri dev                  # run the app
-pnpm exec tsc --noEmit          # typecheck (tsconfig is strict, incl. noUncheckedIndexedAccess, exactOptionalPropertyTypes)
-pnpm exec tsc -p e2e --noEmit   # typecheck the Playwright specs, which need node types that src must not see
-pnpm lint                       # oxlint --type-aware, then eslint (max-len 120 only)
-pnpm test                       # vitest, jsdom
+pnpm typecheck                  # tsc in workspace/ui over src (strict, incl. noUncheckedIndexedAccess,
+                                # exactOptionalPropertyTypes), then over the Playwright specs, which need node types
+                                # that src must not see
+pnpm lint                       # oxlint --type-aware, then eslint (max-len 120 only), in workspace/ui
+pnpm test                       # vitest: workspace/ui on jsdom, scripts/ on node
 pnpm e2e                        # Playwright against browser mode, WebKit then Chromium (--project=webkit for one)
 pnpm ui                         # browser mode: the app on a fake backend at localhost:1430/mock.html
-pnpm shot [scenario] [--theme id] [--do press:Meta+T]   # PNG of browser mode, into test-results/shots/
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm shot [scenario] [--theme id] [--do press:Meta+T]   # PNG of browser mode, into workspace/ui/test-results/shots/
+cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path workspace/backend/Cargo.toml
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also drafts the release. Run the ones that cover your change before you call it done.
 
-- Lint: oxlint does the real linting (`.oxlintrc.json`). It uses type-aware rules for unnecessary assertions and conditions and for floating or misused promises. ESLint runs only for `max-len`, parsed with babel because typescript-eslint does not support TypeScript 7 yet.
-- Frontend tests: co-located `src/**/*.test.ts(x)`. Vitest is configured in `vite.config.ts`. `src/test-setup.ts` polyfills the DOM APIs that jsdom lacks and CodeMirror, Radix and xterm need. Tests mock the local wrapper modules (`vi.mock('./git')`, `./terminal`), not `@tauri-apps/api`. Components are rendered with `react-dom/client` directly, without testing-library.
-- Rust tests: inline `#[cfg(test)]` modules for pure helpers. Integration tests in `src-tauri/tests/` run real git repos and a real pty host.
-- End-to-end tests: `e2e/*.spec.ts`, Playwright, configured in `playwright.config.ts`, which starts Vite on port 1430. The `open` fixture loads a scenario, and any console error fails the test. Assert on the fake repo with `mock.state()` and wait with `mock.idle()` rather than timeouts.
+- Lint: oxlint does the real linting (`workspace/ui/.oxlintrc.json`). It uses type-aware rules for unnecessary assertions and conditions and for floating or misused promises. ESLint runs only for `max-len`, parsed with babel because typescript-eslint does not support TypeScript 7 yet.
+- Frontend tests: co-located `workspace/ui/src/**/*.test.ts(x)`. Vitest runs from the root `vitest.config.ts`, which lists the ui project (configured in `workspace/ui/vite.config.ts`) and `scripts/`. `workspace/ui/src/test-setup.ts` polyfills the DOM APIs that jsdom lacks and CodeMirror, Radix and xterm need. Tests mock the local wrapper modules (`vi.mock('./git')`, `./terminal`), not `@tauri-apps/api`. Components are rendered with `react-dom/client` directly, without testing-library.
+- Rust tests: inline `#[cfg(test)]` modules for pure helpers. Integration tests in `workspace/backend/tests/` run real git repos and a real pty host.
+- End-to-end tests: `workspace/ui/e2e/*.spec.ts`, Playwright, configured in `workspace/ui/playwright.config.ts`, which starts Vite on port 1430. The `open` fixture loads a scenario, and any console error fails the test. Assert on the fake repo with `mock.state()` and wait with `mock.idle()` rather than timeouts.
 
 ## Browser mode
 
-`mock.html` runs the real frontend in a browser on a fake backend, so a UI change can be seen and tested without Tauri. `src/mock/boot.ts` installs `mockIPC` from `@tauri-apps/api/mocks`, then loads `main.tsx` unchanged. `vite build` bundles only `index.html`, so nothing under `src/mock/` ships.
+`workspace/ui/mock.html` runs the real frontend in a browser on a fake backend, so a UI change can be seen and tested without Tauri. `workspace/ui/src/mock/boot.ts` installs `mockIPC` from `@tauri-apps/api/mocks`, then loads `main.tsx` unchanged. `vite build` bundles only `index.html`, so nothing under `workspace/ui/src/mock/` ships.
 
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `calls`, `terminalText`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
@@ -41,7 +42,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 
 Agents can use browser mode to render any screen of the app with mock data and look at it. You do not need Tauri, a real repository or a display. Use it to check a UI change before you call it done, and to see a screen before you change it.
 
-- One screenshot: `pnpm shot <scenario> [--theme id] [--out file]` starts Vite, renders the scenario in headless WebKit, waits until the fake backend is idle, and saves a PNG (default `test-results/shots/<scenario>.png`). Read the PNG to see the page.
+- One screenshot: `pnpm shot <scenario> [--theme id] [--out file]` starts Vite, renders the scenario in headless WebKit, waits until the fake backend is idle, and saves a PNG (default `workspace/ui/test-results/shots/<scenario>.png`; pnpm runs the script in `workspace/ui/`, so a relative `--out` is relative to that folder). Read the PNG to see the page.
 - Another screen: add `--do` steps, which run in order and each wait for idle again. `press:<keys>` sends a key chord, `click:<selector>` clicks a Playwright locator, and `type:<text>` types. For example, `pnpm shot review --do press:Meta+Shift+T` shows the terminals, and `pnpm shot review --do press:Meta+Shift+P` shows the palette.
 - Other data: pick the scenario that has what you need, or add a scenario to `scenarios.ts` when none has it. Add `--theme <id>` to check a light or dark theme, and `--browser chromium` to compare engines.
 - Interactive: run `pnpm ui` and open `http://localhost:1430/mock.html?scenario=<name>` with the Playwright MCP server or any browser tool. Call `window.__mock` to change the data while the page is open, for example `agentEdit` to simulate an agent writing a file.
@@ -49,8 +50,10 @@ Agents can use browser mode to render any screen of the app with mock data and l
 
 ## Architecture
 
+The repo is a pnpm workspace. `workspace/ui` is the frontend package `@codebaer/ui` and `workspace/backend` is the Tauri crate. The root `package.json` passes `dev`, `build`, `typecheck`, `lint`, `ui`, `e2e` and `shot` through to the ui package and runs vitest over it and `scripts/`.
+
 ```
-src/                     React 19 + TypeScript frontend (Vite)
+workspace/ui/src/        React 19 + TypeScript frontend (Vite)
   main.tsx               entry: initTheme(), start(); start() is skipped under Vitest
   app/store.ts           the single mutable state object `S`, `notify()`, `useApp()`
   app/controller.ts      actions: refresh, open, accept/reject, commit, network, terminals, keybindings
@@ -64,7 +67,7 @@ src/                     React 19 + TypeScript frontend (Vite)
   mock/                  browser mode: fake backend, repo, terminal host and scenarios (see Browser mode)
   ui/                    presentational primitives (Radix-based) and the token/theme system
   styles/                page CSS, split by area
-src-tauri/src/           Rust backend
+workspace/backend/src/   Rust backend
   lib.rs                 app bootstrap, native menu, plugins, the generate_handler![] command list
   main.rs                also serves as the detached pty host when started with --pty-host
   git.rs                 every git operation; runs the `git` CLI (no libgit2), holds AppState
@@ -87,13 +90,13 @@ Data flow: the watcher emits `repo-changed`, which reaches `listen()` in `contro
 - Actions that change git go through `guarded(name, fn)` in `controller.ts`, which flushes a dirty buffer, shows the busy state and refreshes afterwards. Do not call `git.*` mutations directly from components.
 - Async code that writes to `S` after an `await` must check `S.openEpoch` (the `stale()` pattern) so a late result cannot overwrite a newer view.
 - File writes carry an expected baseline. A conflict comes back as `Stale` or `StaleIndex` and must be shown to the user, never overwritten silently.
-- Adding a Tauri command: implement it in its module, add it to `generate_handler![]` in `lib.rs`, add a wrapper in `src/git.ts` or `src/terminal.ts`, and add its handler in `src/mock/backend.ts`. `capabilities/default.json` only needs a change for core or plugin permissions.
-- Adding a variant to `AppError` in `error.rs`: add the matching case to the TS `AppError` union and `KIND_TEXT` in `src/git.ts`. Without them the type check misses it and the user sees the raw kind name.
-- Use the design tokens from `src/ui/tokens.css` and `themes.css` in CSS. Do not hardcode colors.
+- Adding a Tauri command: implement it in its module, add it to `generate_handler![]` in `lib.rs`, add a wrapper in `workspace/ui/src/git.ts` or `workspace/ui/src/terminal.ts`, and add its handler in `workspace/ui/src/mock/backend.ts`. `capabilities/default.json` only needs a change for core or plugin permissions.
+- Adding a variant to `AppError` in `error.rs`: add the matching case to the TS `AppError` union and `KIND_TEXT` in `workspace/ui/src/git.ts`. Without them the type check misses it and the user sees the raw kind name.
+- Use the design tokens from `workspace/ui/src/ui/tokens.css` and `themes.css` in CSS. Do not hardcode colors.
 
 ## Versioning and releases
 
-- The version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has none and falls back to it. Never edit it by hand.
+- The version lives only in `workspace/backend/Cargo.toml`; `tauri.conf.json` has none and falls back to it. Never edit it by hand.
 - A change a user can notice includes a bump in the same change: `pnpm bump minor` for a feature, `pnpm bump patch` for a fix. Docs, tests, CI and refactors get none. Never `major`, that is the owner's call.
 - `scripts/bump.mjs` counts from the last published release, the newest `v*` tag on origin. Repeating a bump within one release cycle changes nothing, and a feature after a fix raises the patch to a minor. It only reads git, fails without changing anything when origin is unreachable, and rewrites `Cargo.toml` and `Cargo.lock`.
 - Never create tags or releases. A push to main with an unreleased version makes CI build the draft release, replacing the previous draft. `.github/workflows/release.yml` publishes it on Mondays and Thursdays (UTC) once it is 12 hours old and still built from main's head, and the owner can publish it earlier from the releases page. Publishing creates the tag. `install.sh` is what the README's install one-liner runs.

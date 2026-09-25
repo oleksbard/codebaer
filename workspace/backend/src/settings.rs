@@ -16,7 +16,7 @@ pub enum AiProvider {
     Claude,
 }
 
-/// The ids of the frontend's `THEMES` in `src/ui/theme.ts`; a theme added there needs its variant here.
+/// The ids of the frontend's `THEMES` in `workspace/ui/src/ui/theme.ts`; a theme added there needs its variant here.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Theme {

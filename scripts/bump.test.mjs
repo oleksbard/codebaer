@@ -41,7 +41,7 @@ describe('setVersion', () => {
 
   it('finds the version lines in the real manifest and lockfile', () => {
     for (const [file, kind] of [['Cargo.toml', 'toml'], ['Cargo.lock', 'lock']]) {
-      const text = readFileSync(`${process.cwd()}/src-tauri/${file}`, 'utf8');
+      const text = readFileSync(`${process.cwd()}/workspace/backend/${file}`, 'utf8');
       const changed = setVersion(text, '99.0.0', kind).split('\n').filter((l, i) => l !== text.split('\n')[i]);
       expect(changed).toEqual(['version = "99.0.0"']);
     }

@@ -916,7 +916,7 @@ mod tests {
     fn a_dev_build_and_the_bundle_count_each_others_processes_as_the_apps_own() {
         let bundled = format!("/Applications/CodeBär.app/Contents/MacOS/codebaer --pty-relay {OLD} 1");
         assert!(relay_of(&bundled, "CodeBär").is_some());
-        assert!(relay_of(&format!("/repo/src-tauri/target/debug/CodeBär --pty-relay {OLD} 1"), "codebaer").is_some());
+        assert!(relay_of(&format!("/repo/workspace/backend/target/debug/CodeBär --pty-relay {OLD} 1"), "codebaer").is_some());
     }
 
     #[test]
