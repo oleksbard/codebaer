@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { CustomCommand } from '../settings';
-import { commandGroups, commandTitle } from '../tasks';
+import { commandGroups, commandTitle, HIDDEN_TASK_MS } from '../tasks';
 import { homeFrom, shortCwd } from '../terminal-status';
 import { Button } from '../ui/Button';
+import { Checkbox } from '../ui/Checkbox';
 import { StrokeIcon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
+import { Pill } from '../ui/Pill';
 import { Segmented } from '../ui/Segmented';
 import { saveCommands } from './controller';
 import { S } from './store';
@@ -41,6 +43,7 @@ function CommandForm({ initial, onSave, onCancel }: {
   const [name, setName] = useState(initial.name);
   const [command, setCommand] = useState(initial.command);
   const [scope, setScope] = useState(initial.repo ?? GLOBAL);
+  const [hide, setHide] = useState(initial.hide_terminal);
   const root = S.root;
   const repos = [...new Set([root, initial.repo].filter((r): r is string => r !== null))];
   const scopes = [
@@ -51,7 +54,9 @@ function CommandForm({ initial, onSave, onCancel }: {
   return (
     <form className="cmd-form" onSubmit={(e) => {
       e.preventDefault();
-      if (ok) onSave({ name: name.trim(), command: command.trim(), repo: scope === GLOBAL ? null : scope });
+      if (!ok) return;
+      const repo = scope === GLOBAL ? null : scope;
+      onSave({ name: name.trim(), command: command.trim(), repo, hide_terminal: hide });
     }}>
       <label className="cmd-field">
         <span>Name</span>
@@ -66,6 +71,16 @@ function CommandForm({ initial, onSave, onCancel }: {
       <div className="cmd-field">
         <span id="cmd-scope">Show in</span>
         <Segmented value={scope} items={scopes} aria-labelledby="cmd-scope" onValueChange={setScope} />
+      </div>
+      <div className="cmd-check">
+        <label>
+          <Checkbox checked={hide} onCheckedChange={setHide} aria-describedby="cmd-hide" />
+          Hide terminal
+        </label>
+        <span id="cmd-hide" className="cmd-hint">
+          No output window opens. The command closes when it ends, or is stopped after
+          {' '}{HIDDEN_TASK_MS / 60_000} minutes.
+        </span>
       </div>
       <div className="dialog-actions">
         <Button onClick={onCancel}>Cancel</Button>
@@ -83,6 +98,7 @@ function CommandRow({ c, onEdit, onDelete }: { c: CustomCommand; onEdit(): void;
         <span className="cmd-name">{title}</span>
         {title !== c.command && <code className="cmd-line">{c.command}</code>}
       </div>
+      {c.hide_terminal && <Pill>Terminal hidden</Pill>}
       <IconButton label={`Edit ${title}`} onClick={onEdit}><StrokeIcon d={PENCIL} size={14} /></IconButton>
       <IconButton label={`Delete ${title}`} onClick={onDelete}><StrokeIcon d={TRASH} size={14} /></IconButton>
     </div>
@@ -105,8 +121,9 @@ export function CommandsPane() {
     <>
       <p className="setting-desc cmd-intro">
         Run these from the play button in the activity bar. A command runs in the repository root through your
-        login shell, and its output opens in a window you can close while it runs. Scripts from the root
-        package.json are listed there too. A command saved for another repository shows up only there.
+        login shell, and its output opens in a window you can close while it runs, unless the command hides its
+        terminal. Scripts from the root package.json are listed there too. A command saved for another repository
+        shows up only there.
       </p>
       {commandGroups(S.commands, root).map((g) => (
         <section key={g.repo ?? GLOBAL} className="cmd-group">
@@ -122,7 +139,7 @@ export function CommandsPane() {
         </section>
       ))}
       {open === 'new'
-        ? <CommandForm initial={{ name: '', command: '', repo: root }} onSave={save}
+        ? <CommandForm initial={{ name: '', command: '', repo: root, hide_terminal: false }} onSave={save}
           onCancel={() => setEditing(null)} />
         : <Button className="cmd-add" onClick={() => setEditing('new')}>Add command</Button>}
     </>

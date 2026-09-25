@@ -7,7 +7,7 @@ export type Settings = { 'general.headless-ai-provider': AiProvider; 'appearance
 export type SettingKey = keyof Settings;
 
 /** Stored in the settings file too, under `commands.custom`; `repo` is a canonical root, or null for every repo. */
-export type CustomCommand = { name: string; command: string; repo: string | null };
+export type CustomCommand = { name: string; command: string; repo: string | null; hide_terminal: boolean };
 
 export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };
 

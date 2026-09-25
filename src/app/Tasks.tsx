@@ -28,6 +28,8 @@ type Listed = { root: string | null; scripts: Scripts | null; error: string | nu
 
 export function TaskMenu() {
   const [listed, setListed] = useState<Listed | null>(null);
+  // the icon's key, so each hidden run remounts it and plays the animation again
+  const [launched, setLaunched] = useState(0);
   const tasks = S.terminals.filter(isTask);
   const running = tasks.filter((t) => !isExited(t)).length;
   const saved = S.commands.filter((c) => inMenu(c, S.root));
@@ -41,12 +43,16 @@ export function TaskMenu() {
       setListed({ root, scripts: null, error: errKind(e) === 'NotARepo' ? null : errText(e) });
     }
   };
+  const run = (task: term.Task) => {
+    if (task.t === 'Custom' && task.hide_terminal) setLaunched((n) => n + 1);
+    void runTask(task);
+  };
   const label = running ? `Commands - ${running} running` : 'Commands';
   return (
     <DropdownMenu.Root onOpenChange={(open) => { if (open) void load(); }}>
       <DropdownMenu.Trigger asChild>
         <button type="button" className="rail-b task-b" aria-label={label} title={label}>
-          <span className="tab-icon">
+          <span className={launched ? 'tab-icon launch' : 'tab-icon'} key={launched}>
             <PlayIcon />
             {running > 0 && <span className="tab-count" aria-hidden="true">{running}</span>}
           </span>
@@ -70,7 +76,7 @@ export function TaskMenu() {
           <div className="menu-label">Commands</div>
           {saved.length === 0 && <div className="menu-empty">None saved{S.root ? ' for this repository' : ''}</div>}
           {saved.map((c, i) => (
-            <DropdownMenu.Item key={i} className="menu-item" onSelect={() => void runTask({ t: 'Custom', ...c })}>
+            <DropdownMenu.Item key={i} className="menu-item" onSelect={() => run({ t: 'Custom', ...c })}>
               {commandTitle(c)}
               {commandTitle(c) !== c.command && <span className="detail">{c.command}</span>}
             </DropdownMenu.Item>
@@ -82,7 +88,7 @@ export function TaskMenu() {
               <div className="menu-label">package.json · {here.scripts.runner}</div>
               {here.scripts.scripts.map((sc) => (
                 <DropdownMenu.Item key={sc.name} className="menu-item"
-                  onSelect={() => void runTask({ t: 'Script', name: sc.name })}>
+                  onSelect={() => run({ t: 'Script', name: sc.name })}>
                   {sc.name}<span className="detail">{sc.command}</span>
                 </DropdownMenu.Item>
               ))}

@@ -1,0 +1,48 @@
+name: release
+on:
+  # every hour of those days, so a draft still too young at one run goes out at a later one
+  schedule: [{ cron: '17 * * * 1,4' }]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # ci.yml's release job replaces the draft under the same group
+    concurrency: { group: release-drafts, cancel-in-progress: false }
+    defaults:
+      run: { shell: bash }
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOAK_HOURS: 12
+        run: |
+          head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          # ci.yml keeps at most one draft, and drafts only a build that passed scripts/smoke.sh. Its assets are
+          # uploaded when it is drafted, which makes their time the build's age.
+          drafts=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft)
+            | [.id, .tag_name, .target_commitish, ([.assets[].created_at] | min // "")] | @tsv')
+          if [ -z "$drafts" ]; then
+            echo "::notice::no draft release to publish"
+            exit 0
+          fi
+          IFS=$'\t' read -r id tag target built <<< "${drafts%%$'\n'*}"
+          # main's CI is running or failed, and publishing the older build would leave its later commits unreleased
+          # under a version that is already taken
+          if [ "$target" != "$head" ]; then
+            echo "::notice::$tag was built from $target, not from main's head $head"
+            exit 0
+          fi
+          if [ -z "$built" ]; then
+            echo "::error::$tag has no assets"
+            exit 1
+          fi
+          age=$(( ($(date +%s) - $(date -d "$built" +%s)) / 3600 ))
+          if [ "$age" -lt "$SOAK_HOURS" ]; then
+            echo "::notice::$tag is ${age}h old and goes out once it is ${SOAK_HOURS}h old"
+            exit 0
+          fi
+          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false -f make_latest=true > /dev/null
+          echo "::notice::published $tag"

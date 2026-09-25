@@ -39,6 +39,8 @@
     border-radius: var(--r-3);
     cursor: pointer;
 
+    & + li { margin-top: 2px; }
+
     &.on,
     &:hover { background: var(--sel); }
 

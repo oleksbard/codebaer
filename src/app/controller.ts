@@ -20,12 +20,12 @@ import { foldToChanges } from '../context-view';
 import { setEditorDark } from '../editor-theme';
 import { commentSpan, lineRange, marksOf, onComments, setMarks, type Mark } from '../editor-comments';
 import { pick, type Item } from '../palette';
-import { logError } from '../log';
+import { logError, logInfo } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
 import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
 import { DEFAULTS, type CustomCommand, type SettingKey, type Settings } from '../settings';
-import { isTask, outcome, terminalsOf } from '../tasks';
+import { HIDDEN_TASK_MS, isTask, outcome, terminalsOf } from '../tasks';
 import * as term from '../terminal';
 import { homeFrom, isExited, statusLabel } from '../terminal-status';
 import { getTheme, isDark, setTheme } from '../ui/theme';
@@ -804,7 +804,11 @@ export function onTermEvent(m: term.ServerMsg): void {
         if (!rail.some((t) => t.id === S.activeTerm)) S.activeTerm = rail.at(-1)?.id ?? null;
         if (!m.sessions.some((t) => t.id === S.taskView && isTask(t))) S.taskView = null;
         // a reload forgets the timers, and a task can also finish while no window is connected
-        for (const t of m.sessions) if (isTask(t) && isExited(t)) expireTask(t.id);
+        for (const t of m.sessions) {
+          if (!isTask(t) || !isExited(t)) continue;
+          if (hidden.has(t.id)) taskEnded(t);
+          else expireTask(t.id);
+        }
         break;
       }
       case 'Spawned':
@@ -857,9 +861,11 @@ export function onTermEvent(m: term.ServerMsg): void {
   notify();
 }
 
-/** Only a session you are not looking at can want attention. A task has its own dialog and no rail button. */
+/** Only a session you are not looking at can want attention. A task has its own dialog and no rail button.
+ *  A session closed while it ran is gone before its Exit arrives, and a new host can hand its id out again. */
 function flag(id: number): void {
-  if (S.terminals.some((t) => t.id === id && isTask(t))) return;
+  const s = S.terminals.find((t) => t.id === id);
+  if (!s || isTask(s)) return;
   if (id !== S.activeTerm || S.tab !== 'terminals') S.termAttention.add(id);
 }
 
@@ -1141,7 +1147,10 @@ async function findInTerminal(): Promise<void> {
 /** How long a task that finished out of sight keeps its output for the menu to reopen. */
 export const TASK_KEEP_MS = 5 * 60_000;
 const expiry = new Map<number, ReturnType<typeof setTimeout>>();
+/** Tasks whose command hides its terminal, each with the timer that stops it. */
+const hidden = new Map<number, ReturnType<typeof setTimeout>>();
 let awaitingTask = 0;
+let awaitingHidden = false;
 /** A Spawned can overtake the reply to the invoke that asked for it, so each side checks for the other. */
 let earlyTask: { req: number; info: term.Info } | null = null;
 
@@ -1154,15 +1163,29 @@ function expireTask(id: number): void {
   }, TASK_KEEP_MS));
 }
 
+/** Also what makes a hidden task an ordinary one: opened from the menu, it is being watched. */
 function keepTask(id: number): void {
   clearTimeout(expiry.get(id));
   expiry.delete(id);
+  clearTimeout(hidden.get(id));
+  hidden.delete(id);
+}
+
+function hideTask(id: number): void {
+  hidden.set(id, setTimeout(() => {
+    hidden.delete(id);
+    const t = S.terminals.find((s) => s.id === id);
+    if (!t || isExited(t)) return;
+    toast(`${t.title} was stopped after ${HIDDEN_TASK_MS / 60_000} minutes`, 'warn');
+    void closeTerminal(id);
+  }, HIDDEN_TASK_MS));
 }
 
 function taskSpawned(req: number, info: term.Info): void {
   if (req !== awaitingTask) { earlyTask = { req, info }; return; }
   awaitingTask = 0;
-  if (overlayIdle()) S.taskView = info.id;
+  if (awaitingHidden) hideTask(info.id);
+  else if (overlayIdle()) S.taskView = info.id;
   else toast(`${info.title} is running. Its output is in the command menu.`);
 }
 
@@ -1170,10 +1193,16 @@ function taskEnded(t: term.Info): void {
   if (S.taskView === t.id) return;
   const o = outcome(t);
   if (o) toast(`${t.title} ${o.text}`, o.tone);
+  if (hidden.has(t.id)) {
+    keepTask(t.id);
+    void closeTerminal(t.id);
+  }
+  // for a hidden task, the retry of a close that fails; the Closed of one that works cancels it
   expireTask(t.id);
 }
 
 export async function runTask(task: term.Task): Promise<void> {
+  const hide = task.t === 'Custom' && task.hide_terminal;
   // with no subscription the host would run it and every event about it would go nowhere
   await connectTerminals();
   if (S.termError) { toast(S.termError, 'err'); return; }
@@ -1181,6 +1210,7 @@ export async function runTask(task: term.Task): Promise<void> {
     const req = await term.runTask(task, ...term.size());
     const early = earlyTask?.req === req ? earlyTask : null;
     awaitingTask = req;
+    awaitingHidden = hide;
     if (early) {
       earlyTask = null;
       taskSpawned(req, early.info);
@@ -1536,7 +1566,12 @@ export async function openRepo(path: string): Promise<void> {
     S.draft = null;
     S.filesOpen.clear();
     S.ignoredKids.clear();
+    const before = S.status;
     await refresh();
+    // scripts/smoke.sh waits for this line. refresh() leaves S.status as it was when it fails, or when it only
+    // queues behind one already running, which a first open with no watcher yet cannot hit.
+    const status = S.status;
+    if (status && status !== before) logInfo(`opened ${opened.root}, ${plural(status.files.length, 'changed file')}`);
     const first = S.status ? buildQueue(S.status).unstaged[0] : undefined;
     if (first) await openRow(first);
     else notify();

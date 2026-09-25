@@ -355,7 +355,8 @@ describe('setSetting', () => {
 
 describe('commands', () => {
   const HERE = '/Users/me/projects/app';
-  const cmd = (name: string, command: string, repo: string | null): CustomCommand => ({ name, command, repo });
+  const cmd = (name: string, command: string, repo: string | null, hide = false): CustomCommand =>
+    ({ name, command, repo, hide_terminal: hide });
   const groups = () => [...document.querySelectorAll<HTMLElement>('.settings .cmd-group')].map((g) => [
     g.querySelector('.theme-group-title')!.textContent,
     [...g.querySelectorAll('.cmd-name')].map((n) => n.textContent),
@@ -426,6 +427,31 @@ describe('commands', () => {
     button('Delete Old').click();
     await tick();
     expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', null)]);
+  });
+
+  it('saves a command that hides its terminal, and marks it in the list', async () => {
+    savedCommands = [cmd('Lint', 'pnpm lint', HERE)];
+    await openSettings('commands');
+    await tick();
+    expect(document.querySelector('.cmd-row .pill')).toBeNull();
+    button('Edit Lint').click();
+    await tick();
+    const box = document.querySelector<HTMLButtonElement>('.cmd-form [role="checkbox"]')!;
+    expect(box.getAttribute('aria-checked')).toBe('false');
+    expect(document.getElementById(box.getAttribute('aria-describedby')!)!.textContent)
+      .toContain('stopped after 10 minutes');
+    // the label, not the box: the whole line is the target
+    document.querySelector<HTMLElement>('.cmd-check label')!.click();
+    await tick();
+    expect(box.getAttribute('aria-checked')).toBe('true');
+    button('Save').click();
+    await tick();
+    expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', HERE, true)]);
+    expect(document.querySelector('.cmd-row .pill')!.textContent).toBe('Terminal hidden');
+
+    button('Edit Lint').click();
+    await tick();
+    expect(document.querySelector('.cmd-form [role="checkbox"]')!.getAttribute('aria-checked')).toBe('true');
   });
 
   it('puts the list back and says why when the save fails', async () => {

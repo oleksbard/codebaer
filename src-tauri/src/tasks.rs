@@ -119,7 +119,8 @@ mod tests {
     }
 
     fn saved(command: &str, repo: Option<&str>) -> CustomCommand {
-        CustomCommand { name: "Test".into(), command: command.into(), repo: repo.map(String::from) }
+        let repo = repo.map(String::from);
+        CustomCommand { name: "Test".into(), command: command.into(), repo, hide_terminal: false }
     }
 
     #[test]
@@ -181,20 +182,26 @@ mod tests {
         assert!(run(saved("ls", Some("/r/other"))).is_err(), "another repository's command");
         assert!(run(saved("rm -rf ~", None)).is_err(), "not in the file");
         assert!(run(saved("pnpm test", None)).is_err(), "saved for one repository, sent as global");
+        let hidden = CustomCommand { hide_terminal: true, ..saved("make", None) };
+        assert!(run(hidden).is_err(), "saved to show its terminal");
     }
 
     #[test]
     fn an_unnamed_command_is_titled_by_its_line() {
-        let c = CustomCommand { name: " ".into(), command: "cargo test".into(), repo: None };
+        let c = CustomCommand { name: " ".into(), ..saved("cargo test", None) };
         let got = plan(&Task::Custom(c.clone()), Path::new("/r"), &[c]).unwrap();
         assert_eq!(got.1, "cargo test");
     }
 
     #[test]
     fn the_task_argument_reads_the_frontend_shape() {
-        let t: Task = serde_json::from_value(serde_json::json!({ "t": "Custom", "name": "a", "command": "b", "repo": null }))
-            .unwrap();
-        assert_eq!(t, Task::Custom(CustomCommand { name: "a".into(), command: "b".into(), repo: None }));
+        let custom =
+            serde_json::json!({ "t": "Custom", "name": "a", "command": "b", "repo": null, "hide_terminal": true });
+        let t: Task = serde_json::from_value(custom).unwrap();
+        let want = CustomCommand { name: "a".into(), command: "b".into(), repo: None, hide_terminal: true };
+        assert_eq!(t, Task::Custom(want));
+        let unset = serde_json::json!({ "t": "Custom", "name": "a", "command": "b", "repo": null });
+        assert!(serde_json::from_value::<Task>(unset).is_err(), "the webview always sends hide_terminal");
         let t: Task = serde_json::from_value(serde_json::json!({ "t": "Script", "name": "dev" })).unwrap();
         assert_eq!(t, Task::Script { name: "dev".into() });
     }

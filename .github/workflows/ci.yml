@@ -28,6 +28,14 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: pnpm tauri build --ci
+      - run: scripts/smoke.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Package
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
@@ -50,6 +58,8 @@ jobs:
     needs: macos
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # release.yml publishes the draft under the same group, so it never publishes one this job is deleting
+    concurrency: { group: release-drafts, cancel-in-progress: false }
     permissions:
       contents: write
     defaults:

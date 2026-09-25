@@ -3,6 +3,9 @@ import type { Info } from './terminal';
 
 export const isTask = (s: Info): boolean => s.task === true;
 
+/** A command saved to hide its terminal that is still running after this long is stopped and closed. */
+export const HIDDEN_TASK_MS = 10 * 60_000;
+
 /** What the terminal rail lists: a task stays out of it until it is moved there. */
 export const terminalsOf = (sessions: readonly Info[]): Info[] => sessions.filter((s) => !isTask(s));
 

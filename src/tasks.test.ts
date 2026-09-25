@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CustomCommand } from './settings';
-import type { Info, TermState } from './terminal';
+import type { Info, Task, TermState } from './terminal';
 
 vi.mock('./terminal', async () => {
   const actual = await vi.importActual<typeof import('./terminal')>('./terminal');
@@ -14,11 +14,13 @@ vi.mock('./terminal', async () => {
 });
 
 const term = await import('./terminal');
-const { commandGroups, inMenu, outcome, terminalsOf } = await import('./tasks');
+const { commandGroups, HIDDEN_TASK_MS, inMenu, outcome, terminalsOf } = await import('./tasks');
 const c = await import('./app/controller');
 const { S } = await import('./app/store');
 
-const cmd = (command: string, repo: string | null): CustomCommand => ({ name: '', command, repo });
+const cmd = (command: string, repo: string | null): CustomCommand =>
+  ({ name: '', command, repo, hide_terminal: false });
+const hidden: Task = { t: 'Custom', ...cmd('pnpm test', null), hide_terminal: true };
 const task = (id: number, state: TermState = { t: 'Running', command: null, since_ms: 0 }): Info =>
   ({ id, title: 'pnpm test', cwd: '/r', tier: 'process', state, task: true });
 const shell = (id: number): Info => ({ id, title: 'zsh', cwd: '/r', tier: 'marks', state: { t: 'Idle' } });
@@ -209,6 +211,54 @@ describe('task lifecycle', () => {
     c.openTask(4);
     c.onTermEvent({ t: 'Closed', id: 4 });
     expect(S.taskView).toBeNull();
+  });
+
+  it('runs a hidden task with no dialog, and closes it the moment it ends', async () => {
+    await c.runTask(hidden);
+    c.onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    expect(S.taskView).toBeNull();
+    expect(S.toasts).toEqual([]);
+    c.onTermEvent({ t: 'Exit', id: 4, code: 2 });
+    expect(term.close).toHaveBeenCalledExactlyOnceWith(4);
+    expect(S.toasts.map((t) => [t.kind, t.message])).toEqual([['warn', 'pnpm test failed with exit 2']]);
+  });
+
+  it('opens the dialog for a saved command that shows its terminal', async () => {
+    await c.runTask({ t: 'Custom', ...cmd('pnpm test', null) });
+    c.onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    expect(S.taskView).toBe(4);
+  });
+
+  it('stops a hidden task that is still running at the limit', async () => {
+    await c.runTask(hidden);
+    c.onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    vi.advanceTimersByTime(HIDDEN_TASK_MS - 1);
+    expect(term.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(term.close).toHaveBeenCalledExactlyOnceWith(4);
+    expect(S.toasts.map((t) => [t.kind, t.message])).toEqual([['warn', 'pnpm test was stopped after 10 minutes']]);
+    c.onTermEvent({ t: 'Closed', id: 4 });
+    c.onTermEvent({ t: 'Exit', id: 4, code: 129 });
+    expect(S.termAttention.size).toBe(0);
+    expect(S.toasts).toHaveLength(1);
+  });
+
+  it('treats a hidden task opened from the menu as an ordinary one', async () => {
+    await c.runTask(hidden);
+    c.onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    c.openTask(4);
+    vi.advanceTimersByTime(HIDDEN_TASK_MS);
+    c.onTermEvent({ t: 'Exit', id: 4, code: 0 });
+    expect(term.close).not.toHaveBeenCalled();
+    expect(S.taskView).toBe(4);
+  });
+
+  it('closes a hidden task that ended while no window was listening', async () => {
+    await c.runTask(hidden);
+    c.onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    c.onTermEvent({ t: 'Hello', proto: 3, sessions: [task(4, { t: 'Exited', code: 0 })] });
+    expect(term.close).toHaveBeenCalledExactlyOnceWith(4);
+    expect(S.toasts.map((t) => t.message)).toEqual(['pnpm test finished']);
   });
 
   it('blocks the global shortcuts while the dialog is open', () => {

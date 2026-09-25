@@ -59,14 +59,17 @@ pub struct CustomCommand {
     pub name: String,
     pub command: String,
     pub repo: Option<String>,
+    /// Only the webview acts on it: it opens no output dialog for the run and closes the session once it ends.
+    pub hide_terminal: bool,
 }
 
 /// Written by `commands_set` alone; `Settings` does not know it, so a settings save keeps it.
 const COMMANDS: &str = "commands.custom";
 
 /// Each entry falls back alone, like an option: one that is not an object with a command in it is
-/// dropped, and a `name` that is not a string reads as blank. A `repo` that is neither a string nor null
-/// drops the entry too, since reading it as missing would offer the command in every repository.
+/// dropped, a `name` that is not a string reads as blank, and a `hide_terminal` that is not a bool as false.
+/// A `repo` that is neither a string nor null drops the entry too, since reading it as missing would offer
+/// the command in every repository.
 fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
     let Some(Value::Array(items)) = map.get(COMMANDS) else { return Vec::new() };
     items
@@ -80,7 +83,8 @@ fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
                 Some(Value::String(r)) => Some(r.clone()),
                 Some(_) => return None,
             };
-            Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo })
+            let hide_terminal = o.get("hide_terminal").and_then(Value::as_bool).unwrap_or_default();
+            Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo, hide_terminal })
         })
         .collect()
 }
@@ -412,19 +416,21 @@ mod tests {
     }
 
     fn saved(name: &str, command: &str, repo: Option<&str>) -> CustomCommand {
-        CustomCommand { name: name.into(), command: command.into(), repo: repo.map(String::from) }
+        CustomCommand { name: name.into(), command: command.into(), repo: repo.map(String::from), hide_terminal: false }
     }
 
     #[test]
     fn commands_round_trip_and_leave_the_options_alone() {
         let (_d, f) = file(r#"{"general.headless-ai-provider": "claude", "general.future": 1}"#);
-        let list = vec![saved("Test", "pnpm test", Some("/r")), saved("", "make", None)];
+        let hidden = CustomCommand { hide_terminal: true, ..saved("", "make", None) };
+        let list = vec![saved("Test", "pnpm test", Some("/r")), hidden];
         write_commands_at(&f, &list).unwrap();
         assert_eq!(commands_at(&f), list);
         assert_eq!(read_at(&f), CLAUDE);
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(on_disk["general.future"], 1);
-        assert_eq!(on_disk["commands.custom"][1], serde_json::json!({ "name": "", "command": "make", "repo": null }));
+        let want = serde_json::json!({ "name": "", "command": "make", "repo": null, "hide_terminal": true });
+        assert_eq!(on_disk["commands.custom"][1], want);
     }
 
     #[test]
@@ -443,11 +449,17 @@ mod tests {
             {"command": 1},
             "make",
             {"name": 7, "command": "ls", "repo": null},
-            {"command": "pwd"},
-            {"command": "rm -rf build", "repo": ["/r"]}
+            {"command": "pwd", "hide_terminal": "yes"},
+            {"command": "rm -rf build", "repo": ["/r"]},
+            {"command": "cargo fmt", "hide_terminal": true}
         ]}"#;
         let (_d, f) = file(body);
-        let want = vec![saved("ok", "make", Some("/r")), saved("", "ls", None), saved("", "pwd", None)];
+        let want = vec![
+            saved("ok", "make", Some("/r")),
+            saved("", "ls", None),
+            saved("", "pwd", None),
+            CustomCommand { hide_terminal: true, ..saved("", "cargo fmt", None) },
+        ];
         assert_eq!(commands_at(&f), want);
     }
 

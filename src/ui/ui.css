@@ -221,6 +221,25 @@ kbd {
   gap: 8px;
 }
 
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--faint);
+  border-radius: var(--r-1);
+  background: var(--bg);
+  color: var(--accent-ink);
+
+  &[data-state='checked'] {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  svg { display: block; }
+}
+
 .menu {
   min-width: 160px;
   padding: 4px;

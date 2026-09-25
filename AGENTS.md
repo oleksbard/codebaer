@@ -16,7 +16,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these, plus `pnpm tauri build --ci`, on macOS. On main it also drafts the release. Run the ones that cover your change before you call it done.
+CI (`.github/workflows/ci.yml`) runs all of these on macOS, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also drafts the release. Run the ones that cover your change before you call it done.
 
 - Lint: oxlint does the real linting (`.oxlintrc.json`). It uses type-aware rules for unnecessary assertions and conditions and for floating or misused promises. ESLint runs only for `max-len`, parsed with babel because typescript-eslint does not support TypeScript 7 yet.
 - Frontend tests: co-located `src/**/*.test.ts(x)`. Vitest is configured in `vite.config.ts`. `src/test-setup.ts` polyfills the DOM APIs that jsdom lacks and CodeMirror, Radix and xterm need. Tests mock the local wrapper modules (`vi.mock('./git')`, `./terminal`), not `@tauri-apps/api`. Components are rendered with `react-dom/client` directly, without testing-library.
@@ -70,7 +70,7 @@ Data flow: the watcher emits `repo-changed`, which reaches `listen()` in `contro
 - The version lives only in `src-tauri/Cargo.toml`; `tauri.conf.json` has none and falls back to it. Never edit it by hand.
 - A change a user can notice includes a bump in the same change: `pnpm bump minor` for a feature, `pnpm bump patch` for a fix. Docs, tests, CI and refactors get none. Never `major`, that is the owner's call.
 - `scripts/bump.mjs` counts from the last published release, the newest `v*` tag on origin. Repeating a bump within one release cycle changes nothing, and a feature after a fix raises the patch to a minor. It only reads git, fails without changing anything when origin is unreachable, and rewrites `Cargo.toml` and `Cargo.lock`.
-- Never create tags or releases. A push to main with an unreleased version makes CI build the draft release, and the owner publishes it. `README.md`, "Releasing", has the flow; `install.sh` is what its install one-liner runs.
+- Never create tags or releases. A push to main with an unreleased version makes CI build the draft release, replacing the previous draft. `.github/workflows/release.yml` publishes it on Mondays and Thursdays (UTC) once it is 12 hours old and still built from main's head, and the owner can publish it earlier from the releases page. Publishing creates the tag. `install.sh` is what the README's install one-liner runs.
 - Builds are macOS on Apple Silicon only. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`.
 
 ## Boundaries

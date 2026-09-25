@@ -31,9 +31,9 @@ beforeEach(() => {
   S.terminals = [];
   S.taskView = null;
   S.commands = [
-    { name: 'Lint', command: 'pnpm lint', repo: HERE },
-    { name: '', command: 'make deploy', repo: null },
-    { name: 'Theirs', command: 'cargo test', repo: '/Users/me/projects/lib' },
+    { name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false },
+    { name: '', command: 'make deploy', repo: null, hide_terminal: true },
+    { name: 'Theirs', command: 'cargo test', repo: '/Users/me/projects/lib', hide_terminal: false },
   ];
   vi.mocked(c.taskMenu).mockResolvedValue({
     runner: 'pnpm', scripts: [{ name: 'build', command: 'vite build' }, { name: 'test', command: 'vitest run' }],
@@ -66,7 +66,8 @@ it('lists this repo\'s commands, the global ones and the package.json scripts, a
 
 it('runs the command picked as it was saved, and a script by its name', async () => {
   item(await openMenu(), 'Lint').click();
-  expect(c.runTask).toHaveBeenCalledWith({ t: 'Custom', name: 'Lint', command: 'pnpm lint', repo: HERE });
+  expect(c.runTask)
+    .toHaveBeenCalledWith({ t: 'Custom', name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false });
   item(await openMenu(), 'test').click();
   expect(c.runTask).toHaveBeenLastCalledWith({ t: 'Script', name: 'test' });
 });
@@ -87,6 +88,25 @@ it('lists running and ended tasks so a closed dialog can be opened again', async
   expect(document.querySelector('.task-b')!.getAttribute('aria-label')).toBe('Commands - 1 running');
   items[1]!.click();
   expect(c.openTask).toHaveBeenCalledWith(5);
+});
+
+it('answers a pick with an animation only when no dialog is going to', async () => {
+  const icon = () => document.querySelector('.task-b .tab-icon')!;
+  item(await openMenu(), 'Lint').click();
+  await tick();
+  item(await openMenu(), 'build').click();
+  await tick();
+  expect(icon().classList.contains('launch')).toBe(false);
+
+  item(await openMenu(), 'make deploy').click();
+  await tick();
+  const first = icon();
+  expect(first.classList.contains('launch')).toBe(true);
+  item(await openMenu(), 'make deploy').click();
+  await tick();
+  // a new element, so the animation plays again rather than staying finished
+  expect(icon()).not.toBe(first);
+  expect(c.runTask).toHaveBeenCalledTimes(4);
 });
 
 it('opens Settings on the Commands section', async () => {
