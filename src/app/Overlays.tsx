@@ -7,6 +7,7 @@ import { Dialog } from '../ui/Dialog';
 import { OrphansDialog } from './Orphans';
 import { SettingsDialog } from './Settings';
 import { notify, S, useApp, type ConfirmRequest, type PaletteRequest, type PromptRequest } from './store';
+import { TaskOverlay } from './Tasks';
 
 export function Overlays() {
   useApp();
@@ -17,6 +18,7 @@ export function Overlays() {
       {S.prompt && <PromptDialog req={S.prompt} />}
       {S.orphans && <OrphansDialog scan={S.orphans} />}
       {S.settingsOpen && <SettingsDialog />}
+      <TaskOverlay />
       <div className="toasts">
         {S.toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`} onClick={() => removeToast(t.id)}>{t.message}</div>

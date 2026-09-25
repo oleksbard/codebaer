@@ -9,7 +9,7 @@ const proc = (pid: number, session: number | null, command = 'zsh'): Proc =>
   ({ pid, ppid: 1, pgid: pid, tty: 'ttys001', command, session, relay: null, holds_app: false, exiting: false });
 const host = (pid: number, sock: string, sessions: Proc[], more: Partial<Host> = {}): Host =>
   ({ pid, sock, current: sock === SOCK, sock_exists: true, in_use: false, unclear: false,
-    proto: Number(/ptyd-(\d+)/.exec(sock)?.[1]), relay: null, sessions, ...more });
+    proto: Number(/ptyd-(\d+)/.exec(sock)?.[1]), relays: [], sessions, ...more });
 const info = (id: number, state: Info['state'] = { t: 'Idle' }, more: Partial<Info> = {}): Info =>
   ({ id, title: 'zsh', cwd: '/r', tier: 'marks', state, ...more });
 const brief = (rows: OrphanRow[]) => rows.map((r) => [r.status, r.session, r.restore?.t ?? null, r.kill?.t ?? null]);
@@ -25,7 +25,7 @@ describe('orphanRows', () => {
     ]);
   });
 
-  it('relays a stale session, one per host, and only kills what escaped', () => {
+  it('relays each of a stale host\'s sessions, and only kills what escaped', () => {
     const r: Orphans = {
       sock: SOCK,
       hosts: [host(10, SOCK, []), host(20, OLD, [proc(21, 1, 'claude'), proc(22, 2, 'claude')])],
@@ -40,11 +40,11 @@ describe('orphanRows', () => {
     expect(rows[0]?.restore).toEqual({ t: 'relay', sock: OLD, id: 1, pid: 21 });
     expect(rows[2]?.why).toMatch(/no terminal/);
 
-    const relay = { sock: OLD, id: 1, pid: null };
-    const relayed = { ...r, hosts: [host(10, SOCK, []), host(20, OLD, r.hosts[1]?.sessions ?? [], { relay })] };
+    const relays = [{ sock: OLD, id: 1, pid: null }];
+    const relayed = { ...r, hosts: [host(10, SOCK, []), host(20, OLD, r.hosts[1]?.sessions ?? [], { relays })] };
     const after = orphanRows(relayed, []);
-    expect(brief(after).slice(0, 2)).toEqual([['relayed', 1, null, 'signal'], ['stale', 2, null, 'signal']]);
-    expect(after[1]?.why).toMatch(/already has a relay/);
+    expect(brief(after).slice(0, 2)).toEqual([['relayed', 1, null, 'signal'], ['stale', 2, 'relay', 'signal']]);
+    expect(after[1]?.why).toBeNull();
   });
 
   it('cannot restore from a host whose socket is gone', () => {

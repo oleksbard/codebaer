@@ -16,6 +16,7 @@ use crate::AppError;
 
 const HOST_ARG: &str = " --pty-host ";
 const RELAY_ARG: &str = " --pty-relay ";
+const BRIDGE_ARG: &str = " --pty-bridge ";
 const TAG: &str = "CODEBAER_SESSION=";
 
 /// What a relay is attached to. `pid` is set instead of `id` for a session whose id was unreadable.
@@ -24,6 +25,21 @@ pub struct Relay {
     pub sock: String,
     pub id: Option<u32>,
     pub pid: Option<i32>,
+}
+
+impl Relay {
+    fn to(sock: &str, target: &Target) -> Relay {
+        let (id, pid) = match *target {
+            Target::Id(id) => (Some(id), None),
+            Target::Pid(pid) => (None, Some(pid)),
+        };
+        Relay { sock: sock.to_string(), id, pid }
+    }
+
+    /// Whether `p`, a session of this relay's host, is the one it relays.
+    fn reaches(&self, p: &Proc) -> bool {
+        self.pid == Some(p.pid) || (self.id.is_some() && self.id == p.session)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -62,8 +78,8 @@ pub struct Host {
     /// From the socket's name. Hosts of version 1 predate `Info::pid`, so a session of theirs
     /// whose id is hidden can never be found in them.
     pub proto: Option<u32>,
-    /// A host serves one client, so at most one relay can be attached to it.
-    pub relay: Option<Relay>,
+    /// A host serves one client, so these share its connection through a bridge.
+    pub relays: Vec<Relay>,
     /// Direct children leading their own group, which is what the host spawns. A tty is not
     /// required: one that is exiting has already lost it and is still the host's.
     pub sessions: Vec<Proc>,
@@ -146,11 +162,7 @@ fn ours<'a>(command: &'a str, arg: &str, exe: &str) -> Option<&'a str> {
 /// The socket path has spaces in it ("Application Support"), so the target is taken from the end.
 fn relay_of(command: &str, exe: &str) -> Option<Relay> {
     let (sock, target) = ours(command, RELAY_ARG, exe)?.rsplit_once(' ')?;
-    let (id, pid) = match Target::parse(target)? {
-        Target::Id(id) => (Some(id), None),
-        Target::Pid(pid) => (None, Some(pid)),
-    };
-    Some(Relay { sock: sock.to_string(), id, pid })
+    Some(Relay::to(sock, &Target::parse(target)?))
 }
 
 /// `plain` and `with_env` are the same `ps` listing without and with `-E`. `ps` appends the
@@ -220,16 +232,19 @@ fn classify(
             let current = ctx.peer.map_or(sock == ctx.sock && !shared, |peer| peer == p.pid);
             let unclear = !current && shared;
             // matched by path alone, so a path two hosts share cannot say whose relay it is
-            let relay = procs.iter().find_map(|r| r.relay.clone().filter(|r| r.sock == sock && !unclear));
+            let relays: Vec<Relay> =
+                procs.iter().filter_map(|r| r.relay.clone().filter(|r| r.sock == sock && !unclear)).collect();
+            // the bridge's connection is this app's own, even while no relay is on it yet
+            let bridged = !unclear && procs.iter().any(|b| ours(&b.command, BRIDGE_ARG, ctx.exe) == Some(sock));
             Some(Host {
                 pid: p.pid,
                 sock: sock.to_string(),
                 current,
                 sock_exists: exists(sock) && !unclear,
-                in_use: !current && relay.is_none() && has_client(p.pid),
+                in_use: !current && relays.is_empty() && !bridged && has_client(p.pid),
                 unclear,
                 proto: relay::proto_of(Path::new(sock)),
-                relay,
+                relays,
                 // not held to the account filter: a session that ran `exec sudo -s` is still one
                 sessions: snap.procs.iter().filter(|c| c.ppid == p.pid && c.pgid == c.pid).map(mark).collect(),
             })
@@ -242,9 +257,7 @@ fn classify(
         .iter()
         .filter_map(|r| r.relay.clone())
         .filter(|relay| {
-            hosts.iter().filter(|h| !h.current && h.sock == relay.sock).flat_map(|h| &h.sessions).any(|p| {
-                p.holds_app && (relay.pid == Some(p.pid) || (relay.id.is_some() && relay.id == p.session))
-            })
+            hosts.iter().filter(|h| !h.current && h.sock == relay.sock).flat_map(|h| &h.sessions).any(|p| p.holds_app && relay.reaches(p))
         })
         .collect();
     for p in hosts.iter_mut().flat_map(|h| h.sessions.iter_mut()) {
@@ -545,14 +558,14 @@ fn plan_restore(report: &Report, dir: Option<&Path>, sock: &str, id: Option<u32>
     if host.in_use {
         return Err("another CodeBär is attached to that host, and a relay would take its connection".into());
     }
-    if host.relay.is_some() {
-        return Err("that host already has a relay, and it serves one client at a time".into());
-    }
     let p = host
         .sessions
         .iter()
         .find(|p| p.pid == pid && (id.is_none() || p.session == id))
         .ok_or_else(|| format!("pid {pid} is no longer a session there"))?;
+    if host.relays.iter().any(|r| r.reaches(p)) {
+        return Err("that session is already relayed".into());
+    }
     // the relay would carry the app, and closing the relay closes the session around the app
     if p.holds_app {
         return Err("CodeBär itself runs inside that session".into());
@@ -564,37 +577,37 @@ fn plan_restore(report: &Report, dir: Option<&Path>, sock: &str, id: Option<u32>
     Ok((target, program_name(&p.command)))
 }
 
-/// Held from validation until the relay shows up, since until then a second restore would pass
-/// the same checks and its relay would take the host's one connection from the first.
+/// Held from validation until the relay shows up, since until then a second restore of the same
+/// session would pass the same checks and open a terminal its host's bridge then turns away.
 const RELAY_WAIT: Duration = Duration::from_secs(30);
-static RESTORING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static RESTORING: Mutex<Vec<(String, i32)>> = Mutex::new(Vec::new());
 
-struct Claim(String);
+struct Claim(String, i32);
 
 impl Claim {
-    fn take(sock: &str) -> Option<Claim> {
+    fn take(sock: &str, pid: i32) -> Option<Claim> {
         let mut held = RESTORING.lock().unwrap();
-        if held.iter().any(|s| s == sock) {
+        if held.iter().any(|(s, p)| s == sock && *p == pid) {
             return None;
         }
-        held.push(sock.to_string());
-        Some(Claim(sock.to_string()))
+        held.push((sock.to_string(), pid));
+        Some(Claim(sock.to_string(), pid))
     }
 }
 
 impl Drop for Claim {
     fn drop(&mut self) {
-        RESTORING.lock().unwrap().retain(|s| *s != self.0);
+        RESTORING.lock().unwrap().retain(|(s, p)| *s != self.0 || *p != self.1);
     }
 }
 
-/// Only whether some relay to `sock` is running: one plain listing, where a full scan would be
-/// four processes every quarter second.
-fn relay_running(sock: &str) -> bool {
+/// Only whether this relay is running: one plain listing, where a full scan would be four
+/// processes every quarter second.
+fn relay_running(want: &Relay) -> bool {
     let exe = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().into_owned()));
     let out = Command::new("/bin/ps").env("LC_ALL", "en_US.UTF-8").args(["-axww", "-o", "command="]).output();
     let (Some(exe), Ok(out)) = (exe, out) else { return false };
-    String::from_utf8_lossy(&out.stdout).lines().any(|l| relay_of(l.trim(), &exe).is_some_and(|r| r.sock == sock))
+    String::from_utf8_lossy(&out.stdout).lines().any(|l| relay_of(l.trim(), &exe).as_ref() == Some(want))
 }
 
 /// A spawn names one program and no arguments, so the relay's command line goes in a script
@@ -626,12 +639,13 @@ pub fn term_restore<R: Runtime>(
     cols: u16,
     rows: u16,
 ) -> Result<(), AppError> {
-    let Some(claim) = Claim::take(&sock) else {
-        return Err(AppError::Io("a restore from that host is already starting".into()));
+    let Some(claim) = Claim::take(&sock, pid) else {
+        return Err(AppError::Io("a restore of that session is already starting".into()));
     };
     let current = client::sock_path(&app)?;
     let (target, name) = plan_restore(&scan(&app)?.1, current.parent(), &sock, id, pid).map_err(AppError::Io)?;
     let (script, dir) = write_script(&std::env::current_exe()?, &sock, &target, &name)?;
+    let want = Relay::to(&sock, &target);
     let cwd = git.root().map(|r| r.to_string_lossy().into_owned()).or_else(|_| std::env::var("HOME")).unwrap_or_else(|_| "/".into());
     if let Err(e) = client::request_spawn(&app, SpawnKind::Command { argv0: script }, cwd, cols, rows) {
         let _ = std::fs::remove_dir_all(dir);
@@ -645,7 +659,7 @@ pub fn term_restore<R: Runtime>(
         let mut ran: Option<Instant> = None;
         while Instant::now() < until {
             std::thread::sleep(Duration::from_millis(250));
-            if relay_running(&sock) {
+            if relay_running(&want) {
                 let _ = up.send(());
                 return;
             }
@@ -867,12 +881,35 @@ mod tests {
         let relay = format!("/app/CodeBär --pty-relay {OLD} 1");
         let r = report(&listing(&[(110, 100, 110, "ttys002", &relay, " CODEBAER_SESSION=4")]));
         let want = Relay { sock: OLD.into(), id: Some(1), pid: None };
-        assert_eq!(r.hosts[1].relay.as_ref(), Some(&want));
-        assert_eq!(r.hosts[0].relay, None);
+        assert_eq!(r.hosts[1].relays, std::slice::from_ref(&want));
+        assert!(r.hosts[0].relays.is_empty());
         assert_eq!(r.hosts[0].sessions.iter().find(|p| p.pid == 110).unwrap().relay.as_ref(), Some(&want));
         let by_pid = relay_of(&format!("/app/CodeBär --pty-relay {OLD} pid:201"), EXE);
         assert_eq!(by_pid, Some(Relay { sock: OLD.into(), id: None, pid: Some(201) }));
         assert_eq!(relay_of(&format!("/usr/bin/grep --pty-relay {OLD} 1"), EXE), None);
+    }
+
+    #[test]
+    fn a_stale_host_takes_a_relay_for_each_of_its_sessions() {
+        let relay = format!("/app/CodeBär --pty-relay {OLD} 1");
+        let snap = listing(&[
+            (110, 100, 110, "ttys002", &relay, " CODEBAER_SESSION=4"),
+            (211, 200, 211, "ttys006", "claude", " CODEBAER_SESSION=2"),
+        ]);
+        let r = report(&snap);
+        let dir = Path::new(OLD).parent();
+        assert_eq!(plan_restore(&r, dir, OLD, Some(2), 211), Ok((Target::Id(2), "claude".into())));
+        assert!(plan_restore(&r, dir, OLD, Some(1), 201).is_err_and(|e| e.contains("already relayed")));
+    }
+
+    #[test]
+    fn a_host_this_apps_bridge_is_attached_to_is_not_in_use() {
+        let bridge = format!("/app/CodeBär --pty-bridge {OLD}");
+        let snap = listing(&[(250, 1, 250, "??", &bridge, "")]);
+        let r = classify(&snap, &ctx(None), |_| true, |pid| pid == 200).unwrap();
+        assert!(!r.hosts[1].in_use);
+        assert!(r.hosts.iter().all(|h| h.pid != 250) && r.escaped.iter().all(|p| p.pid != 250));
+        assert!(plan_restore(&r, Path::new(OLD).parent(), OLD, Some(1), 201).is_ok());
     }
 
     #[test]

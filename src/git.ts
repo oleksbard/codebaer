@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Settings } from './settings';
+import type { CustomCommand, Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
 export type Rev = 'index' | 'head';
@@ -28,6 +28,8 @@ export type Status = {
   behind: number;
   files: FileEntry[];
 };
+export type Script = { name: string; command: string };
+export type Scripts = { runner: string; scripts: Script[] };
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
 
 export type AppError =
@@ -88,6 +90,9 @@ export const git = {
   aiCommitMessage: () => invoke<string>('ai_commit_message'),
   settings: () => invoke<Settings>('settings_get'),
   saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
+  commands: () => invoke<CustomCommand[]>('commands_get'),
+  saveCommands: (commands: CustomCommand[]) => invoke<void>('commands_set', { commands }),
+  packageScripts: () => invoke<Scripts | null>('package_scripts'),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),

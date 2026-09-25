@@ -52,6 +52,39 @@ pub struct Settings {
     pub theme: Theme,
 }
 
+/// A command saved in Settings. `repo` is the canonical root of the one repository it belongs to, the
+/// form `open_repo` reports, or None for every repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomCommand {
+    pub name: String,
+    pub command: String,
+    pub repo: Option<String>,
+}
+
+/// Written by `commands_set` alone; `Settings` does not know it, so a settings save keeps it.
+const COMMANDS: &str = "commands.custom";
+
+/// Each entry falls back alone, like an option: one that is not an object with a command in it is
+/// dropped, and a `name` that is not a string reads as blank. A `repo` that is neither a string nor null
+/// drops the entry too, since reading it as missing would offer the command in every repository.
+fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
+    let Some(Value::Array(items)) = map.get(COMMANDS) else { return Vec::new() };
+    items
+        .iter()
+        .filter_map(|v| {
+            let o = v.as_object()?;
+            let text = |k: &str| o.get(k).and_then(Value::as_str).map(String::from);
+            let command = text("command").filter(|c| !c.trim().is_empty())?;
+            let repo = match o.get("repo") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(r)) => Some(r.clone()),
+                Some(_) => return None,
+            };
+            Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo })
+        })
+        .collect()
+}
+
 /// A hand-edited file can hold anything, so each option falls back alone. Only a string is taken:
 /// serde also reads an enum from `{"claude": null}`.
 fn choice<T: DeserializeOwned + Default>(map: &Map<String, Value>, key: &str) -> T {
@@ -88,14 +121,22 @@ fn read_map(path: &Path) -> Result<Map<String, Value>, String> {
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
-fn read_at(path: &Path) -> Settings {
+fn read_with<T: Default>(path: &Path, from: impl FnOnce(&Map<String, Value>) -> T) -> T {
     match read_map(path) {
-        Ok(m) => from_file(&m),
+        Ok(m) => from(&m),
         Err(e) => {
             log::warn!("settings: {}: {e}", path.display());
-            Settings::default()
+            T::default()
         }
     }
+}
+
+fn read_at(path: &Path) -> Settings {
+    read_with(path, from_file)
+}
+
+fn commands_at(path: &Path) -> Vec<CustomCommand> {
+    read_with(path, commands_from)
 }
 
 /// The rename would turn a symlinked file, e.g. one from a dotfiles repo, into a plain copy. A chain whose
@@ -113,15 +154,28 @@ fn target(path: &Path) -> PathBuf {
     p
 }
 
-/// Keys this build does not know are kept. A file that is there but cannot be parsed is left alone:
-/// replacing it would drop every option in it.
 fn write_at(path: &Path, s: &Settings) -> Result<(), AppError> {
+    match serde_json::to_value(s).map_err(|e| AppError::Io(e.to_string()))? {
+        Value::Object(known) => write_keys(path, known),
+        _ => Err(AppError::Io("settings did not serialize to an object".into())),
+    }
+}
+
+fn write_commands_at(path: &Path, commands: &[CustomCommand]) -> Result<(), AppError> {
+    if commands.iter().any(|c| c.command.trim().is_empty()) {
+        return Err(AppError::Io("a saved command cannot be empty".into()));
+    }
+    let list = serde_json::to_value(commands).map_err(|e| AppError::Io(e.to_string()))?;
+    write_keys(path, Map::from_iter([(COMMANDS.to_string(), list)]))
+}
+
+/// Every key but `known` is kept, whether this build knows it or not. A file that is there but cannot
+/// be parsed is left alone: replacing it would drop every option in it.
+fn write_keys(path: &Path, known: Map<String, Value>) -> Result<(), AppError> {
     let path = target(path);
     let mut map = read_map(&path)
         .map_err(|e| AppError::Io(format!("{} cannot be read: {e}. Fix or delete it, then try again.", path.display())))?;
-    if let Value::Object(known) = serde_json::to_value(s).map_err(|e| AppError::Io(e.to_string()))? {
-        map.extend(known);
-    }
+    map.extend(known);
     let json = serde_json::to_string_pretty(&map).map_err(|e| AppError::Io(e.to_string()))? + "\n";
     let named = |e: std::io::Error| AppError::Io(format!("{}: {e}", path.display()));
     if let Some(dir) = path.parent() {
@@ -152,6 +206,23 @@ pub fn settings_get(app: AppHandle) -> Settings {
 pub fn settings_set(app: AppHandle, settings: Settings) -> Result<(), AppError> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     write_at(&store(&app)?, &settings)
+}
+
+/// Read on every call, like `load`, so a run checks what the file says now.
+pub fn load_commands(app: &AppHandle) -> Vec<CustomCommand> {
+    store(app).map(|f| commands_at(&f)).unwrap_or_default()
+}
+
+#[tauri::command(async)]
+pub fn commands_get(app: AppHandle) -> Vec<CustomCommand> {
+    load_commands(&app)
+}
+
+/// The whole list, every repository's included: the Settings pane edits them all.
+#[tauri::command(async)]
+pub fn commands_set(app: AppHandle, commands: Vec<CustomCommand>) -> Result<(), AppError> {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    write_commands_at(&store(&app)?, &commands)
 }
 
 #[cfg(test)]
@@ -338,6 +409,62 @@ mod tests {
         write_at(&link, &CLAUDE).unwrap();
         assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
         assert_eq!(read_at(&target), CLAUDE);
+    }
+
+    fn saved(name: &str, command: &str, repo: Option<&str>) -> CustomCommand {
+        CustomCommand { name: name.into(), command: command.into(), repo: repo.map(String::from) }
+    }
+
+    #[test]
+    fn commands_round_trip_and_leave_the_options_alone() {
+        let (_d, f) = file(r#"{"general.headless-ai-provider": "claude", "general.future": 1}"#);
+        let list = vec![saved("Test", "pnpm test", Some("/r")), saved("", "make", None)];
+        write_commands_at(&f, &list).unwrap();
+        assert_eq!(commands_at(&f), list);
+        assert_eq!(read_at(&f), CLAUDE);
+        let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(on_disk["general.future"], 1);
+        assert_eq!(on_disk["commands.custom"][1], serde_json::json!({ "name": "", "command": "make", "repo": null }));
+    }
+
+    #[test]
+    fn a_settings_save_keeps_the_commands() {
+        let (_d, f) = file("{}");
+        write_commands_at(&f, &[saved("Lint", "pnpm lint", None)]).unwrap();
+        write_at(&f, &CLAUDE).unwrap();
+        assert_eq!(commands_at(&f), vec![saved("Lint", "pnpm lint", None)]);
+    }
+
+    #[test]
+    fn a_bad_command_entry_is_dropped_alone() {
+        let body = r#"{"commands.custom": [
+            {"name": "ok", "command": "make", "repo": "/r"},
+            {"name": "blank", "command": "  "},
+            {"command": 1},
+            "make",
+            {"name": 7, "command": "ls", "repo": null},
+            {"command": "pwd"},
+            {"command": "rm -rf build", "repo": ["/r"]}
+        ]}"#;
+        let (_d, f) = file(body);
+        let want = vec![saved("ok", "make", Some("/r")), saved("", "ls", None), saved("", "pwd", None)];
+        assert_eq!(commands_at(&f), want);
+    }
+
+    #[test]
+    fn a_blank_command_is_refused_and_leaves_the_file() {
+        let (_d, f) = file("{}");
+        let res = write_commands_at(&f, &[saved("Lint", "pnpm lint", None), saved("Nothing", " ", None)]);
+        assert!(matches!(res, Err(AppError::Io(ref m)) if m.contains("empty")), "{res:?}");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "{}");
+    }
+
+    #[test]
+    fn commands_that_are_not_a_list_read_as_none() {
+        for v in ["null", "{}", r#""make""#] {
+            let (_d, f) = file(&format!(r#"{{"commands.custom": {v}}}"#));
+            assert_eq!(commands_at(&f), Vec::new(), "value {v}");
+        }
     }
 
     /// The command argument comes from this app's own frontend, so a bad one is a bug to surface, not to store.

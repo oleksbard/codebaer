@@ -7,6 +7,7 @@ import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import type { CustomCommand } from './settings';
 
 export type Tier = 'marks' | 'process';
 
@@ -16,10 +17,14 @@ export type TermState =
   | { t: 'Running'; command: string | null; since_ms: number }
   | { t: 'Exited'; code: number | null };
 
-export type Info = { id: number; pid?: number | null; title: string; cwd: string; tier: Tier; state: TermState };
+/** `task` marks a command run from the command menu, shown in its own dialog until it is moved to the rail. */
+export type Info = {
+  id: number; pid?: number | null; title: string; cwd: string; tier: Tier; state: TermState; task?: boolean;
+};
 export type Shell = { path: string; name: string };
 export type Menu = { shells: Shell[]; default: string; commands: string[] };
 export type SpawnKind = { t: 'Shell'; path: string } | { t: 'Command'; argv0: string };
+export type Task = ({ t: 'Custom' } & CustomCommand) | { t: 'Script'; name: string };
 
 export type ServerMsg =
   | { t: 'Hello'; proto: number; sessions: Info[] }
@@ -40,7 +45,7 @@ export type Proc = {
 };
 export type Host = {
   pid: number; sock: string; current: boolean; sock_exists: boolean; in_use: boolean; unclear: boolean;
-  proto: number | null; relay: Relay | null; sessions: Proc[];
+  proto: number | null; relays: Relay[]; sessions: Proc[];
 };
 export type Orphans = { sock: string; hosts: Host[]; escaped: Proc[] };
 
@@ -197,6 +202,8 @@ function create(id: number, el: HTMLDivElement): Term {
   // the agent CLIs read ESC CR as "insert a newline"; xterm sends a bare CR for shift-enter,
   // which they read as submit. This is what a terminal's own Claude Code setup binds.
   term.attachCustomKeyEventHandler((e) => {
+    // already acted on by a dialog around the terminal: Radix closes one on Escape in the capture phase
+    if (e.defaultPrevented) return false;
     if (e.type !== 'keydown' || e.key !== 'Enter' || e.isComposing) return true;
     if (!e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return true;
     // refusing the event returns before xterm's own cancel(), and an Enter whose default still
@@ -389,6 +396,7 @@ export const input = (id: number, data: string): Promise<void> => invoke('term_i
 export const menu = (): Promise<Menu> => invoke<Menu>('term_menu');
 export const kill = (id: number): Promise<void> => invoke('term_kill', { id });
 export const close = (id: number): Promise<void> => invoke('term_close', { id });
+export const promote = (id: number): Promise<void> => invoke('term_promote', { id });
 export const checkCwd = (): Promise<void> => invoke('term_check_cwd');
 export const orphans = (): Promise<Orphans> => invoke<Orphans>('term_orphans');
 export const relist = (id: number | null): Promise<void> => invoke('term_relist', { id });
@@ -407,4 +415,9 @@ export function size(): [number, number] {
 
 export function spawn(kind: SpawnKind, cols = 80, rows = 24): Promise<number> {
   return invoke<number>('term_spawn', { kind, cols, rows });
+}
+
+/** Resolves to the spawn's `req`, like `spawn`; the backend builds the command line from `task`. */
+export function runTask(task: Task, cols = 80, rows = 24): Promise<number> {
+  return invoke<number>('task_run', { task, cols, rows });
 }

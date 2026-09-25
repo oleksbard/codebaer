@@ -70,3 +70,10 @@ it('offers only Close on an exited session', async () => {
 
   expect((await menu(1)).map((i) => i.textContent)).toEqual(['Close']);
 });
+
+it('gives a task no button until it is moved to the rail', () => {
+  S.terminals = [session(1, '/Users/me/projects/x'), { ...session(2, '/Users/me/projects/x'), task: true }];
+  flushSync(() => root.render(<TerminalRail />));
+  expect([...document.querySelectorAll('.rail-b:not(.new)')].map((b) => b.getAttribute('aria-label')))
+    .toEqual(['zsh:1 · ~/projects/x']);
+});

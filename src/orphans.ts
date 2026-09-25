@@ -92,8 +92,7 @@ function matchSessions(children: Proc[], listed: Info[]): Map<number, number> {
 }
 
 function relays(h: Host, p: Proc): boolean {
-  const r = h.relay;
-  return r !== null && ((r.id !== null && r.id === p.session) || (r.pid !== null && r.pid === p.pid));
+  return h.relays.some((r) => (r.id !== null && r.id === p.session) || (r.pid !== null && r.pid === p.pid));
 }
 
 export function orphanRows(r: Orphans, listed: Info[]): OrphanRow[] {
@@ -164,10 +163,8 @@ export function orphanRows(r: Orphans, listed: Info[]): OrphanRow[] {
       else if (h.unclear) why = UNCLEAR;
       else if (p.holds_app) why = HOLDS_APP;
       else if (!h.sock_exists) why = 'its host has lost its socket';
-      else if (h.relay !== null && !relayed) why = 'its host already has a relay';
       else if (tooOld && !relayed) why = 'its id is hidden, and its host is too old to find it by pid';
-      const open = !relayed && !h.in_use && !h.unclear && h.sock_exists && h.relay === null && !tooOld
-        && !p.holds_app;
+      const open = !relayed && !h.in_use && !h.unclear && h.sock_exists && !tooOld && !p.holds_app;
       rows.push({
         ...base(p, `${sockName(h.sock)} · pid ${h.pid}`),
         session: p.session,

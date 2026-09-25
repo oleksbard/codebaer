@@ -22,7 +22,7 @@ const proc = (pid: number, session: number | null): Proc =>
 const report = (sessions: Proc[]): Orphans => ({
   sock: SOCK,
   hosts: [{ pid: 10, sock: SOCK, current: true, sock_exists: true, in_use: false, unclear: false, proto: 2,
-    relay: null, sessions }],
+    relays: [], sessions }],
   escaped: [],
 });
 const info = (id: number): Info => ({ id, title: 'zsh', cwd: '/r', tier: 'marks', state: { t: 'Idle' } });

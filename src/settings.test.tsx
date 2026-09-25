@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick } from './test-setup';
-import type { Settings } from './settings';
+import { setValue, tick } from './test-setup';
+import type { CustomCommand, Settings } from './settings';
 
 vi.mock('./git', async () => {
   const actual = await vi.importActual<typeof import('./git')>('./git');
@@ -23,6 +23,7 @@ const THEME = 'appearance.theme';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
+let savedCommands: CustomCommand[];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,8 +34,12 @@ beforeEach(() => {
   S.settings = { ...DEFAULTS };
   S.settingsOpen = false;
   disk = { ...DEFAULTS };
+  savedCommands = [];
+  S.root = '/Users/me/projects/app';
   vi.mocked(git.settings).mockImplementation(() => Promise.resolve({ ...disk }));
   vi.mocked(git.saveSettings).mockImplementation((s) => { disk = { ...s }; return Promise.resolve(); });
+  vi.mocked(git.commands).mockImplementation(() => Promise.resolve(savedCommands.map((c) => ({ ...c }))));
+  vi.mocked(git.saveCommands).mockImplementation((c) => { savedCommands = c; return Promise.resolve(); });
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Overlays />));
 });
@@ -72,7 +77,8 @@ describe('settings dialog', () => {
     await openSettings();
     await tick();
     const d = dialog()!;
-    expect([...d.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['General', 'Appearance']);
+    expect([...d.querySelectorAll('[role="tab"]')].map((t) => t.textContent))
+      .toEqual(['General', 'Appearance', 'Commands']);
     const row = d.querySelector<HTMLElement>('.setting')!;
     expect(row.querySelector('.setting-label')!.textContent).toBe('Headless AI provider');
     expect(row.querySelector('.setting-key')!.textContent).toBe(KEY);
@@ -344,5 +350,94 @@ describe('setSetting', () => {
     await setSetting(KEY, 'claude');
     expect(disk[KEY]).toBe('claude');
     expect(S.settings[KEY]).toBe('claude');
+  });
+});
+
+describe('commands', () => {
+  const HERE = '/Users/me/projects/app';
+  const cmd = (name: string, command: string, repo: string | null): CustomCommand => ({ name, command, repo });
+  const groups = () => [...document.querySelectorAll<HTMLElement>('.settings .cmd-group')].map((g) => [
+    g.querySelector('.theme-group-title')!.textContent,
+    [...g.querySelectorAll('.cmd-name')].map((n) => n.textContent),
+  ]);
+  const button = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('.settings button')]
+      .find((b) => b.textContent === label || b.getAttribute('aria-label') === label)!;
+  const field = (label: string) =>
+    [...document.querySelectorAll<HTMLLabelElement>('.settings .cmd-field')]
+      .find((l) => l.querySelector('span')!.textContent === label)!.querySelector('input')!;
+
+  it('opens on the section it is asked for', async () => {
+    await openSettings('commands');
+    await tick();
+    expect(document.querySelector('.settings [role="tab"][data-state="active"]')!.textContent).toBe('Commands');
+  });
+
+  it('groups this repo first, then the global ones, then every other repo under its path', async () => {
+    savedCommands = [
+      cmd('Deploy', './deploy.sh', null), cmd('Build', 'make', '/Users/me/projects/lib'), cmd('', 'pnpm test', HERE),
+    ];
+    await openSettings('commands');
+    await tick();
+    expect(groups()).toEqual([
+      ['This repository~/projects/app', ['pnpm test']],
+      ['Every repository', ['Deploy']],
+      ['~/projects/lib', ['Build']],
+    ]);
+  });
+
+  it('saves a new command for this repo, trimmed, and keeps every other repo\'s', async () => {
+    savedCommands = [cmd('Build', 'make', '/Users/me/projects/lib')];
+    await openSettings('commands');
+    await tick();
+    button('Add command').click();
+    await tick();
+    setValue(field('Name'), ' Test ');
+    setValue(field('Command'), '  pnpm test  ');
+    await tick();
+    button('Save').click();
+    await tick();
+    expect(savedCommands).toEqual([cmd('Build', 'make', '/Users/me/projects/lib'), cmd('Test', 'pnpm test', HERE)]);
+    expect(groups()[0]).toEqual(['This repository~/projects/app', ['Test']]);
+  });
+
+  it('refuses a command with nothing to run', async () => {
+    await openSettings('commands');
+    await tick();
+    button('Add command').click();
+    await tick();
+    setValue(field('Command'), '   ');
+    await tick();
+    expect(button('Save').disabled).toBe(true);
+  });
+
+  it('moves a command to every repository and deletes another', async () => {
+    savedCommands = [cmd('Lint', 'pnpm lint', HERE), cmd('Old', 'rm -rf dist', HERE)];
+    await openSettings('commands');
+    await tick();
+    button('Edit Lint').click();
+    await tick();
+    [...document.querySelectorAll<HTMLButtonElement>('.cmd-form .seg-item')]
+      .find((b) => b.textContent === 'Every repository')!.click();
+    await tick();
+    button('Save').click();
+    await tick();
+    expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', null), cmd('Old', 'rm -rf dist', HERE)]);
+    button('Delete Old').click();
+    await tick();
+    expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', null)]);
+  });
+
+  it('puts the list back and says why when the save fails', async () => {
+    savedCommands = [cmd('Lint', 'pnpm lint', HERE)];
+    vi.mocked(git.saveCommands).mockRejectedValue({ kind: 'Io', detail: 'disk full' });
+    await openSettings('commands');
+    await tick();
+    button('Delete Lint').click();
+    await tick();
+    await tick();
+    expect(S.commands).toEqual([cmd('Lint', 'pnpm lint', HERE)]);
+    expect(groups()[0]).toEqual(['This repository~/projects/app', ['Lint']]);
+    expect(S.toasts.map((t) => [t.kind, t.message])).toEqual([['err', expect.stringContaining('disk full')]]);
   });
 });

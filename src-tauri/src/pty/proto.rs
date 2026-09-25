@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped by any change to the frames or messages below. The socket file name carries it,
 /// so an app never speaks to a daemon built against a different version; the orphan idle-reaps.
-pub const PROTO: u32 = 2;
+pub const PROTO: u32 = 3;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +25,10 @@ pub enum ProtoError {
 pub enum SpawnKind {
     Shell { path: String },
     Command { argv0: String },
+    /// A saved command or a package.json script, run by the login shell. `task_run` builds `line`
+    /// from the settings file or package.json as they are when it runs, and `term_spawn` refuses this kind.
+    /// The webview can still write a command to the file first, which a terminal's input can do anyway.
+    Task { line: String, title: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +40,8 @@ pub enum ClientMsg {
     Resize { id: u32, cols: u16, rows: u16 },
     Kill { id: u32 },
     Close { id: u32 },
+    /// Turns a task into an ordinary terminal session.
+    Promote { id: u32 },
     /// Re-reads every session's folder now, for when the app's idea of "inside" just changed.
     CheckCwd,
     Shutdown,
@@ -70,6 +76,9 @@ pub struct Info {
     pub cwd: String,
     pub tier: Tier,
     pub state: State,
+    /// A task the app shows in its own dialog rather than in the terminal list, until promoted.
+    #[serde(default)]
+    pub task: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -217,9 +226,27 @@ mod tests {
         let s = serde_json::to_vec(&m).unwrap();
         assert_eq!(serde_json::from_slice::<ClientMsg>(&s).unwrap(), m);
 
+        let t = ClientMsg::Spawn {
+            req: 5,
+            kind: SpawnKind::Task { line: "pnpm run 'test'".into(), title: "test".into() },
+            cwd: "/tmp".into(),
+            cols: 80,
+            rows: 24,
+        };
+        let s = serde_json::to_vec(&t).unwrap();
+        assert_eq!(serde_json::from_slice::<ClientMsg>(&s).unwrap(), t);
+
+        let p = ClientMsg::Promote { id: 3 };
+        let s = serde_json::to_vec(&p).unwrap();
+        assert_eq!(serde_json::from_slice::<ClientMsg>(&s).unwrap(), p);
+
         let a = ClientMsg::Attach { id: None };
         let s = serde_json::to_vec(&a).unwrap();
         assert_eq!(serde_json::from_slice::<ClientMsg>(&s).unwrap(), a);
+
+        // a host from before tasks existed sends no `task` field
+        let old = r#"{"id":1,"title":"zsh","cwd":"/","tier":"marks","state":{"t":"Idle"}}"#;
+        assert!(!serde_json::from_str::<Info>(old).unwrap().task);
 
         let e = ServerMsg::Exit { id: 1, code: Some(130) };
         let s = serde_json::to_vec(&e).unwrap();

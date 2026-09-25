@@ -3,6 +3,7 @@ import { Tabs as RT } from 'radix-ui';
 import { SECTIONS, type Option } from '../settings';
 import { Dialog } from '../ui/Dialog';
 import { Segmented } from '../ui/Segmented';
+import { CommandsPane } from './CommandSettings';
 import { closeSettings, setSetting } from './controller';
 import { S } from './store';
 import { ThemePicker } from './ThemePicker';
@@ -38,7 +39,7 @@ function OptionRow({ option }: { option: Option }) {
 }
 
 export function SettingsDialog() {
-  const [section, setSection] = useState(SECTIONS[0]!.id);
+  const [section, setSection] = useState(S.settingsSection);
   return (
     <Dialog open onOpenChange={(open) => { if (!open) closeSettings(); }} title="Settings" className="settings">
       <RT.Root className="settings-body" orientation="vertical" value={section} onValueChange={setSection}>
@@ -54,7 +55,7 @@ export function SettingsDialog() {
           <RT.Content key={s.id} className="settings-pane" value={s.id} tabIndex={-1}>
             <h3 className="settings-pane-title">{s.label}</h3>
             <div className="settings-pane-body">
-              {s.options.map((o) => <OptionRow key={o.key} option={o} />)}
+              {s.id === 'commands' ? <CommandsPane /> : s.options.map((o) => <OptionRow key={o.key} option={o} />)}
             </div>
           </RT.Content>
         ))}

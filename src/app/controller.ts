@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { EditorState, type StateEffect, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
 import { foldedRanges, unfoldAll, unfoldEffect } from '@codemirror/language';
-import { errKind, errText, git, staleText, type Branch, type Eol } from '../git';
+import { errKind, errText, git, staleText, type Branch, type Eol, type Scripts } from '../git';
 import {
   eligible, format, locate, location, pastePayload, takesComments, termLabels, type Draft, type Side,
 } from '../comments';
@@ -24,9 +24,10 @@ import { logError } from '../log';
 import { confirmDialog, errorDialog, promptDialog, toast } from '../toast';
 import { installKeys, type Action } from '../keys';
 import { orphanRows, type OrphanAction, type OrphanScan } from '../orphans';
-import { DEFAULTS, type SettingKey, type Settings } from '../settings';
+import { DEFAULTS, type CustomCommand, type SettingKey, type Settings } from '../settings';
+import { isTask, outcome, terminalsOf } from '../tasks';
 import * as term from '../terminal';
-import { homeFrom, statusLabel } from '../terminal-status';
+import { homeFrom, isExited, statusLabel } from '../terminal-status';
 import { getTheme, isDark, setTheme } from '../ui/theme';
 import { notify, refs, S, type Open, type Tab } from './store';
 
@@ -797,15 +798,22 @@ let connecting: Promise<void> | null = null;
 export function onTermEvent(m: term.ServerMsg): void {
   try {
     switch (m.t) {
-      case 'Hello':
+      case 'Hello': {
         S.terminals = m.sessions;
-        if (!m.sessions.some((t) => t.id === S.activeTerm)) S.activeTerm = m.sessions.at(-1)?.id ?? null;
+        const rail = terminalsOf(m.sessions);
+        if (!rail.some((t) => t.id === S.activeTerm)) S.activeTerm = rail.at(-1)?.id ?? null;
+        if (!m.sessions.some((t) => t.id === S.taskView && isTask(t))) S.taskView = null;
+        // a reload forgets the timers, and a task can also finish while no window is connected
+        for (const t of m.sessions) if (isTask(t) && isExited(t)) expireTask(t.id);
         break;
+      }
       case 'Spawned':
         S.terminals = [...S.terminals.filter((t) => t.id !== m.info.id), m.info];
         if (m.req === awaitingSpawn) {
           S.activeTerm = m.info.id;
           awaitingSpawn = 0;
+        } else if (isTask(m.info)) {
+          taskSpawned(m.req, m.info);
         }
         break;
       case 'Status':
@@ -814,10 +822,13 @@ export function onTermEvent(m: term.ServerMsg): void {
       case 'Command':
         if (m.code !== null && m.code !== 0) flag(m.id);
         break;
-      case 'Exit':
+      case 'Exit': {
         S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: { t: 'Exited', code: m.code } } : t));
-        flag(m.id);
+        const t = S.terminals.find((x) => x.id === m.id);
+        if (t && isTask(t)) taskEnded(t);
+        else flag(m.id);
         break;
+      }
       case 'Bell':
         flag(m.id);
         break;
@@ -827,7 +838,9 @@ export function onTermEvent(m: term.ServerMsg): void {
       case 'Closed':
         S.terminals = S.terminals.filter((t) => t.id !== m.id);
         S.termAttention.delete(m.id);
-        if (S.activeTerm === m.id) S.activeTerm = S.terminals.at(-1)?.id ?? null;
+        keepTask(m.id);
+        if (S.taskView === m.id) S.taskView = null;
+        if (S.activeTerm === m.id) S.activeTerm = terminalsOf(S.terminals).at(-1)?.id ?? null;
         // last, because it is the one step here that reaches into xterm: a teardown that
         // fails must not leave the view pointing at a session that is already gone
         term.dispose(m.id);
@@ -844,8 +857,9 @@ export function onTermEvent(m: term.ServerMsg): void {
   notify();
 }
 
-/** Only a session you are not looking at can want attention. */
+/** Only a session you are not looking at can want attention. A task has its own dialog and no rail button. */
 function flag(id: number): void {
+  if (S.terminals.some((t) => t.id === id && isTask(t))) return;
   if (id !== S.activeTerm || S.tab !== 'terminals') S.termAttention.add(id);
 }
 
@@ -883,7 +897,7 @@ export async function findOrphans(): Promise<void> {
   try {
     const scan = await takeScan();
     // something else took the screen meanwhile, or this was opened again
-    if (epoch !== orphansEpoch || S.palette || S.confirm || S.prompt || S.settingsOpen) return;
+    if (epoch !== orphansEpoch || S.palette || S.confirm || S.prompt || S.settingsOpen || S.taskView !== null) return;
     S.orphans = scan;
   } catch (e) {
     logError(e, 'find orphans');
@@ -922,10 +936,40 @@ function showTheme(): void {
   term.retheme();
 }
 
+/** Like `confirmed`, for the command list. */
+let confirmedCommands: CustomCommand[] = [];
+
 function loadSettings(): Promise<void> {
   return inOrder(async () => {
-    S.settings = confirmed = await git.settings();
+    const [settings, commands] = await Promise.all([git.settings(), git.commands()]);
+    S.settings = confirmed = settings;
+    S.commands = confirmedCommands = commands;
     showTheme();
+    notify();
+  });
+}
+
+function loadCommands(): Promise<void> {
+  return inOrder(async () => {
+    S.commands = confirmedCommands = await git.commands();
+    notify();
+  });
+}
+
+/** The whole list at once, other repos' included, since that is the shape the file keeps. */
+export function saveCommands(list: CustomCommand[]): Promise<void> {
+  S.commands = list;
+  notify();
+  return inOrder(async () => {
+    const sent = S.commands;
+    if (sent === confirmedCommands) return;
+    try {
+      await git.saveCommands(sent);
+      confirmedCommands = sent;
+    } catch (e) {
+      S.commands = confirmedCommands;
+      toast(`Commands not saved: ${errText(e)}`, 'err');
+    }
     notify();
   });
 }
@@ -934,7 +978,7 @@ function loadSettings(): Promise<void> {
 let settingsEpoch = 0;
 
 /** Reads the file first, so an edit made to it by hand shows up. */
-export async function openSettings(): Promise<void> {
+export async function openSettings(section = 'general'): Promise<void> {
   const epoch = ++settingsEpoch;
   try {
     await loadSettings();
@@ -945,6 +989,7 @@ export async function openSettings(): Promise<void> {
   // something else took the screen while the file was read, or this was opened again
   if (epoch !== settingsEpoch || !overlayIdle()) return;
   S.settingsOpen = true;
+  S.settingsSection = section;
   notify();
 }
 
@@ -1089,6 +1134,98 @@ async function findInTerminal(): Promise<void> {
   if (q === null) return;
   S.termFind = q;
   onTerminal((id) => term.find(id, q));
+}
+
+// ---------- tasks ----------
+
+/** How long a task that finished out of sight keeps its output for the menu to reopen. */
+export const TASK_KEEP_MS = 5 * 60_000;
+const expiry = new Map<number, ReturnType<typeof setTimeout>>();
+let awaitingTask = 0;
+/** A Spawned can overtake the reply to the invoke that asked for it, so each side checks for the other. */
+let earlyTask: { req: number; info: term.Info } | null = null;
+
+function expireTask(id: number): void {
+  if (expiry.has(id) || S.taskView === id) return;
+  expiry.set(id, setTimeout(() => {
+    expiry.delete(id);
+    const t = S.terminals.find((s) => s.id === id);
+    if (t && isTask(t) && isExited(t) && S.taskView !== id) void closeTerminal(id);
+  }, TASK_KEEP_MS));
+}
+
+function keepTask(id: number): void {
+  clearTimeout(expiry.get(id));
+  expiry.delete(id);
+}
+
+function taskSpawned(req: number, info: term.Info): void {
+  if (req !== awaitingTask) { earlyTask = { req, info }; return; }
+  awaitingTask = 0;
+  if (overlayIdle()) S.taskView = info.id;
+  else toast(`${info.title} is running. Its output is in the command menu.`);
+}
+
+function taskEnded(t: term.Info): void {
+  if (S.taskView === t.id) return;
+  const o = outcome(t);
+  if (o) toast(`${t.title} ${o.text}`, o.tone);
+  expireTask(t.id);
+}
+
+export async function runTask(task: term.Task): Promise<void> {
+  // with no subscription the host would run it and every event about it would go nowhere
+  await connectTerminals();
+  if (S.termError) { toast(S.termError, 'err'); return; }
+  try {
+    const req = await term.runTask(task, ...term.size());
+    const early = earlyTask?.req === req ? earlyTask : null;
+    awaitingTask = req;
+    if (early) {
+      earlyTask = null;
+      taskSpawned(req, early.info);
+      notify();
+    }
+  } catch (e) {
+    toast(errText(e), 'err');
+  }
+}
+
+export function openTask(id: number): void {
+  if (!overlayIdle()) return;
+  keepTask(id);
+  S.taskView = id;
+  notify();
+}
+
+/** A task that already ended goes with its dialog: the output was on screen until now. */
+export function closeTask(): void {
+  const t = S.terminals.find((s) => s.id === S.taskView);
+  S.taskView = null;
+  notify();
+  if (!t || !isTask(t) || !isExited(t)) return;
+  void closeTerminal(t.id);
+  // a close that fails is tried again later; the Closed of one that works cancels this
+  expireTask(t.id);
+}
+
+export async function promoteTask(id: number): Promise<void> {
+  try {
+    await term.promote(id);
+  } catch (e) {
+    toast(errText(e), 'err');
+    return;
+  }
+  keepTask(id);
+  S.terminals = S.terminals.map((t) => (t.id === id ? { ...t, task: false } : t));
+  S.taskView = null;
+  selectTerminal(id);
+}
+
+/** The menu reads the file and package.json again on every opening, so a hand edit to either shows up. */
+export async function taskMenu(): Promise<Scripts | null> {
+  loadCommands().catch((e: unknown) => logError(e, 'load commands'));
+  return git.packageScripts();
 }
 
 // ---------- copy path ----------
@@ -1338,8 +1475,8 @@ export async function sendComments(): Promise<void> {
       : 'not saved, see the error above', 'warn');
     return;
   }
-  const labels = termLabels(S.terminals);
-  const targets = eligible(S.terminals, S.root)
+  const labels = termLabels(terminalsOf(S.terminals));
+  const targets = eligible(terminalsOf(S.terminals), S.root)
     .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));
   if (!targets.length) { toast('No claude or codex session is open in this repo.', 'warn'); return; }
   const id = await pick(targets.map((s) => ({
@@ -1350,7 +1487,10 @@ export async function sendComments(): Promise<void> {
   })), `Send ${plural(sent.length, 'comment')} to…`);
   if (id === null) return;
   const label = labels.get(id) ?? `#${id}`;
-  if (!eligible(S.terminals, S.root).some((s) => s.id === id)) { toast(`${label} is no longer open`, 'err'); return; }
+  if (!eligible(terminalsOf(S.terminals), S.root).some((s) => s.id === id)) {
+    toast(`${label} is no longer open`, 'err');
+    return;
+  }
   try {
     await term.input(id, pastePayload(format(sent)));
   } catch (e) {
@@ -1413,7 +1553,7 @@ export async function pickRepo(): Promise<void> {
 
 /** An open overlay owns the keyboard; Radix handles its own Escape. */
 function overlayIdle(): boolean {
-  return !S.palette && !S.confirm && !S.prompt && !S.orphans && !S.settingsOpen;
+  return !S.palette && !S.confirm && !S.prompt && !S.orphans && !S.settingsOpen && S.taskView === null;
 }
 
 export function dispatch(a: Action): void {

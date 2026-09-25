@@ -18,6 +18,7 @@ import {
   rejectFile, setTab, stageAll, toggleDir, unstageAll, unstageFile,
 } from './controller';
 import { notify, refs, S, useApp, type Tab } from './store';
+import { TaskMenu } from './Tasks';
 import { TerminalRail } from './Terminals';
 
 function ChangesIcon() {
@@ -91,6 +92,7 @@ export function ActivityBar() {
     <div className="act">
       <BrandMenu />
       <Tabs vertical value={S.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs} />
+      <TaskMenu />
       <TerminalRail />
     </div>
   );

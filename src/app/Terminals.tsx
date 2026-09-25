@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { termLabels } from '../comments';
+import { terminalsOf } from '../tasks';
 import * as term from '../terminal';
 import { agentOf, awayLabel, homeFrom, isExited, statusLabel, type Agent } from '../terminal-status';
 import { Button } from '../ui/Button';
@@ -110,10 +111,11 @@ function Dot({ session }: { session: term.Info }) {
 
 export function TerminalRail() {
   const active = S.tab === 'terminals' ? S.activeTerm : null;
-  const names = termLabels(S.terminals);
+  const sessions = terminalsOf(S.terminals);
+  const names = termLabels(sessions);
   return (
     <div className="rail">
-      {S.terminals.map((s) => {
+      {sessions.map((s) => {
         const wants = S.termAttention.has(s.id);
         const home = homeFrom(s.cwd);
         const away = awayLabel(s, S.root, home);

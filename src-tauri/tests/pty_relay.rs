@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use codebaer_lib::pty::{daemon, orphans};
+use codebaer_lib::pty::{bridge, daemon, orphans};
 use codebaer_lib::pty::proto::{self, ClientMsg, Frame, ServerMsg, SpawnKind};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
@@ -31,7 +31,10 @@ struct Client {
 
 impl Client {
     fn connect(sock: &Path) -> Client {
-        let s = UnixStream::connect(sock).unwrap();
+        Client::over(UnixStream::connect(sock).unwrap())
+    }
+
+    fn over(s: UnixStream) -> Client {
         s.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
         let mut c = Client { s, buf: Vec::new(), out: Vec::new(), msgs: Vec::new() };
         c.send(&ClientMsg::Hello { proto: proto::PROTO, client: "test".into() });
@@ -89,6 +92,15 @@ impl Client {
     }
 }
 
+/// Asks through the bridge while it is up: a client connecting to the host itself would take the
+/// connection from it, and with it a Close the bridge had not yet passed on.
+fn observe(sock: &Path) -> Client {
+    match UnixStream::connect(bridge::path(sock)) {
+        Ok(s) => Client::over(s),
+        Err(_) => Client::connect(sock),
+    }
+}
+
 fn until<T>(limit: Duration, mut f: impl FnMut() -> Option<T>) -> Option<T> {
     let deadline = Instant::now() + limit;
     while Instant::now() < deadline {
@@ -139,6 +151,10 @@ impl Relay {
     fn exit_code(&mut self) -> Option<u32> {
         until(Duration::from_secs(5), || self.child.try_wait().ok().flatten()).map(|s| s.exit_code())
     }
+
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.screen.lock().unwrap()).into_owned()
+    }
 }
 
 /// A session with some scrollback, left behind by a client that has gone, as a rebuild leaves it.
@@ -180,7 +196,7 @@ fn closing_the_relay_closes_the_session_it_relays() {
     std::thread::sleep(Duration::from_millis(250));
     unsafe { libc::killpg(group, libc::SIGTERM) };
     assert_eq!(relay.exit_code(), Some(0));
-    assert!(Client::connect(&sock).wait_gone(id), "the old host still has the session");
+    assert!(observe(&sock).wait_gone(id), "the old host still has the session");
 }
 
 #[test]
@@ -191,7 +207,7 @@ fn the_relay_ends_with_the_old_session_and_takes_its_exit_code() {
     assert!(relay.shows("before-2"));
     relay.type_in("exit 3\r");
     assert_eq!(relay.exit_code(), Some(3));
-    assert!(Client::connect(&sock).wait_gone(id), "the exited session's record was left behind");
+    assert!(observe(&sock).wait_gone(id), "the exited session's record was left behind");
 }
 
 #[test]
@@ -213,7 +229,69 @@ fn a_relay_finds_a_session_by_pid_when_its_id_was_unreadable() {
     // it resolved to the real id: closing it closes that session
     unsafe { libc::kill(relay.child.process_id().unwrap() as i32, libc::SIGHUP) };
     assert_eq!(relay.exit_code(), Some(0));
-    assert!(Client::connect(&sock).wait_gone(id));
+    assert!(observe(&sock).wait_gone(id));
+}
+
+#[test]
+fn relays_to_two_sessions_of_one_host_both_keep_working() {
+    let (_dir, sock) = host();
+    let (a, _) = abandoned_session(&sock);
+    let (b, _) = abandoned_session(&sock);
+    let mut first = Relay::start(&sock, &a.to_string());
+    assert!(first.shows("before-2"));
+    let mut second = Relay::start(&sock, &b.to_string());
+    assert!(second.shows("before-2"));
+    // the host serves one client, and a second relay connecting straight to it cut the first off
+    first.type_in("echo first-$((6*7))\r");
+    assert!(first.shows("first-42"), "the first relay lost its session: {:?}", first.text());
+    second.type_in("echo second-$((6*8))\r");
+    assert!(second.shows("second-48"));
+    assert!(!first.text().contains("second-48"), "a relay was shown another session's output");
+}
+
+#[test]
+fn relays_started_together_all_get_their_sessions() {
+    let (_dir, sock) = host();
+    let ids: Vec<u32> = (0..3).map(|_| abandoned_session(&sock).0).collect();
+    // no waiting in between, so they race to start the one bridge
+    let mut relays: Vec<Relay> = ids.iter().map(|id| Relay::start(&sock, &id.to_string())).collect();
+    for (i, r) in relays.iter_mut().enumerate() {
+        assert!(r.shows("before-2"), "relay {i} was not replayed: {:?}", r.text());
+        r.type_in(&format!("echo together-$(({i}+40))\r"));
+    }
+    for (i, r) in relays.iter().enumerate() {
+        assert!(r.shows(&format!("together-{}", i + 40)), "relay {i} lost its session: {:?}", r.text());
+    }
+}
+
+#[test]
+fn a_relay_closed_while_still_starting_closes_its_session() {
+    let (_dir, sock) = host();
+    let (id, _) = abandoned_session(&sock);
+    // stands in for a bridge that is closing down: it lets the relay in and drops it unanswered
+    let at = bridge::path(&sock);
+    let fake = UnixListener::bind(&at).unwrap();
+    fake.set_nonblocking(true).unwrap();
+    let mut relay = Relay::start(&sock, &id.to_string());
+    let conn = until(Duration::from_secs(5), || fake.accept().ok()).expect("the relay never connected");
+    unsafe { libc::killpg(relay.child.process_id().unwrap() as i32, libc::SIGHUP) };
+    std::fs::remove_file(&at).unwrap();
+    drop(conn);
+    assert_eq!(relay.exit_code(), Some(0), "{:?}", relay.text());
+    assert!(observe(&sock).wait_gone(id), "the old host still has the session");
+}
+
+#[test]
+fn a_second_relay_to_the_same_session_is_turned_away() {
+    let (_dir, sock) = host();
+    let (id, _) = abandoned_session(&sock);
+    let mut first = Relay::start(&sock, &id.to_string());
+    assert!(first.shows("before-2"));
+    let mut again = Relay::start(&sock, &id.to_string());
+    assert!(again.shows("already relayed"));
+    assert_eq!(again.exit_code(), Some(1));
+    first.type_in("echo still-$((6*7))\r");
+    assert!(first.shows("still-42"));
 }
 
 /// A host is a separate process here, since the check counts every socket the pid holds.

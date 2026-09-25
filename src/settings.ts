@@ -6,6 +6,9 @@ export type AiProvider = 'off' | 'claude';
 export type Settings = { 'general.headless-ai-provider': AiProvider; 'appearance.theme': Theme };
 export type SettingKey = keyof Settings;
 
+/** Stored in the settings file too, under `commands.custom`; `repo` is a canonical root, or null for every repo. */
+export type CustomCommand = { name: string; command: string; repo: string | null };
+
 export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };
 
 export type Choice<K extends SettingKey> = { value: Settings[K]; label: string };
@@ -41,4 +44,6 @@ export const SECTIONS: Section[] = [
       },
     ],
   },
+  // a list the user edits rather than choices, so Settings.tsx draws this pane itself
+  { id: 'commands', label: 'Commands', options: [] },
 ];

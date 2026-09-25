@@ -1,6 +1,6 @@
 //! A session of the current host whose program is this relay, attached to one session of a stale
-//! host. It is the one way back to a host built for another protocol version, because the app
-//! only ever connects to the host for its own.
+//! host through that host's bridge. It is the one way back to a host built for another protocol
+//! version, because the app only ever connects to the host for its own.
 //!
 //! It speaks only Hello, Attach, Resize, Input and Close, and reads server messages as loose
 //! JSON, so that a version skew costs it the messages it does not know rather than the session.
@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::bridge;
 use super::proto::{self, ClientMsg, Frame};
 
 static HANGUP: AtomicBool = AtomicBool::new(false);
@@ -55,13 +56,13 @@ enum End {
     Error(String),
 }
 
-fn frame(f: &Frame) -> Vec<u8> {
+pub(super) fn frame(f: &Frame) -> Vec<u8> {
     let mut out = Vec::new();
     proto::encode(f, &mut out);
     out
 }
 
-fn control(msg: &ClientMsg) -> Vec<u8> {
+pub(super) fn control(msg: &ClientMsg) -> Vec<u8> {
     frame(&Frame::Control(serde_json::to_vec(msg).unwrap_or_default()))
 }
 
@@ -122,7 +123,7 @@ fn event(json: &[u8], id: u32) -> Option<End> {
     match v.get("t")?.as_str()? {
         "Exit" if mine => Some(End::Exit(v.get("code").and_then(Value::as_i64).map_or(0, |c| c as i32))),
         "Closed" if mine => Some(End::Closed),
-        // an error with no id is about this connection: the host takes no other client's requests
+        // an error with no id is about the connection, which the bridge shares among its relays
         "Error" if mine || unaddressed => {
             Some(End::Error(v.get("message").and_then(Value::as_str).unwrap_or("error").to_string()))
         }
@@ -130,13 +131,13 @@ fn event(json: &[u8], id: u32) -> Option<End> {
     }
 }
 
-struct Frames {
-    s: UnixStream,
-    buf: Vec<u8>,
+pub(super) struct Frames {
+    pub(super) s: UnixStream,
+    pub(super) buf: Vec<u8>,
 }
 
 impl Frames {
-    fn next(&mut self) -> Result<Frame, String> {
+    pub(super) fn next(&mut self) -> Result<Frame, String> {
         let mut chunk = [0u8; 64 * 1024];
         loop {
             if let Some((f, used)) = proto::decode(&self.buf).map_err(|e| format!("protocol: {e:?}"))? {
@@ -176,6 +177,47 @@ pub fn run(sock: &Path, target: &Target) -> ! {
     }
 }
 
+/// The host's answer to Hello. `Err` is the host refusing, `Ok(Err)` the connection lost first.
+fn hello(frames: &mut Frames, mut writer: &UnixStream, v: u32) -> Result<Result<Value, String>, String> {
+    let wire = control(&ClientMsg::Hello { proto: v, client: "codebaer-relay".into() });
+    if let Err(e) = writer.write_all(&wire) {
+        return Ok(Err(e.to_string()));
+    }
+    loop {
+        let json = match frames.next() {
+            Ok(Frame::Control(json)) => json,
+            Ok(_) => continue,
+            Err(e) => return Ok(Err(e)),
+        };
+        let Ok(msg) = serde_json::from_slice::<Value>(&json) else { continue };
+        match msg.get("t").and_then(Value::as_str) {
+            Some("Hello") => return Ok(Ok(msg)),
+            Some("Error") => return Err(msg.get("message").and_then(Value::as_str).unwrap_or("error").to_string()),
+            _ => {}
+        }
+    }
+}
+
+/// A bridge that is closing down can let a relay in and then drop it unanswered, which is
+/// retried on a new connection.
+fn join(sock: &Path, v: u32) -> Result<(Frames, UnixStream, Value), String> {
+    let mut tries = 0;
+    loop {
+        let stream = bridge::connect(sock)?;
+        stream.set_read_timeout(Some(Duration::from_secs(10))).map_err(|e| e.to_string())?;
+        let writer = stream.try_clone().map_err(|e| e.to_string())?;
+        let mut frames = Frames { s: stream, buf: Vec::new() };
+        match hello(&mut frames, &writer, v)? {
+            Ok(msg) => {
+                frames.s.set_read_timeout(None).map_err(|e| e.to_string())?;
+                return Ok((frames, writer, msg));
+            }
+            Err(e) if tries >= 3 => return Err(e),
+            Err(_) => tries += 1,
+        }
+    }
+}
+
 fn relay(sock: &Path, target: &Target) -> Result<std::convert::Infallible, String> {
     let v = proto_of(sock).ok_or_else(|| format!("{} is not a pty host socket", sock.display()))?;
     unsafe {
@@ -184,22 +226,9 @@ fn relay(sock: &Path, target: &Target) -> Result<std::convert::Infallible, Strin
         libc::signal(libc::SIGHUP, hangup as extern "C" fn(libc::c_int) as libc::sighandler_t);
         libc::signal(libc::SIGTERM, hangup as extern "C" fn(libc::c_int) as libc::sighandler_t);
     }
-    let stream = UnixStream::connect(sock).map_err(|e| format!("{}: {e}", sock.display()))?;
-    let writer = Arc::new(Mutex::new(stream.try_clone().map_err(|e| e.to_string())?));
-    let mut frames = Frames { s: stream, buf: Vec::new() };
-    let hello = control(&ClientMsg::Hello { proto: v, client: "codebaer-relay".into() });
-    writer.lock().unwrap().write_all(&hello).map_err(|e| e.to_string())?;
-    // every session's live output is already flowing to this new client; it is all in the ring,
-    // which the Attach below replays
-    let id = loop {
-        let Frame::Control(json) = frames.next()? else { continue };
-        let Ok(msg) = serde_json::from_slice::<Value>(&json) else { continue };
-        match msg.get("t").and_then(Value::as_str) {
-            Some("Hello") => break resolve(&msg, target)?,
-            Some("Error") => return Err(msg.get("message").and_then(Value::as_str).unwrap_or("error").to_string()),
-            _ => {}
-        }
-    };
+    let (mut frames, writer, hello) = join(sock, v)?;
+    let writer = Arc::new(Mutex::new(writer));
+    let id = resolve(&hello, target)?;
 
     if HANGUP.load(Ordering::SeqCst) {
         close_and_exit(&writer, id, 0);
@@ -264,7 +293,6 @@ fn relay(sock: &Path, target: &Target) -> Result<std::convert::Infallible, Strin
                 Some(End::Closed) => std::process::exit(0),
                 Some(End::Error(e)) => return Err(e),
             },
-            // the host sends every session's output to its one client; only ours is shown
             _ => {}
         }
     }

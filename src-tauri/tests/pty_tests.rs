@@ -171,6 +171,50 @@ fn a_session_runs_a_real_shell_and_echoes_its_output() {
 }
 
 #[test]
+fn a_task_runs_its_line_and_stays_a_task_until_promoted() {
+    let (_dir, cwd) = real_dir();
+    let h = Harness::start();
+    let mut c = h.connect();
+    let kind = SpawnKind::Task { line: "echo task-$((40 + 2)) && exit 3".into(), title: "answer".into() };
+    c.send(&ClientMsg::Spawn { req: 7, kind, cwd, cols: 80, rows: 24 });
+    // the arithmetic proves a shell ran the line rather than a program being handed it as argv
+    assert!(c.wait_for("task-42", Duration::from_secs(10)), "got: {:?}", c.text());
+    let info = c
+        .msgs
+        .iter()
+        .find_map(|m| match m {
+            ServerMsg::Spawned { req: 7, info } => Some(info.clone()),
+            _ => None,
+        })
+        .expect("a Spawned for the task");
+    assert!(info.task);
+    assert_eq!(info.title, "answer");
+
+    let exited = |c: &Client| c.msgs.iter().any(|m| matches!(m, ServerMsg::Exit { id, code: Some(3) } if *id == info.id));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && !exited(&c) {
+        c.pump(Duration::from_millis(100));
+    }
+    assert!(exited(&c), "the shell ends with the line: {:?}", c.msgs);
+
+    c.send(&ClientMsg::Promote { id: info.id });
+    c.msgs.clear();
+    c.send(&ClientMsg::Hello { proto: proto::PROTO, client: "test".into() });
+    let listed = |c: &Client| {
+        c.msgs.iter().find_map(|m| match m {
+            ServerMsg::Hello { sessions, .. } => sessions.iter().find(|s| s.id == info.id).cloned(),
+            _ => None,
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && listed(&c).is_none() {
+        c.pump(Duration::from_millis(100));
+    }
+    let after = listed(&c).expect("the exited task is still listed");
+    assert!(!after.task, "a promoted task lists as a terminal, so a reload keeps it in the rail");
+}
+
+#[test]
 fn a_reattaching_client_is_replayed_the_scrollback_it_missed() {
     let h = Harness::start();
     let id = {

@@ -312,6 +312,11 @@ fn control(msg: ClientMsg, hub: &Shared) -> bool {
             }
         }
         ClientMsg::Kill { id } => kill(id, hub),
+        ClientMsg::Promote { id } => {
+            if let Some(s) = hub.lock().unwrap().sessions.get_mut(&id) {
+                s.info.task = false;
+            }
+        }
         ClientMsg::CheckCwd => check_all(hub),
         ClientMsg::Close { id } => {
             let exited = match hub.lock().unwrap().sessions.get(&id) {
@@ -364,7 +369,7 @@ fn attach(id: Option<u32>, hub: &Shared) {
     }
 }
 
-pub(super) fn quote(s: &str) -> String {
+pub(crate) fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
@@ -409,6 +414,10 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
             Tier::Process,
             basename(argv0).to_string(),
         ),
+        // not exec'd: the line may be a pipeline or a list, which only the shell can run
+        SpawnKind::Task { line, title } => {
+            (login_shell(), vec!["-l".into(), "-c".into(), line.clone()], Vec::new(), Tier::Process, title.clone())
+        }
     };
 
     let mut cmd = CommandBuilder::new(&program);
@@ -451,6 +460,7 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
         cwd: cwd.to_string(),
         tier,
         state: State::Starting,
+        task: matches!(kind, SpawnKind::Task { .. }),
     };
     let tx = {
         let mut h = hub.lock().unwrap();
@@ -667,7 +677,7 @@ pub fn teardown(hub: &Shared) {
 /// Leaves the app's process group and reparents to pid 1, so neither a process-group signal
 /// nor a walk of the app's child tree can reach us. `tauri dev` does the latter on every
 /// rebuild, which is the whole reason this process exists.
-fn daemonize(log: &Path) {
+pub(super) fn daemonize(log: &Path) {
     unsafe {
         if libc::fork() > 0 {
             libc::_exit(0);
@@ -679,6 +689,8 @@ fn daemonize(log: &Path) {
         if null >= 0 {
             libc::dup2(null, 0);
             libc::dup2(null, 1);
+            // kept only when the log below cannot be opened
+            libc::dup2(null, 2);
             if null > 2 {
                 libc::close(null);
             }

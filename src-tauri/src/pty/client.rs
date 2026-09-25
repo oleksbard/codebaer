@@ -273,6 +273,8 @@ pub fn term_spawn<R: Runtime>(
     let ok = match &kind {
         SpawnKind::Shell { path } => m.shells.iter().any(|s| &s.path == path),
         SpawnKind::Command { argv0 } => m.commands.iter().any(|c| c == argv0),
+        // `task_run` is the only way to one, and it builds the line itself
+        SpawnKind::Task { .. } => false,
     };
     if !ok {
         return Err(AppError::InvalidPath(format!("{kind:?}")));
@@ -281,8 +283,9 @@ pub fn term_spawn<R: Runtime>(
     request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)
 }
 
-/// Unchecked: `term_spawn` holds the webview to the menu, and a restore names its own program.
-pub(super) fn request_spawn<R: Runtime>(
+/// Unchecked: `term_spawn` holds the webview to the menu, a restore names its own program, and
+/// `task_run` builds its line from the settings file or package.json.
+pub(crate) fn request_spawn<R: Runtime>(
     app: &AppHandle<R>,
     kind: SpawnKind,
     cwd: String,
@@ -349,6 +352,12 @@ pub fn term_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) ->
 pub fn term_kill(state: State<'_, PtyState>, id: u32) -> Result<(), AppError> {
     let mut c = state.0.lock().unwrap();
     control(&mut c, &ClientMsg::Kill { id })
+}
+
+#[tauri::command(async)]
+pub fn term_promote(state: State<'_, PtyState>, id: u32) -> Result<(), AppError> {
+    let mut c = state.0.lock().unwrap();
+    control(&mut c, &ClientMsg::Promote { id })
 }
 
 #[tauri::command(async)]

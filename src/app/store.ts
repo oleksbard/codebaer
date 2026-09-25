@@ -4,7 +4,7 @@ import type { Eol, FileText, Status } from '../git';
 import type { ViewKind } from '../editor';
 import type { Item } from '../palette';
 import type { OrphanScan } from '../orphans';
-import { DEFAULTS } from '../settings';
+import { DEFAULTS, type CustomCommand } from '../settings';
 import type { Info, Menu } from '../terminal';
 
 export type Tab = 'changes' | 'files' | 'terminals';
@@ -82,6 +82,11 @@ export const S = {
   /** The defaults until start() reads the file. */
   settings: { ...DEFAULTS },
   settingsOpen: false,
+  settingsSection: 'general',
+  /** Every saved command, other repos' included; read with the settings. */
+  commands: [] as CustomCommand[],
+  /** The task whose output dialog is open. */
+  taskView: null as number | null,
   /** Comments waiting to be sent to a terminal. Drafts for an agent, not review state: memory only. */
   comments: [] as Comment[],
   draft: null as Draft | null,
