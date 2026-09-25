@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "oxlint --type-aware src && eslint src",
+    "lint": "oxlint --type-aware src e2e && eslint src e2e",
     "test": "vitest run",
+    "ui": "vite --port 1430 --strictPort --open /mock.html",
+    "e2e": "playwright test",
+    "shot": "node scripts/shot.mjs",
     "tauri": "tauri",
     "bump": "node scripts/bump.mjs"
   },
@@ -16,6 +19,7 @@
     "@babel/eslint-parser": "^7.29.9",
     "@babel/plugin-syntax-jsx": "^8.0.1",
     "@babel/preset-typescript": "^8.0.1",
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^22.20.2",
     "@types/react": "19.3.0",

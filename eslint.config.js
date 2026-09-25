@@ -14,6 +14,6 @@ const babel = (plugins) => ({
 });
 
 export default [
-  { files: ['src/**/*.ts'], languageOptions: babel([]), rules: { 'max-len': ['error', { code: 120 }] } },
+  { files: ['src/**/*.ts', 'e2e/**/*.ts'], languageOptions: babel([]), rules: { 'max-len': ['error', { code: 120 }] } },
   { files: ['src/**/*.tsx'], languageOptions: babel([jsx]), rules: { 'max-len': ['error', { code: 120 }] } },
 ];
