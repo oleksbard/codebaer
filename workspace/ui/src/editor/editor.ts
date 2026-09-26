@@ -86,7 +86,7 @@ export async function buildState(
         ? (type, _action) => {
             const b = document.createElement('button');
             b.textContent = type === 'accept' ? 'Accept' : 'Reject';
-            b.name = type; // matches the library's own [name=accept]/[name=reject] baseTheme styling
+            b.name = type; // editorTheme and the library's base theme both style the buttons by [name]
             b.onclick = (e) => {
               e.preventDefault();
               // findFromDOM looks for .cm-content *below* what it is given, so the button itself

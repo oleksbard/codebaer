@@ -84,8 +84,6 @@
       color: var(--muted);
       font-size: var(--fs-1);
     }
-    .btn:disabled { opacity: .45; cursor: default; }
-    .btn.busy:disabled { opacity: 1; }
     .btn.armed { color: var(--del); border-color: var(--del); }
 
     .labels { display: inline-grid; }

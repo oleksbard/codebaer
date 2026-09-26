@@ -4,6 +4,7 @@ import { closeConfirm, closePrompt, removeToast } from '#kernel/dialogs';
 import { AlertDialog } from '#ui/AlertDialog';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
+import { Kbd } from '#ui/Kbd';
 import { useApp, type ConfirmRequest, type DeepReadonly, type PaletteRequest, type PromptRequest } from '#kernel/store';
 import { chords } from '#kernel/keymap';
 import { features } from '#kernel/registry';
@@ -59,7 +60,7 @@ function CommandPalette({ req }: { req: DeepReadonly<PaletteRequest> }) {
           ? shown.map((it, i) => (
               <li key={i} className={i === cur ? 'on' : ''} onClick={() => close(it.value)}>
                 <span>{it.label}{it.detail ? <> <span className="desc">{it.detail}</span></> : null}</span>
-                {it.hint ? <span className="k">{it.hint}</span> : null}
+                {it.hint ? <Kbd>{it.hint}</Kbd> : it.note ? <span className="note">{it.note}</span> : null}
               </li>
             ))
           : <li className="desc">No matching results</li>}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { buildQueue, split } from '#core/model';
+import { buildQueue, plural, split } from '#core/model';
 import {
   closeFile, hasUnstaged, keepMine, reload, toggleChangesOnly, view, viewChanges,
 } from '#core/session';
@@ -89,7 +89,7 @@ function TitleBar() {
   const pos = o.view === 'plain' ? 'working tree'
     : chunks ? `hunk ${Math.max(at, 0) + 1} of ${chunks}`
       : o.view === 'staged' ? 'nothing staged' : 'no unstaged changes';
-  const pill = o.view === 'plain' ? 'whole file, current state'
+  const mode = o.view === 'plain' ? 'whole file, current state'
     : o.view === 'staged' ? 'HEAD → index · read only' : 'index → working tree';
   const btns = o.view === 'unstaged' && chunks
     ? <><Button onClick={() => void reject()}>Reject <Kbd>{keyLabel('review.reject')}</Kbd></Button>
@@ -111,7 +111,7 @@ function TitleBar() {
   );
   return (
     <div className="tbar">{title}<span className="pos">{pos}</span>{blame}
-      <div className="right"><PendingPill />{badge}{nav}<Pill>{pill}</Pill>{btns}{close}</div>
+      <div className="right"><PendingPill />{badge}{nav}<span className="mode">{mode}</span>{btns}{close}</div>
     </div>
   );
 }
@@ -161,11 +161,12 @@ function Blank() {
       <div className="blank">
         <div>
           <img src="/logo.png" alt="" />
-          <h2>{n ? `${n} files to review` : 'Nothing left to review'}</h2>
+          <h2>{n ? `${plural(n, 'file')} to review` : 'Nothing left to review'}</h2>
           {n ? <QueueStat /> : null}
           <p>{n
-            ? `Pick a file on the left, or press ${keyLabel('review.nextHunk')} to start at the first hunk.`
-            : `Write a message and commit with ${keyLabel('git.commit')}, or wait for the agent.`}</p>
+            ? <>Pick a file on the left, or press <Kbd>{keyLabel('review.nextHunk')}</Kbd>
+              {' '}to start at the first hunk.</>
+            : <>Write a message and commit with <Kbd>{keyLabel('git.commit')}</Kbd>, or wait for the agent.</>}</p>
         </div>
       </div>
     );

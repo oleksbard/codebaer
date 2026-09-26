@@ -1,6 +1,9 @@
 import { notify, S } from './store';
 
-export type Item<T> = { label: string; detail?: string | undefined; hint?: string | undefined; value: T };
+/** `hint` is a key chord, drawn as a keycap; `note` is a word about the item, drawn as text. */
+export type Item<T> = {
+  label: string; detail?: string | undefined; hint?: string | undefined; note?: string | undefined; value: T;
+};
 
 export function fuzzy(label: string, q: string): boolean {
   let i = 0;

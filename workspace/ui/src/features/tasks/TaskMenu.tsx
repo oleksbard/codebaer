@@ -9,7 +9,7 @@ import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
 import { closeTask, openTask, promoteTask, runTask, taskMenu } from './runner';
-import { outcome } from './tasks';
+import { outcome, withoutSharedPrefix } from './tasks';
 
 function PlayIcon() {
   return (
@@ -18,6 +18,22 @@ function PlayIcon() {
       <path d="M5.25 3.25v9.5L12.75 8z" />
     </svg>
   );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" aria-hidden="true">
+      <circle cx="8" cy="8" r="4" strokeWidth="1.4" />
+      <circle cx="8" cy="8" r="1.5" strokeWidth="1.2" />
+      <path d="M12.5 8h2M1.5 8h2M8 12.5v2M8 1.5v2M11.2 11.2l1.4 1.4M3.4 3.4l1.4 1.4M4.8 11.2l-1.4 1.4M12.6 3.4l-1.4 1.4"
+        strokeWidth="2" />
+    </svg>
+  );
+}
+
+/** Cut at the start when it does not fit: the end of a command is what tells two apart. */
+function Command({ text }: { text: string }) {
+  return <span className="detail cut-start"><bdi>{text}</bdi></span>;
 }
 
 function tone(s: DeepReadonly<Info>): string {
@@ -37,6 +53,8 @@ export function TaskMenu() {
   const running = tasks.filter((t) => !isExited(t)).length;
   const saved = app.commands.filter((c) => inMenu(c, app.root));
   const here = listed?.root === app.root ? listed : null;
+  const scripts = here?.scripts?.scripts ?? [];
+  const shown = withoutSharedPrefix(scripts.map((sc) => sc.command));
   const load = async () => {
     const root = app.root;
     try {
@@ -68,8 +86,7 @@ export function TaskMenu() {
               <div className="menu-label">Output</div>
               {tasks.map((t) => (
                 <DropdownMenu.Item key={t.id} className="menu-item" onSelect={() => openTask(t.id)}>
-                  <span className={`term-dot ${tone(t)}`} aria-hidden="true" />
-                  {t.title}
+                  <span className="name"><span className={`term-dot ${tone(t)}`} aria-hidden="true" />{t.title}</span>
                   <span className="detail">{outcome(t)?.text ?? statusLabel(t, Date.now())}</span>
                 </DropdownMenu.Item>
               ))}
@@ -79,9 +96,11 @@ export function TaskMenu() {
           <div className="menu-label">Commands</div>
           {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
           {saved.map((c, i) => (
-            <DropdownMenu.Item key={i} className="menu-item" onSelect={() => run({ t: 'Custom', ...c })}>
-              {commandTitle(c)}
-              {commandTitle(c) !== c.command && <span className="detail">{c.command}</span>}
+            <DropdownMenu.Item key={i} className="menu-item" title={c.command}
+              onSelect={() => run({ t: 'Custom', ...c })}>
+              {commandTitle(c) === c.command
+                ? <span className="name wide">{c.command}</span>
+                : <><span className="name">{commandTitle(c)}</span><Command text={c.command} /></>}
             </DropdownMenu.Item>
           ))}
           {here?.error && <div className="menu-empty">{here.error}</div>}
@@ -89,17 +108,17 @@ export function TaskMenu() {
             <>
               <DropdownMenu.Separator className="menu-sep" />
               <div className="menu-label">package.json · {here.scripts.runner}</div>
-              {here.scripts.scripts.map((sc) => (
-                <DropdownMenu.Item key={sc.name} className="menu-item"
+              {scripts.map((sc, i) => (
+                <DropdownMenu.Item key={sc.name} className="menu-item" title={sc.command}
                   onSelect={() => run({ t: 'Script', name: sc.name })}>
-                  {sc.name}<span className="detail">{sc.command}</span>
+                  <span className="name">{sc.name}</span><Command text={shown[i] ?? sc.command} />
                 </DropdownMenu.Item>
               ))}
             </>
           )}
           <DropdownMenu.Separator className="menu-sep" />
-          <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings('commands')}>
-            Manage commands…
+          <DropdownMenu.Item className="menu-item menu-foot" onSelect={() => void openSettings('commands')}>
+            <GearIcon />Manage commands…
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

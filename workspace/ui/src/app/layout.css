@@ -117,7 +117,6 @@
   font-size: var(--fs-2);
 
   .txt { flex: 1; text-align: left; }
-  kbd { border-color: transparent; }
 
   &:hover { background: var(--panel2); color: var(--muted); }
 }

@@ -76,6 +76,26 @@ describe('row layout', () => {
     expect(dir('src/gen').parentElement).toBe(dir('src'));
   });
 
+  it('Files tab shows each changed file\'s git letter and a roll-up dot on the folders above it', async () => {
+    S.status = {
+      head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+      files: [
+        { path: 'src/app/a.ts', indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false },
+        { path: 'README.md', indexStatus: 'A', worktreeStatus: '.', untracked: false, conflicted: false },
+      ],
+    };
+    await renderFiles(['src/app/a.ts', 'src/b.ts', 'README.md'], null, ['src', 'src/app']);
+    const row = (p: string) => side.querySelector<HTMLElement>(`[data-key="plain:${p}"]`)!;
+    const dot = (p: string) => side.querySelector<HTMLElement>(`details[data-dir="${p}"] > summary .st-dot`);
+
+    expect(row('src/app/a.ts').querySelector('.st')!.textContent).toBe('M');
+    expect(row('src/app/a.ts').dataset.st).toBe('M');
+    expect(row('README.md').querySelector('.st')!.textContent).toBe('A');
+    expect(row('src/b.ts').querySelector('.st')).toBeNull();
+    expect([dot('src')?.dataset.st, dot('src/app')?.dataset.st]).toEqual(['M', 'M']);
+    expect(dot('src')!.textContent).toBe('Contains changes');
+  });
+
   it('opening a directory git collapsed asks for its contents, an already listed one does not', async () => {
     await renderFiles(['src/a.ts'], null, [], ['node_modules/']);
     const toggle = (p: string) => {

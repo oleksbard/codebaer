@@ -5,6 +5,7 @@ import { openRepo, pickRepo } from '#core/session';
 import { git, type Recent } from '#ipc/git';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
+import { Kbd } from '#ui/Kbd';
 import { avatars, forgetAvatars, hueOf } from './avatar';
 
 function RepoAvatar({ path, code }: { path: string; code: string | undefined }) {
@@ -51,7 +52,7 @@ export function RepoSwitcher() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
-            Open Folder…<span className="detail">{keyLabel('repos.pick')}</span>
+            Open Folder…<span className="detail"><Kbd>{keyLabel('repos.pick')}</Kbd></span>
           </DropdownMenu.Item>
           {recent.length > 0 && <DropdownMenu.Separator className="menu-sep" />}
           {recent.map((r) => (

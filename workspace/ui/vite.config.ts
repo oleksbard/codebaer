@@ -13,6 +13,6 @@ export default defineConfig({
     // Playwright's; its default include would take e2e/*.spec.ts too
     exclude: [...configDefaults.exclude, 'e2e/**'],
     // Vitest blanks every CSS import it does not process, `?raw` included; theme.test.ts reads these
-    css: { include: [/\/src\/ui\/themes/] },
+    css: { include: [/\/src\/ui\/(themes|tokens)/] },
   },
 });

@@ -160,7 +160,7 @@ describe('the title bar', () => {
     await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
     await tick();
     expect(document.querySelector('.tbar .pos')!.textContent).toBe('hunk 1 of 1');
-    expect(document.querySelector('.tbar .pill')!.textContent).toBe('index → working tree');
+    expect(document.querySelector('.tbar .mode')!.textContent).toBe('index → working tree');
     const btns = [...document.querySelectorAll<HTMLButtonElement>('.tbar .right .btn')];
     expect(btns.map((b) => b.textContent)).toEqual(['Reject ⌘N', 'Accept ⌘Y']);
 

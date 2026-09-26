@@ -20,8 +20,8 @@
   padding: 24px;
 
   h2 { font-weight: 500; font-size: var(--fs-5); margin: 0 0 6px; color: var(--text); }
-  p { margin: 0; max-width: 38ch; }
-  img { width: 128px; height: 128px; margin: 0 auto 10px; display: block; }
+  p { margin: 0; max-width: 38ch; text-wrap: balance; }
+  img { width: 96px; height: 96px; margin: 0 auto 10px; display: block; }
 
   /* holds the row's height while the stat loads, so the text under it never jumps */
   .diffstat-slot { height: 22px; margin: 4px 0 10px; }

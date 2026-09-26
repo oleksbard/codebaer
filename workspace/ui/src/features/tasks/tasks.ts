@@ -14,3 +14,14 @@ export function outcome(s: DeepReadonly<Info>): Outcome | null {
   if (STOPPED.has(code)) return { text: 'stopped', tone: 'info' };
   return { text: `failed with exit ${code}`, tone: 'warn' };
 }
+
+/** Drops the leading words every command shares, so the menu spends its width on what tells them apart.
+ *  Needs two commands to share anything, and leaves each at least its last word. */
+export function withoutSharedPrefix(commands: readonly string[]): string[] {
+  if (commands.length < 2) return [...commands];
+  const words = commands.map((c) => c.split(' '));
+  const first = words[0]!;
+  let n = 0;
+  while (words.every((w) => n < w.length - 1 && w[n] === first[n])) n++;
+  return n ? words.map((w) => `… ${w.slice(n).join(' ')}`) : [...commands];
+}

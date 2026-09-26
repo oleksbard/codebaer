@@ -44,7 +44,8 @@
     &.on,
     &:hover { background: var(--sel); }
 
-    .k { color: var(--muted); font: var(--fs-1) var(--mono); }
+    kbd { flex: none; align-self: center; }
+    .note { flex: none; color: var(--muted); font-size: var(--fs-2); }
   }
 
   .desc { color: var(--faint); font-size: var(--fs-2); }

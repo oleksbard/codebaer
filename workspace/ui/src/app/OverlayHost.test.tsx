@@ -48,6 +48,17 @@ describe('command palette', () => {
     expect(document.querySelector('.pal')).toBeNull();
   });
 
+  it('draws a hint as a keycap and a note as plain text', async () => {
+    void pick([{ label: 'Open', hint: '⌘O', value: 1 }, { label: 'claude:1', note: 'last used', value: 2 }], 'x');
+    await tick();
+    const [key, note] = [...document.querySelectorAll('.pal li')];
+    expect(key!.querySelector('kbd')!.textContent).toBe('⌘O');
+    expect(note!.querySelector('kbd')).toBeNull();
+    expect(note!.querySelector('.note')!.textContent).toBe('last used');
+    document.querySelector<HTMLInputElement>('.pal input')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+
   it('ArrowDown moves the highlight, a click resolves that item', async () => {
     const p = pick([{ label: 'A', value: 1 }, { label: 'B', value: 2 }], 'x');
     await tick();

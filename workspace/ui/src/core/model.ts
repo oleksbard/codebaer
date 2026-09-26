@@ -32,6 +32,38 @@ export function buildQueue(s: { readonly files: readonly FileEntry[] }): { unsta
   return { unstaged, staged };
 }
 
+/** What each git letter means, for the tooltip on the letter the queue and the tree show. */
+export const STATUS_LABEL: Record<string, string> = {
+  A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type changed',
+  U: 'Untracked', '!': 'Conflict',
+};
+
+const TONE: Record<string, string> = { M: 'M', T: 'M', D: 'D', '!': '!' };
+const tone = (letter: string): string => TONE[letter] ?? 'A';
+
+/** The tree's letter per file: what is left to review, else what is staged. A directory gets the tone
+ *  its changed files share, a conflict below it wins, and a mix reads as modified. Only `listed` paths
+ *  count, so a folder is never marked for a deletion the tree does not show. */
+export function treeStatus(s: { readonly files: readonly FileEntry[] } | null, listed: ReadonlySet<string>): {
+  files: Map<string, string>;
+  dirs: Map<string, string>;
+} {
+  const files = new Map<string, string>();
+  const dirs = new Map<string, string>();
+  if (!s) return { files, dirs };
+  const q = buildQueue(s);
+  for (const r of [...q.staged, ...q.unstaged]) if (listed.has(r.path)) files.set(r.path, r.letter);
+  for (const [p, letter] of files) {
+    const t = tone(letter);
+    for (let i = p.lastIndexOf('/'); i > 0; i = p.lastIndexOf('/', i - 1)) {
+      const dir = p.slice(0, i);
+      const was = dirs.get(dir);
+      dirs.set(dir, was === undefined || was === t ? t : was === '!' || t === '!' ? '!' : 'M');
+    }
+  }
+  return { files, dirs };
+}
+
 export type TreeDir = { name: string; path: string; dirs: TreeDir[]; files: string[] };
 
 /** Groups paths into a directory tree. Sorting the paths first is what puts both the directories

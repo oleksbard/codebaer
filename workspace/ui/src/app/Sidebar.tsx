@@ -11,6 +11,7 @@ import { TaskMenu } from '#features/tasks';
 import { TerminalRail } from '#features/terminals';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
+import { Kbd } from '#ui/Kbd';
 import { Tabs } from '#ui/Tabs';
 import { setTab } from './actions';
 
@@ -48,7 +49,7 @@ function BrandMenu() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings()}>
-            Settings…<span className="detail">{keyLabel('settings.open')}</span>
+            Settings…<span className="detail"><Kbd>{keyLabel('settings.open')}</Kbd></span>
           </DropdownMenu.Item>
           <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
             Terminals and Orphans…

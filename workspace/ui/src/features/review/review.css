@@ -12,13 +12,14 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
-    font: var(--fs-2) var(--mono);
+    font-weight: 500;
 
     .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dir { color: var(--muted); }
+    .dir { color: var(--muted); font-weight: 400; }
   }
 
-  .pos { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; }
+  .pos,
+  .mode { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; }
   .blame {
     min-width: 0;
     overflow: hidden;

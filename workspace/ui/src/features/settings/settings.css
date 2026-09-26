@@ -1,19 +1,24 @@
-.settings { width: min(760px, calc(100vw - 32px)); }
+/* top-anchored like the palette: each section is as tall as its content, and a switch moves only the
+   bottom edge, never the nav under the pointer */
+.settings {
+  width: min(760px, calc(100vw - 32px));
+  margin-top: max(32px, 10vh);
+}
 
 .settings .dialog-x { top: 14px; right: 14px; }
 
-/* one height for every section, so switching tabs does not resize the centred dialog under the pointer */
 .settings-body {
   display: flex;
-  height: min(620px, calc(100vh - 64px));
-  min-height: 300px;
+  min-height: 280px;
+  max-height: min(620px, calc(100vh - max(32px, 10vh) - 32px));
 }
 
+/* --chrome is below --panel in every theme, light ones included, so the eye lands on the options first */
 .settings-side {
   flex: none;
   width: 164px;
   padding: 14px 8px;
-  background: var(--panel2);
+  background: var(--chrome);
   border-right: 1px solid var(--line);
 
   .dialog-title { margin: 0 8px 12px; }
@@ -33,7 +38,7 @@
   text-align: left;
 
   &:hover { color: var(--text); }
-  &[data-state="active"] { background: var(--sel); color: var(--text); }
+  &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
 }
 
 /* the title row stays put, with the dialog's close button centred in it; only the options scroll */
@@ -53,8 +58,10 @@
   margin: 0;
   padding: 0 48px 0 16px;
   border-bottom: 1px solid var(--line);
-  font-size: var(--fs-4);
-  font-weight: 600;
+  /* the nav already names the section; the dialog's one title is the nav's */
+  color: var(--muted);
+  font-size: var(--fs-3);
+  font-weight: 500;
 }
 
 .settings-pane-body {
@@ -88,8 +95,9 @@
 }
 
 .setting-key {
+  margin-top: 4px;
   font: var(--fs-1) var(--mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .setting-desc {
@@ -107,11 +115,9 @@
 
 .theme-group-title {
   margin: 14px 0 8px;
-  color: var(--faint);
-  font-size: var(--fs-1);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 500;
 }
 
 .theme-grid {

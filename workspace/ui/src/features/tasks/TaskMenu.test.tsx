@@ -68,6 +68,20 @@ it('lists this repo\'s commands, the global ones and the package.json scripts, a
   expect(document.querySelector('.task-menu')!.textContent).toContain('package.json · pnpm');
 });
 
+it('shows each script\'s command without the words they all start with, and the full one as the title', async () => {
+  vi.mocked(c.taskMenu).mockResolvedValue({
+    runner: 'pnpm', scripts: [
+      { name: 'dev', command: 'pnpm --filter ui dev' }, { name: 'e2e', command: 'pnpm --filter ui e2e --ci' },
+    ],
+  });
+  const items = await openMenu();
+  const scripts = items.filter((i) => ['dev', 'e2e'].includes(i.querySelector('.name')?.textContent ?? ''));
+  expect(scripts.map((i) => i.querySelector('.detail')!.textContent)).toEqual(['… dev', '… e2e --ci']);
+  expect(scripts.map((i) => i.title)).toEqual(['pnpm --filter ui dev', 'pnpm --filter ui e2e --ci']);
+  // a saved command with no name of its own is its own label, across both columns
+  expect(item(items, 'make deploy').querySelector('.name.wide')!.textContent).toBe('make deploy');
+});
+
 it('runs the command picked as it was saved, and a script by its name', async () => {
   item(await openMenu(), 'Lint').click();
   expect(c.runTask)

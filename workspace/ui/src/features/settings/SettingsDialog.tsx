@@ -12,8 +12,8 @@ function OptionText({ option, id }: { option: Option; id: string }) {
   return (
     <div className="setting-text">
       <span className="setting-label" id={`${id}-label`}>{option.label}</span>
-      <code className="setting-key">{option.key}</code>
       <p className="setting-desc" id={`${id}-desc`}>{option.description}</p>
+      <code className="setting-key">{option.key}</code>
     </div>
   );
 }

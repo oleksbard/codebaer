@@ -272,7 +272,7 @@ export async function sendComments(): Promise<void> {
   const id = await pick(targets.map((s) => ({
     label: labels.get(s.id) ?? s.title,
     detail: statusLabel(s, Date.now(), homeFrom(s.cwd)),
-    hint: s.id === S.lastTarget ? 'last used' : undefined,
+    note: s.id === S.lastTarget ? 'last used' : undefined,
     value: s.id,
   })), `Send ${plural(sent.length, 'comment')} to…`);
   if (id === null) return;

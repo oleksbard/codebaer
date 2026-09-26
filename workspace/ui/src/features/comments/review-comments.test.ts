@@ -390,8 +390,8 @@ describe('sending', () => {
 
     await m.sendComments();
 
-    const items = pickMock.mock.calls[0]![0] as { label: string; hint?: string; value: number }[];
-    expect(items.map((i) => [i.label, i.hint])).toEqual([['claude:1', undefined]]);
+    const items = pickMock.mock.calls[0]![0] as { label: string; note?: string; value: number }[];
+    expect(items.map((i) => [i.label, i.note])).toEqual([['claude:1', undefined]]);
     expect(pickMock.mock.calls[0]![1]).toBe('Send 2 comments to…');
     const [paste, enter] = inputMock.mock.calls;
     expect(paste![0]).toBe(2);
@@ -425,8 +425,8 @@ describe('sending', () => {
     await comment(1, 1, 'Again.');
     pickMock.mockResolvedValue(null);
     await m.sendComments();
-    const items = pickMock.mock.calls[0]![0] as { label: string; hint?: string }[];
-    expect(items.map((i) => [i.label, i.hint])).toEqual([['codex:1', 'last used'], ['claude:1', undefined]]);
+    const items = pickMock.mock.calls[0]![0] as { label: string; note?: string }[];
+    expect(items.map((i) => [i.label, i.note])).toEqual([['codex:1', 'last used'], ['claude:1', undefined]]);
     expect(S.comments).toHaveLength(1);
   });
 

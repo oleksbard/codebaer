@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from 'react';
-import { rowKey, split, type Row, type Section } from '#core/model';
+import { rowKey, split, STATUS_LABEL, type Row, type Section } from '#core/model';
 import { openPlain, openRow } from '#core/session';
 import { copyItem } from '#kernel/clipboard';
 import { keyLabel } from '#kernel/keymap';
@@ -17,12 +17,6 @@ const MINUS = 'M3 8h10';
 const DISCARD = 'M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7';
 
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
-
-// the status is a bare colour dot now, so the letter it replaced becomes its tooltip
-const ST_LABEL: Record<string, string> = {
-  A: 'Added', C: 'Copied', D: 'Deleted', M: 'Modified', R: 'Renamed', T: 'Type changed',
-  U: 'Untracked', '!': 'Conflict',
-};
 
 export function QueueList({ q, selected, open, onToggle }: {
   q: { unstaged: Row[]; staged: Row[] };
@@ -112,7 +106,7 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
         <span className="tail">
           {r.conflicted && <Badge>conflict</Badge>}
           <span className="acts">{acts}</span>
-          <span className="st" title={ST_LABEL[r.letter] ?? r.letter}>{r.letter}</span>
+          <span className="st" title={STATUS_LABEL[r.letter] ?? r.letter}>{r.letter}</span>
         </span>
       </div>
     </ContextMenu>

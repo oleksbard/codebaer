@@ -10,6 +10,8 @@
   white-space: nowrap;
 
   &:hover { background: var(--panel2); }
+  &:disabled { cursor: default; }
+  &:disabled:not(.busy) { background: none; color: var(--faint); }
 
   &.primary {
     background: var(--accent);
@@ -17,10 +19,9 @@
     border-color: transparent;
     font-weight: 600;
 
-    &:disabled { opacity: .45; cursor: default; }
+    /* neutral rather than a faded accent, which on most themes reads as a second, paler colour */
+    &:disabled:not(.busy) { background: var(--panel2); color: var(--faint); }
   }
-
-  &.busy:disabled { opacity: 1; }
 
   .spinner { border-color: currentColor; border-top-color: transparent; }
 
@@ -32,11 +33,10 @@
     &:hover { background: var(--panel2); color: var(--text); }
   }
 
+  /* the one keycap, in the button's own colour so it reads on the accent fill too */
   kbd {
-    border-color: transparent;
     color: inherit;
     opacity: .7;
-    padding: 0;
   }
 }
 
@@ -57,13 +57,14 @@
   &.busy svg { animation: spin 1.2s linear infinite; }
 }
 
+/* the edge comes from the text colour, not --line, so it holds on a hovered or highlighted row as well */
 kbd {
-  font: var(--fs-1) var(--mono);
+  font: var(--fs-1)/16px var(--mono);
   color: var(--muted);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
   border-radius: var(--r-2);
-  padding: 0 5px;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .pill {
@@ -134,7 +135,9 @@ kbd {
   font-weight: 500;
 
   &:hover { color: var(--text); }
-  &[data-state="on"] { background: var(--accent); color: var(--accent-ink); }
+  /* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
+     the tint is too close to the track, as in several light themes */
+  &[data-state="on"] { background: var(--accent-soft); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
 }
 
 .tabs.vert {
@@ -156,7 +159,7 @@ kbd {
     border-radius: var(--r-4);
 
     &:hover { background: var(--panel); color: var(--text); }
-    &[data-state="active"] { background: var(--panel2); color: var(--text); }
+    &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
   }
 }
 
@@ -255,7 +258,6 @@ kbd {
   align-items: baseline;
   padding: 5px 10px;
   border-radius: var(--r-3);
-  font-size: var(--fs-2);
   cursor: default;
   outline: none;
 
@@ -272,7 +274,7 @@ kbd {
   margin-left: auto;
   padding-left: 12px;
   font: var(--fs-1) var(--mono);
-  color: var(--faint);
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -303,7 +305,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: var(--panel);
-  font: 600 var(--fs-2) var(--mono);
+  font: 500 var(--fs-2) var(--mono);
   font-variant-numeric: tabular-nums;
   animation: diffstat-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 

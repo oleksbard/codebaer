@@ -5,11 +5,33 @@
   &.info { background: var(--faint); }
 }
 
+/* one grid for the whole menu, so every detail starts in the same column whatever the name's length */
 .task-menu {
+  display: grid;
+  grid-template-columns: fit-content(200px) minmax(0, 1fr);
+  column-gap: 16px;
   max-width: 440px;
 
-  .term-dot { align-self: center; margin-right: 8px; }
-  .detail { max-width: 240px; }
+  > * { grid-column: 1 / -1; }
+
+  .menu-item { display: grid; grid-template-columns: subgrid; }
+  .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .term-dot { display: inline-block; margin: 0 8px 1px 0; vertical-align: middle; }
+  .name.wide { grid-column: 1 / -1; }
+  .detail { margin: 0; padding: 0; }
+  /* an rtl box puts the ellipsis on the left; the bdi keeps the command itself in reading order. Mono only:
+     WebKit draws the ellipsis over a half-clipped glyph in the UI font */
+  .cut-start { direction: rtl; text-align: left; }
+  .menu-foot { display: flex; }
+}
+
+.menu-foot {
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+
+  &[data-highlighted] { color: var(--text); }
+  svg { flex: none; }
 }
 
 .menu-empty {

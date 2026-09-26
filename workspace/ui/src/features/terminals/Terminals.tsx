@@ -183,7 +183,7 @@ function NewMenu() {
               onSelect={() => void newTerminal({ t: 'Shell', path: sh.path })}
             >
               {sh.name}
-              {sh.path === m?.default && <span className="detail">{`default ${keyLabel('terminals.new')}`}</span>}
+              {sh.path === m?.default && <span className="detail">default <Kbd>{keyLabel('terminals.new')}</Kbd></span>}
             </DropdownMenu.Item>
           ))}
           {(m?.commands ?? []).length > 0 && <DropdownMenu.Separator className="menu-sep" />}

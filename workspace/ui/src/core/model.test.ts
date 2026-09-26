@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase,
-  rowKey, unstageText, visibleFiles,
+  rowKey, treeStatus, unstageText, visibleFiles,
 } from './model';
 import type { Branch, FileEntry, Status } from '#ipc/git';
 
@@ -79,6 +79,34 @@ describe('buildQueue', () => {
     expect(q.staged.map((r) => r.letter)).toEqual(['D']);
     expect(q.unstaged.map((r) => r.letter)).toEqual(['U']);
     expect(rowKey(q.staged[0]!)).not.toEqual(rowKey(q.unstaged[0]!));
+  });
+});
+
+describe('treeStatus', () => {
+  const tree = (files: FileEntry[]) => treeStatus(status(files), new Set(files.map((e) => e.path)));
+
+  it('prefers what is left to review over what is staged, and rolls the tone up to every ancestor', () => {
+    const t = tree([
+      f('src/a.ts', 'M', 'M'), f('src/b.ts', 'A', '.'), f('src/new/c.ts', '.', '.', { untracked: true }),
+      f('docs/x.md', '.', 'M'), f('lib/u.ts', 'U', 'U', { conflicted: true }), f('lib/z.ts', 'D', '.'),
+    ]);
+    expect(Object.fromEntries(t.files)).toEqual({
+      'src/a.ts': 'M', 'src/b.ts': 'A', 'src/new/c.ts': 'U', 'docs/x.md': 'M', 'lib/u.ts': '!', 'lib/z.ts': 'D',
+    });
+    // src mixes modified and added, src/new has one untracked file, lib has a conflict under it
+    expect(Object.fromEntries(t.dirs)).toEqual({ src: 'M', 'src/new': 'A', docs: 'M', lib: '!' });
+  });
+
+  it('keeps one tone when every change under a directory shares it', () => {
+    const t = tree([f('a/b/x', 'A', '.'), f('a/y', '.', '.', { untracked: true })]);
+    expect(Object.fromEntries(t.dirs)).toEqual({ a: 'A', 'a/b': 'A' });
+    expect(treeStatus(null, new Set()).files.size).toBe(0);
+  });
+
+  it('marks nothing for a path the tree does not list, such as a file deleted from disk', () => {
+    const t = treeStatus(status([f('gone/x.ts', '.', 'D'), f('kept/y.ts', '.', 'M')]), new Set(['kept/y.ts']));
+    expect(Object.fromEntries(t.files)).toEqual({ 'kept/y.ts': 'M' });
+    expect(Object.fromEntries(t.dirs)).toEqual({ kept: 'M' });
   });
 });
 

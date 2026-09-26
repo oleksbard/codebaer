@@ -42,12 +42,12 @@
 .term-menu {
   min-width: 300px;
 
+  /* sentence case like the sidebar's sections, so a file name keeps its own spelling */
   .menu-label {
     padding: 6px 10px 3px;
-    font-size: var(--fs-1);
-    color: var(--faint);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--fs-2);
+    font-weight: 500;
+    color: var(--muted);
   }
 }
 
@@ -86,7 +86,7 @@
   color: var(--muted);
 
   &:hover { background: var(--panel); color: var(--text); }
-  &.on { background: var(--panel2); color: var(--text); }
+  &.on { background: var(--accent-soft); color: var(--text); }
   &.new { font-size: 20px; }
 
   .num { font: var(--fs-4) var(--mono); }
