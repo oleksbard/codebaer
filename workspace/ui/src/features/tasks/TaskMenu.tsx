@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
+import { CommandIcon, ensureIcons } from '#features/command-icons';
 import { errKind, errText, type Scripts } from '#ipc/git';
 import { commandTitle, inMenu, openSettings } from '#features/settings';
 import * as term from '#features/terminals';
@@ -57,12 +58,16 @@ export function TaskMenu() {
   const shown = withoutSharedPrefix(scripts.map((sc) => sc.command));
   const load = async () => {
     const root = app.root;
+    let found: Scripts | null = null;
     try {
-      setListed({ root, scripts: await taskMenu(), error: null });
+      found = await taskMenu();
+      setListed({ root, scripts: found, error: null });
     } catch (e) {
       // a folder that is not a repo has no package.json to speak of
       setListed({ root, scripts: null, error: errKind(e) === 'NotARepo' ? null : errText(e) });
     }
+    const unpicked = app.commands.filter((c) => inMenu(c, root) && c.icon === null);
+    void ensureIcons([...unpicked, ...(found?.scripts ?? [])]);
   };
   const run = (task: Task) => {
     if (task.t === 'Custom' && task.hide_terminal) setLaunched((n) => n + 1);
@@ -95,14 +100,17 @@ export function TaskMenu() {
           )}
           <div className="menu-label">Commands</div>
           {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
-          {saved.map((c, i) => (
-            <DropdownMenu.Item key={i} className="menu-item" title={c.command}
-              onSelect={() => run({ t: 'Custom', ...c })}>
-              {commandTitle(c) === c.command
-                ? <span className="name wide">{c.command}</span>
-                : <><span className="name">{commandTitle(c)}</span><Command text={c.command} /></>}
-            </DropdownMenu.Item>
-          ))}
+          {saved.map((c, i) => {
+            const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
+            return (
+              <DropdownMenu.Item key={i} className="menu-item" title={c.command}
+                onSelect={() => run({ t: 'Custom', ...c })}>
+                {commandTitle(c) === c.command
+                  ? <span className="name wide">{icon}{c.command}</span>
+                  : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
+              </DropdownMenu.Item>
+            );
+          })}
           {here?.error && <div className="menu-empty">{here.error}</div>}
           {here?.scripts && (
             <>
@@ -111,7 +119,8 @@ export function TaskMenu() {
               {scripts.map((sc, i) => (
                 <DropdownMenu.Item key={sc.name} className="menu-item" title={sc.command}
                   onSelect={() => run({ t: 'Script', name: sc.name })}>
-                  <span className="name">{sc.name}</span><Command text={shown[i] ?? sc.command} />
+                  <span className="name"><CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}</span>
+                  <Command text={shown[i] ?? sc.command} />
                 </DropdownMenu.Item>
               ))}
             </>

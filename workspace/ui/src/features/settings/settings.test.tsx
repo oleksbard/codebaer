@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.mocked(git.saveSettings).mockImplementation((s) => { disk = { ...s }; return Promise.resolve(); });
   vi.mocked(git.commands).mockImplementation(() => Promise.resolve(savedCommands.map((c) => ({ ...c }))));
   vi.mocked(git.saveCommands).mockImplementation((c) => { savedCommands = c; return Promise.resolve(); });
+  vi.mocked(git.commandIcons).mockResolvedValue({});
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<OverlayHost />));
 });
@@ -360,7 +361,7 @@ describe('setSetting', () => {
 describe('commands', () => {
   const HERE = '/Users/me/projects/app';
   const cmd = (name: string, command: string, repo: string | null, hide = false): CustomCommand =>
-    ({ name, command, repo, hide_terminal: hide });
+    ({ name, command, repo, hide_terminal: hide, icon: null });
   const groups = () => [...document.querySelectorAll<HTMLElement>('.settings .cmd-group')].map((g) => [
     g.querySelector('.theme-group-title')!.textContent,
     [...g.querySelectorAll('.cmd-name')].map((n) => n.textContent),
@@ -456,6 +457,36 @@ describe('commands', () => {
     button('Edit Lint').click();
     await tick();
     expect(document.querySelector('.cmd-form [role="checkbox"]')!.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('saves the icon picked for a command, and Automatic hands it back to the AI', async () => {
+    savedCommands = [cmd('Lint', 'pnpm lint', HERE)];
+    await openSettings('commands');
+    await tick();
+    button('Edit Lint').click();
+    await tick();
+    document.querySelector<HTMLButtonElement>('.icon-pick-b')!.click();
+    await vi.waitFor(() => expect(document.querySelector('.icon-cell')).not.toBeNull());
+    setValue(document.querySelector<HTMLInputElement>('.icon-panel input')!, 'hammer');
+    await tick();
+    button('lucide:hammer').click();
+    await tick();
+    expect(document.querySelector('.icon-panel')).toBeNull();
+    expect(document.querySelector('.icon-pick-b')!.textContent).toBe('hammer');
+    button('Save').click();
+    await tick();
+    expect(savedCommands).toEqual([{ ...cmd('Lint', 'pnpm lint', HERE), icon: 'lucide:hammer' }]);
+    expect(document.querySelector('.cmd-row .cicon svg')!.getAttribute('viewBox')).toBe('0 0 24 24');
+
+    button('Edit Lint').click();
+    await tick();
+    document.querySelector<HTMLButtonElement>('.icon-pick-b')!.click();
+    await tick();
+    button('Automatic').click();
+    await tick();
+    button('Save').click();
+    await tick();
+    expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', HERE)]);
   });
 
   it('puts the list back and says why when the save fails', async () => {

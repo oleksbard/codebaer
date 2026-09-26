@@ -183,7 +183,7 @@ export function createPty(d: PtyDeps) {
       if (task.t === 'Custom') {
         const { t: _, ...c } = task;
         const saved = d.commands().some((x) => x.name === c.name && x.command === c.command && x.repo === c.repo
-          && x.hide_terminal === c.hide_terminal);
+          && x.hide_terminal === c.hide_terminal && x.icon === c.icon);
         if (!saved || (c.repo !== null && c.repo !== d.root)) {
           throw { kind: 'Io', detail: `${c.command} is no longer saved for this repository` } satisfies AppError;
         }

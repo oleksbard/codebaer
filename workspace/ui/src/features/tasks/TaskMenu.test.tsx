@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { icons as lucide } from '@iconify-json/lucide';
 import type { Info, TermState } from '#ipc/terminal';
 import { tick } from '#test-setup';
 
@@ -15,10 +16,18 @@ vi.mock('#features/terminals', async () => ({
 vi.mock('#features/settings', async () => ({
   ...(await vi.importActual<object>('#features/settings')), openSettings: vi.fn(),
 }));
+vi.mock('#ipc/git', async () => ({
+  ...(await vi.importActual<object>('#ipc/git')),
+  git: {
+    commandIcons: vi.fn(() => Promise.resolve({ 'build\nvite build': 'lucide:hammer' })),
+    aiCommandIcons: vi.fn(), saveCommandIcons: vi.fn(() => Promise.resolve()),
+  },
+}));
 
 const c = await import('./runner');
 const term = await import('#features/terminals');
 const settings = await import('#features/settings');
+const { git } = await import('#ipc/git');
 const { S, notify } = await import('#kernel/store');
 const { TaskMenu, TaskOverlay } = await import('./TaskMenu');
 
@@ -35,9 +44,9 @@ beforeEach(() => {
   S.terminals = [];
   S.taskView = null;
   S.commands = [
-    { name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false },
-    { name: '', command: 'make deploy', repo: null, hide_terminal: true },
-    { name: 'Theirs', command: 'cargo test', repo: '/Users/me/projects/lib', hide_terminal: false },
+    { name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false, icon: null },
+    { name: '', command: 'make deploy', repo: null, hide_terminal: true, icon: null },
+    { name: 'Theirs', command: 'cargo test', repo: '/Users/me/projects/lib', hide_terminal: false, icon: null },
   ];
   vi.mocked(c.taskMenu).mockResolvedValue({
     runner: 'pnpm', scripts: [{ name: 'build', command: 'vite build' }, { name: 'test', command: 'vitest run' }],
@@ -84,8 +93,9 @@ it('shows each script\'s command without the words they all start with, and the 
 
 it('runs the command picked as it was saved, and a script by its name', async () => {
   item(await openMenu(), 'Lint').click();
-  expect(c.runTask)
-    .toHaveBeenCalledWith({ t: 'Custom', name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false });
+  expect(c.runTask).toHaveBeenCalledWith(
+    { t: 'Custom', name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false, icon: null },
+  );
   item(await openMenu(), 'test').click();
   expect(c.runTask).toHaveBeenLastCalledWith({ t: 'Script', name: 'test' });
 });
@@ -151,6 +161,32 @@ it('shows the task\'s output, offers Stop only while it runs, and moves it to th
   expect(document.querySelector('.task-state')!.textContent).toBe('stopped');
   button('Move to Terminals')!.click();
   expect(c.promoteTask).toHaveBeenCalledWith(4);
+});
+
+it('asks for icons for the unpicked commands it lists and their scripts, and draws each pick', async () => {
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  S.commands = [
+    ...S.commands.slice(0, 2),
+    { name: 'Deploy', command: './deploy.sh', repo: null, hide_terminal: false, icon: 'lucide:rocket' },
+  ];
+  vi.mocked(git.aiCommandIcons).mockResolvedValue(['lucide:brush-cleaning', null, 'lucide:flask-conical']);
+  await openMenu();
+  await vi.waitFor(() => expect(git.aiCommandIcons).toHaveBeenCalledOnce());
+  expect(vi.mocked(git.aiCommandIcons).mock.calls[0]![0]).toEqual([
+    { name: 'Lint', command: 'pnpm lint' }, { name: '', command: 'make deploy' },
+    { name: 'test', command: 'vitest run' },
+  ]);
+  await tick();
+  const drawn = (text: string) =>
+    item([...document.querySelectorAll<HTMLElement>('.task-menu .menu-item')], text).querySelector('.cicon svg')!;
+  const path = (name: string) => /\bd="([^"]+)"/.exec(lucide.icons[name]!.body)![1];
+  const picks = { Lint: 'brush-cleaning', Deploy: 'rocket', build: 'hammer', test: 'flask-conical' };
+  for (const [text, icon] of Object.entries(picks)) {
+    expect(drawn(text).querySelector('path')!.getAttribute('d'), text).toBe(path(icon));
+  }
+  // no icon came back, so it keeps the stand-in
+  expect(drawn('make deploy').getAttribute('viewBox')).toBe('0 0 16 16');
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
 });
 
 it('closes through the runner, which decides whether the task goes too', async () => {

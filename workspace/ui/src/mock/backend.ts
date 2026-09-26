@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, Listing, Opened, Recent, Rev, Scripts,
-  StageResult, Status } from '#ipc/git';
+import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Recent,
+  Rev, Scripts, StageResult, Status } from '#ipc/git';
 import { DEFAULTS, type CustomCommand, type Settings } from '#ipc/settings';
 import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
 import { isTheme } from '#ui/theme';
@@ -37,7 +37,7 @@ declare global {
 }
 
 export type Options = {
-  /** How long push, pull, fetch and the AI commit message take, so their busy state can be seen. */
+  /** How long push, pull, fetch and the AI answers take, so their busy state can be seen. */
   slow: number;
   /** Added to every command. */
   latency: number;
@@ -50,6 +50,13 @@ const WATCHER_MS = 60;
 const MENU_EVENTS: Record<MenuItem, string> = {
   'open-folder': 'menu-open-folder', 'open-recent': 'menu-open-recent',
   orphans: 'menu-orphans', settings: 'menu-settings',
+};
+
+/** Browser mode's stand-in for the AI's icon pick: a word of the command that names an icon. */
+const ICON_WORDS: Record<string, string> = {
+  build: 'lucide:hammer', dev: 'lucide:play', lint: 'lucide:brush-cleaning', test: 'lucide:flask-conical',
+  vitest: 'lucide:flask-conical', format: 'lucide:wand-sparkles', tsc: 'lucide:file-check',
+  chrome: 'simple-icons:googlechrome',
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -65,6 +72,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     ...(isTheme(opts.theme) ? { 'appearance.theme': opts.theme } : {}),
   };
   let commands: CustomCommand[] = [...sc.commands];
+  let icons: Record<string, string> = {};
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
 
@@ -216,6 +224,17 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     settings_set: ({ settings: s }: { settings: Settings }) => { settings = { ...s }; },
     commands_get: (): CustomCommand[] => [...commands],
     commands_set: ({ commands: c }: { commands: CustomCommand[] }) => { commands = [...c]; },
+    command_icons_get: (): Record<string, string> => ({ ...icons }),
+    command_icons_set: ({ picks }: { picks: Record<string, string> }) => { icons = { ...icons, ...picks }; },
+    ai_command_icons: async ({ items, sets }: { items: IconItem[]; sets: IconSet[] }): Promise<(string | null)[]> => {
+      if (settings['general.headless-ai-provider'] === 'off') {
+        throw { kind: 'Ai', detail: 'AI command icons are off. Turn them on in Settings.' } satisfies AppError;
+      }
+      await sleep(opts.slow);
+      const known = new Set(sets.flatMap((s) => s.names.map((n) => `${s.prefix}:${n}`)));
+      return items.map((it) => `${it.name} ${it.command}`.toLowerCase().split(/[^a-z0-9]+/)
+        .map((w) => ICON_WORDS[w]).find((id) => id !== undefined && known.has(id)) ?? null);
+    },
     package_scripts: (): Scripts | null => scripts(),
     task_run: ({ task }: { task: Task }): number => pty.runTask(task),
     term_menu: (): Menu => sc.menu,

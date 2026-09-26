@@ -16,6 +16,12 @@
   &:first-of-type { border-top: 0; }
 }
 
+.cmd-row > .cicon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+}
+
 .cmd-text {
   flex: 1;
   min-width: 0;
@@ -81,6 +87,13 @@
   }
 
   input.mono { font-family: var(--mono); }
+}
+
+/* the label stays beside the button when the picker opens under it */
+.cmd-field:has(> .icon-pick) {
+  align-items: flex-start;
+
+  > span { padding-top: 6px; }
 }
 
 /* lined up with the inputs, past the fields' label column */

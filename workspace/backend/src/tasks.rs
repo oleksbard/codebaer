@@ -120,7 +120,7 @@ mod tests {
 
     fn saved(command: &str, repo: Option<&str>) -> CustomCommand {
         let repo = repo.map(String::from);
-        CustomCommand { name: "Test".into(), command: command.into(), repo, hide_terminal: false }
+        CustomCommand { name: "Test".into(), command: command.into(), repo, hide_terminal: false, icon: None }
     }
 
     #[test]
@@ -184,6 +184,8 @@ mod tests {
         assert!(run(saved("pnpm test", None)).is_err(), "saved for one repository, sent as global");
         let hidden = CustomCommand { hide_terminal: true, ..saved("make", None) };
         assert!(run(hidden).is_err(), "saved to show its terminal");
+        let other_icon = CustomCommand { icon: Some("lucide:play".into()), ..saved("make", None) };
+        assert!(run(other_icon).is_err(), "saved with no icon picked");
     }
 
     #[test]
@@ -198,8 +200,13 @@ mod tests {
         let custom =
             serde_json::json!({ "t": "Custom", "name": "a", "command": "b", "repo": null, "hide_terminal": true });
         let t: Task = serde_json::from_value(custom).unwrap();
-        let want = CustomCommand { name: "a".into(), command: "b".into(), repo: None, hide_terminal: true };
-        assert_eq!(t, Task::Custom(want));
+        let want = CustomCommand { name: "a".into(), command: "b".into(), repo: None, hide_terminal: true, icon: None };
+        assert_eq!(t, Task::Custom(want.clone()));
+        let picked = serde_json::json!({
+            "t": "Custom", "name": "a", "command": "b", "repo": null, "hide_terminal": true, "icon": "lucide:play",
+        });
+        let t: Task = serde_json::from_value(picked).unwrap();
+        assert_eq!(t, Task::Custom(CustomCommand { icon: Some("lucide:play".into()), ..want }));
         let unset = serde_json::json!({ "t": "Custom", "name": "a", "command": "b", "repo": null });
         assert!(serde_json::from_value::<Task>(unset).is_err(), "the webview always sends hide_terminal");
         let t: Task = serde_json::from_value(serde_json::json!({ "t": "Script", "name": "dev" })).unwrap();

@@ -25,7 +25,7 @@ const { run } = await import('#kernel/registry');
 await import('#app/bootstrap');
 
 const cmd = (command: string, repo: string | null): CustomCommand =>
-  ({ name: '', command, repo, hide_terminal: false });
+  ({ name: '', command, repo, hide_terminal: false, icon: null });
 const hidden: Task = { t: 'Custom', ...cmd('pnpm test', null), hide_terminal: true };
 const task = (id: number, state: TermState = { t: 'Running', command: null, since_ms: 0 }): Info =>
   ({ id, title: 'pnpm test', cwd: '/r', tier: 'process', state, task: true });

@@ -35,7 +35,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `calls`, `terminalText`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`).
-- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI message take (default 800), `&latency=<ms>` delays every call.
+- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call.
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -98,6 +98,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
     repos/               the repo switcher in the header, recent repos and their avatars
     settings/            owns the settings file: the options catalog, loading and saving (settings.ts), the saved
                          commands (commands.ts), the dialog, the theme picker and the Commands pane
+    command-icons/       an icon per command: the Lucide and Simple Icons sets loaded on first use, the AI's picks
+                         and their cache (icons.ts), the icon and the picker
   app/                   composition only:
     App.tsx, Shell.tsx, Sidebar.tsx   the window, the header and sidebar gutter, the sidebar frame and activity bar
     OverlayHost.tsx      palette, confirm, prompt, then every registered overlay; toasts and the chord hint
@@ -114,7 +116,7 @@ workspace/backend/src/   Rust backend
   status.rs, eol.rs      porcelain status parser, line-ending handling
   error.rs               AppError, serialized as {kind, detail}
   watcher.rs             `notify` watcher on the worktree and .git, debounced, emits `repo-changed`
-  ai.rs                  commit messages from the local `claude` CLI over `git diff --cached`
+  ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command icons
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),

@@ -32,6 +32,9 @@ export type Status = {
 export type DiffStat = { added: number; removed: number };
 export type Script = { name: string; command: string };
 export type Scripts = { runner: string; scripts: Script[] };
+export type IconItem = { name: string; command: string };
+/** The names to choose from; `ai_command_icons` answers with `<prefix>:<name>`. */
+export type IconSet = { prefix: string; title: string; names: string[] };
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
 
 export type AppError =
@@ -96,6 +99,11 @@ export const git = {
   commands: () => invoke<CustomCommand[]>('commands_get'),
   saveCommands: (commands: CustomCommand[]) => invoke<void>('commands_set', { commands }),
   packageScripts: () => invoke<Scripts | null>('package_scripts'),
+  commandIcons: () => invoke<Record<string, string>>('command_icons_get'),
+  saveCommandIcons: (picks: Record<string, string>) => invoke<void>('command_icons_set', { picks }),
+  /** One id per item, in order; null where the AI named no icon from the sets. */
+  aiCommandIcons: (items: IconItem[], sets: IconSet[]) =>
+    invoke<(string | null)[]>('ai_command_icons', { items, sets }),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),

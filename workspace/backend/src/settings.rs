@@ -2,6 +2,7 @@ use crate::error::AppError;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -61,13 +62,16 @@ pub struct CustomCommand {
     pub repo: Option<String>,
     /// Only the webview acts on it: it opens no output dialog for the run and closes the session once it ends.
     pub hide_terminal: bool,
+    /// An icon id such as `lucide:hammer` that the user picked; None leaves the icon to the AI.
+    pub icon: Option<String>,
 }
 
 /// Written by `commands_set` alone; `Settings` does not know it, so a settings save keeps it.
 const COMMANDS: &str = "commands.custom";
 
 /// Each entry falls back alone, like an option: one that is not an object with a command in it is
-/// dropped, a `name` that is not a string reads as blank, and a `hide_terminal` that is not a bool as false.
+/// dropped, a `name` that is not a string reads as blank, a `hide_terminal` that is not a bool as false, and an
+/// `icon` that is not a string as none.
 /// A `repo` that is neither a string nor null drops the entry too, since reading it as missing would offer
 /// the command in every repository.
 fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
@@ -84,7 +88,8 @@ fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
                 Some(_) => return None,
             };
             let hide_terminal = o.get("hide_terminal").and_then(Value::as_bool).unwrap_or_default();
-            Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo, hide_terminal })
+            let icon = text("icon");
+            Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo, hide_terminal, icon })
         })
         .collect()
 }
@@ -105,11 +110,18 @@ fn from_file(map: &Map<String, Value>) -> Settings {
     }
 }
 
+fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, AppError> {
+    app.path().app_config_dir().map(|d| d.join(name)).map_err(|e| AppError::Io(e.to_string()))
+}
+
 fn store(app: &AppHandle) -> Result<PathBuf, AppError> {
-    app.path()
-        .app_config_dir()
-        .map(|d| d.join("settings-codebaer.json"))
-        .map_err(|e| AppError::Io(e.to_string()))
+    config_file(app, "settings-codebaer.json")
+}
+
+/// The AI's icon picks, keyed by the command's name and line joined by a newline. A cache, not a setting:
+/// without the file every command is simply asked about again.
+fn icons_store(app: &AppHandle) -> Result<PathBuf, AppError> {
+    config_file(app, "icons-codebaer.json")
 }
 
 /// A missing or blank file is an empty one.
@@ -141,6 +153,14 @@ fn read_at(path: &Path) -> Settings {
 
 fn commands_at(path: &Path) -> Vec<CustomCommand> {
     read_with(path, commands_from)
+}
+
+fn icons_at(path: &Path) -> BTreeMap<String, String> {
+    read_with(path, |m| m.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect())
+}
+
+fn write_icons_at(path: &Path, picks: BTreeMap<String, String>) -> Result<(), AppError> {
+    write_keys(path, picks.into_iter().map(|(k, v)| (k, Value::String(v))).collect())
 }
 
 /// The rename would turn a symlinked file, e.g. one from a dotfiles repo, into a plain copy. A chain whose
@@ -227,6 +247,18 @@ pub fn commands_get(app: AppHandle) -> Vec<CustomCommand> {
 pub fn commands_set(app: AppHandle, commands: Vec<CustomCommand>) -> Result<(), AppError> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     write_commands_at(&store(&app)?, &commands)
+}
+
+#[tauri::command(async)]
+pub fn command_icons_get(app: AppHandle) -> BTreeMap<String, String> {
+    icons_store(&app).map(|f| icons_at(&f)).unwrap_or_default()
+}
+
+/// Adds `picks` to the ones already in the file.
+#[tauri::command(async)]
+pub fn command_icons_set(app: AppHandle, picks: BTreeMap<String, String>) -> Result<(), AppError> {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    write_icons_at(&icons_store(&app)?, picks)
 }
 
 #[cfg(test)]
@@ -416,7 +448,8 @@ mod tests {
     }
 
     fn saved(name: &str, command: &str, repo: Option<&str>) -> CustomCommand {
-        CustomCommand { name: name.into(), command: command.into(), repo: repo.map(String::from), hide_terminal: false }
+        let repo = repo.map(String::from);
+        CustomCommand { name: name.into(), command: command.into(), repo, hide_terminal: false, icon: None }
     }
 
     #[test]
@@ -429,7 +462,7 @@ mod tests {
         assert_eq!(read_at(&f), CLAUDE);
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(on_disk["general.future"], 1);
-        let want = serde_json::json!({ "name": "", "command": "make", "repo": null, "hide_terminal": true });
+        let want = serde_json::json!({ "name": "", "command": "make", "repo": null, "hide_terminal": true, "icon": null });
         assert_eq!(on_disk["commands.custom"][1], want);
     }
 
@@ -451,7 +484,9 @@ mod tests {
             {"name": 7, "command": "ls", "repo": null},
             {"command": "pwd", "hide_terminal": "yes"},
             {"command": "rm -rf build", "repo": ["/r"]},
-            {"command": "cargo fmt", "hide_terminal": true}
+            {"command": "cargo fmt", "hide_terminal": true},
+            {"command": "cargo test", "icon": "lucide:flask-conical"},
+            {"command": "cargo run", "icon": 3}
         ]}"#;
         let (_d, f) = file(body);
         let want = vec![
@@ -459,6 +494,8 @@ mod tests {
             saved("", "ls", None),
             saved("", "pwd", None),
             CustomCommand { hide_terminal: true, ..saved("", "cargo fmt", None) },
+            CustomCommand { icon: Some("lucide:flask-conical".into()), ..saved("", "cargo test", None) },
+            saved("", "cargo run", None),
         ];
         assert_eq!(commands_at(&f), want);
     }
@@ -477,6 +514,17 @@ mod tests {
             let (_d, f) = file(&format!(r#"{{"commands.custom": {v}}}"#));
             assert_eq!(commands_at(&f), Vec::new(), "value {v}");
         }
+    }
+
+    #[test]
+    fn icon_picks_add_to_the_file_and_drop_a_value_that_is_not_text() {
+        let (_d, f) = file(r#"{"dev\nvite": "lucide:play", "bad": 1, "odd": null}"#);
+        let want = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        assert_eq!(icons_at(&f), want(&[("dev\nvite", "lucide:play")]));
+        write_icons_at(&f, want(&[("test\nvitest run", "lucide:flask-conical")])).unwrap();
+        assert_eq!(icons_at(&f), want(&[("dev\nvite", "lucide:play"), ("test\nvitest run", "lucide:flask-conical")]));
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(icons_at(&d.path().join("icons-codebaer.json")), BTreeMap::new());
     }
 
     /// The command argument comes from this app's own frontend, so a bad one is a bug to surface, not to store.

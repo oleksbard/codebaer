@@ -4,6 +4,7 @@ import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import lib from '../../../backend/src/lib.rs?raw';
 import { errKind, type Blob, type FileText, type Status } from '#ipc/git';
+import type { Settings } from '#ipc/settings';
 import type { ServerMsg } from '#ipc/terminal';
 import { createBackend } from './backend';
 import { SCENARIOS } from './scenarios';
@@ -105,10 +106,22 @@ test('push on a branch with no upstream sets one on origin, as push_args does', 
 
 test('a custom task runs only while it is still saved for this repo', async () => {
   boot();
-  const saved = { name: 'Type check', command: 'pnpm exec tsc --noEmit', repo: null, hide_terminal: false };
+  const saved = { name: 'Type check', command: 'pnpm exec tsc --noEmit', repo: null, hide_terminal: false, icon: null };
   const run = (task: object) => invoke('task_run', { task, cols: 80, rows: 24 });
   await expect(run({ t: 'Custom', ...saved })).resolves.toBeTypeOf('number');
   await expect(run({ t: 'Custom', ...saved, command: 'rm -rf /' })).rejects.toMatchObject({ kind: 'Io' });
+});
+
+test('ai_command_icons answers with ids from the sets it is sent, and refuses while the AI is off', async () => {
+  boot();
+  const sets = [{ prefix: 'lucide', title: 'Lucide', names: ['hammer'] }];
+  const items = [{ name: 'build', command: 'vite build' }, { name: 'dev', command: 'vite' }];
+  expect(await invoke('ai_command_icons', { items, sets })).toEqual(['lucide:hammer', null]);
+  await invoke('command_icons_set', { picks: { 'build\nvite build': 'lucide:hammer' } });
+  expect(await invoke('command_icons_get')).toEqual({ 'build\nvite build': 'lucide:hammer' });
+  const now = await invoke<Settings>('settings_get');
+  await invoke('settings_set', { settings: { ...now, 'general.headless-ai-provider': 'off' } });
+  await expect(invoke('ai_command_icons', { items, sets })).rejects.toMatchObject({ kind: 'Ai' });
 });
 
 test('idle waits for a task to finish', async () => {

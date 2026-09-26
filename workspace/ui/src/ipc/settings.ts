@@ -6,7 +6,10 @@ export type AiProvider = 'off' | 'claude';
 export type Settings = { 'general.headless-ai-provider': AiProvider; 'appearance.theme': Theme };
 export type SettingKey = keyof Settings;
 
-/** Stored in the settings file too, under `commands.custom`; `repo` is a canonical root, or null for every repo. */
-export type CustomCommand = { name: string; command: string; repo: string | null; hide_terminal: boolean };
+/** Stored in the settings file too, under `commands.custom`; `repo` is a canonical root, or null for every repo.
+ *  `icon` is an id such as `lucide:hammer` that the user picked, or null to show the AI's pick. */
+export type CustomCommand = {
+  name: string; command: string; repo: string | null; hide_terminal: boolean; icon: string | null;
+};
 
 export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };

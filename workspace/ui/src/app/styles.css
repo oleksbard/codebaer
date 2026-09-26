@@ -15,5 +15,6 @@
 @import './overlays.css';
 @import '../features/orphans/orphans.css';
 @import '../features/settings/settings.css';
+@import '../features/command-icons/icons.css';
 @import '../features/tasks/tasks.css';
 @import '../features/settings/commands.css';

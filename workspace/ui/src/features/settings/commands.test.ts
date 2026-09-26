@@ -3,7 +3,7 @@ import type { CustomCommand } from '#ipc/settings';
 import { commandGroups, inMenu } from './commands';
 
 const cmd = (command: string, repo: string | null): CustomCommand =>
-  ({ name: '', command, repo, hide_terminal: false });
+  ({ name: '', command, repo, hide_terminal: false, icon: null });
 
 describe('saved commands', () => {
   it('offers the global commands and this repo\'s, never another repo\'s', () => {

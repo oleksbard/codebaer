@@ -15,8 +15,8 @@ export const SECTIONS: Section[] = [
       {
         key: 'general.headless-ai-provider',
         label: 'Headless AI provider',
-        description: 'The command-line AI that writes the commit message from the staged diff. '
-          + 'Off turns AI commit messages off. Claude runs the local claude CLI.',
+        description: 'The command-line AI that writes the commit message from the staged diff and picks an icon '
+          + 'for each command. Off turns both off. Claude runs the local claude CLI.',
         choices: [{ value: 'off', label: 'Off' }, { value: 'claude', label: 'Claude' }],
       },
     ],

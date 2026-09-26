@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { CommandIcon, ensureIcons, IconPicker } from '#features/command-icons';
 import type { CustomCommand } from '#ipc/settings';
 import { homeFrom, shortCwd } from '#features/terminals';
 import { useApp, type DeepReadonly } from '#kernel/store';
@@ -44,6 +45,7 @@ function CommandForm({ initial, onSave, onCancel }: {
   const [command, setCommand] = useState(initial.command);
   const [scope, setScope] = useState(initial.repo ?? GLOBAL);
   const [hide, setHide] = useState(initial.hide_terminal);
+  const [icon, setIcon] = useState(initial.icon);
   const root = useApp().root;
   const repos = [...new Set([root, initial.repo].filter((r): r is string => r !== null))];
   const scopes = [
@@ -56,7 +58,7 @@ function CommandForm({ initial, onSave, onCancel }: {
       e.preventDefault();
       if (!ok) return;
       const repo = scope === GLOBAL ? null : scope;
-      onSave({ name: name.trim(), command: command.trim(), repo, hide_terminal: hide });
+      onSave({ name: name.trim(), command: command.trim(), repo, hide_terminal: hide, icon });
     }}>
       <label className="cmd-field">
         <span>Name</span>
@@ -68,6 +70,11 @@ function CommandForm({ initial, onSave, onCancel }: {
         <input type="text" className="mono" autoComplete="off" spellCheck={false} autoFocus value={command}
           placeholder="pnpm test --watch=false" onChange={(e) => setCommand(e.target.value)} />
       </label>
+      <div className="cmd-field">
+        <span id="cmd-icon">Icon</span>
+        <IconPicker value={icon} name={name.trim()} command={command.trim()} labelledBy="cmd-icon"
+          onChange={setIcon} />
+      </div>
       <div className="cmd-field">
         <span id="cmd-scope">Show in</span>
         <Segmented value={scope} items={scopes} aria-labelledby="cmd-scope" onValueChange={setScope} />
@@ -94,6 +101,7 @@ function CommandRow({ c, onEdit, onDelete }: { c: DeepReadonly<CustomCommand>; o
   const title = commandTitle(c);
   return (
     <div className="cmd-row">
+      <CommandIcon name={c.name} command={c.command} icon={c.icon} />
       <div className="cmd-text">
         <span className="cmd-name">{title}</span>
         {title !== c.command && <code className="cmd-line">{c.command}</code>}
@@ -109,6 +117,9 @@ export function CommandsPane() {
   const s = useApp();
   const [editing, setEditing] = useState<Editing>(null);
   const root = s.root;
+  useEffect(() => {
+    void ensureIcons(s.commands.filter((c) => c.icon === null));
+  }, [s.commands]);
   // a list read again from the file holds new objects, so an entry being edited may have gone
   const open = editing === 'new' || (editing !== null && s.commands.includes(editing)) ? editing : null;
   const save = (c: CustomCommand) => {
@@ -140,7 +151,7 @@ export function CommandsPane() {
         </section>
       ))}
       {open === 'new'
-        ? <CommandForm initial={{ name: '', command: '', repo: root, hide_terminal: false }} onSave={save}
+        ? <CommandForm initial={{ name: '', command: '', repo: root, hide_terminal: false, icon: null }} onSave={save}
           onCancel={() => setEditing(null)} />
         : <Button className="cmd-add" onClick={() => setEditing('new')}>Add command</Button>}
     </>
