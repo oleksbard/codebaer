@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { CommandIcon, ensureIcons } from '#features/command-icons';
 import { errKind, errText, type Scripts } from '#ipc/git';
-import { commandTitle, inMenu, openSettings } from '#features/settings';
+import { commandTitle, inMenu, openSettings, scriptHidden } from '#features/settings';
 import * as term from '#features/terminals';
 import { isExited, isTask, killTerminal, statusLabel } from '#features/terminals';
 import type { Info, Task } from '#ipc/terminal';
@@ -54,7 +54,7 @@ export function TaskMenu() {
   const running = tasks.filter((t) => !isExited(t)).length;
   const saved = app.commands.filter((c) => inMenu(c, app.root));
   const here = listed?.root === app.root ? listed : null;
-  const scripts = here?.scripts?.scripts ?? [];
+  const scripts = (here?.scripts?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, app.root, sc.name));
   const shown = withoutSharedPrefix(scripts.map((sc) => sc.command));
   const load = async () => {
     const root = app.root;
@@ -67,7 +67,8 @@ export function TaskMenu() {
       setListed({ root, scripts: null, error: errKind(e) === 'NotARepo' ? null : errText(e) });
     }
     const unpicked = app.commands.filter((c) => inMenu(c, root) && c.icon === null);
-    void ensureIcons([...unpicked, ...(found?.scripts ?? [])]);
+    const shownScripts = (found?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, root, sc.name));
+    void ensureIcons([...unpicked, ...shownScripts]);
   };
   const run = (task: Task) => {
     if (task.t === 'Custom' && task.hide_terminal) setLaunched((n) => n + 1);
@@ -112,7 +113,7 @@ export function TaskMenu() {
             );
           })}
           {here?.error && <div className="menu-empty">{here.error}</div>}
-          {here?.scripts && (
+          {here?.scripts && scripts.length > 0 && (
             <>
               <DropdownMenu.Separator className="menu-sep" />
               <div className="menu-label">package.json · {here.scripts.runner}</div>

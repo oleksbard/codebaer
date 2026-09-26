@@ -46,6 +46,19 @@
   white-space: nowrap;
 }
 
+.cmd-row.off {
+  > .cicon, .cmd-text { opacity: .5; }
+}
+
+.cmd-scripts { margin-top: 6px; }
+
+.cmd-sub {
+  margin: 8px 0 2px;
+  color: var(--faint);
+  font-size: var(--fs-1);
+  font-weight: 500;
+}
+
 .cmd-empty {
   padding: 2px 0 6px;
   color: var(--faint);

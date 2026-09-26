@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CustomCommand, Settings } from './settings';
+import type { CustomCommand, HiddenScripts, Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
 export type Rev = 'index' | 'head';
@@ -98,6 +98,8 @@ export const git = {
   saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
   commands: () => invoke<CustomCommand[]>('commands_get'),
   saveCommands: (commands: CustomCommand[]) => invoke<void>('commands_set', { commands }),
+  hiddenScripts: () => invoke<HiddenScripts>('hidden_scripts_get'),
+  saveHiddenScripts: (hidden: HiddenScripts) => invoke<void>('hidden_scripts_set', { hidden }),
   packageScripts: () => invoke<Scripts | null>('package_scripts'),
   commandIcons: () => invoke<Record<string, string>>('command_icons_get'),
   saveCommandIcons: (picks: Record<string, string>) => invoke<void>('command_icons_set', { picks }),

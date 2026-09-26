@@ -2,7 +2,7 @@ import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Recent,
   Rev, Scripts, StageResult, Status } from '#ipc/git';
-import { DEFAULTS, type CustomCommand, type Settings } from '#ipc/settings';
+import { DEFAULTS, type CustomCommand, type HiddenScripts, type Settings } from '#ipc/settings';
 import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
 import { isTheme } from '#ui/theme';
 import { createPty } from './pty';
@@ -72,6 +72,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     ...(isTheme(opts.theme) ? { 'appearance.theme': opts.theme } : {}),
   };
   let commands: CustomCommand[] = [...sc.commands];
+  let hiddenScripts: HiddenScripts = {};
   let icons: Record<string, string> = {};
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
@@ -224,6 +225,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     settings_set: ({ settings: s }: { settings: Settings }) => { settings = { ...s }; },
     commands_get: (): CustomCommand[] => [...commands],
     commands_set: ({ commands: c }: { commands: CustomCommand[] }) => { commands = [...c]; },
+    hidden_scripts_get: (): HiddenScripts => structuredClone(hiddenScripts),
+    hidden_scripts_set: ({ hidden }: { hidden: HiddenScripts }) => { hiddenScripts = structuredClone(hidden); },
     command_icons_get: (): Record<string, string> => ({ ...icons }),
     command_icons_set: ({ picks }: { picks: Record<string, string> }) => { icons = { ...icons, ...picks }; },
     ai_command_icons: async ({ items, sets }: { items: IconItem[]; sets: IconSet[] }): Promise<(string | null)[]> => {

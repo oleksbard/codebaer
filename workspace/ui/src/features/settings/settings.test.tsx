@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { setValue, tick } from '#test-setup';
-import type { CustomCommand, Settings } from '#ipc/settings';
+import type { CustomCommand, HiddenScripts, Settings } from '#ipc/settings';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -13,7 +13,7 @@ const { git } = await import('#ipc/git');
 const { S } = await import('#kernel/store');
 const { DEFAULTS } = await import('#ipc/settings');
 const { SECTIONS } = await import('./catalog');
-const { openSettings, setSetting } = await import('./settings');
+const { closeSettings, openSettings, setSetting } = await import('./settings');
 const { view } = await import('#core/session');
 const { run } = await import('#kernel/registry');
 const { buildState } = await import('#editor/editor');
@@ -28,6 +28,7 @@ let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
 let savedCommands: CustomCommand[];
+let savedHidden: HiddenScripts;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -39,11 +40,15 @@ beforeEach(() => {
   S.settingsOpen = false;
   disk = { ...DEFAULTS };
   savedCommands = [];
+  savedHidden = {};
   S.root = '/Users/me/projects/app';
   vi.mocked(git.settings).mockImplementation(() => Promise.resolve({ ...disk }));
   vi.mocked(git.saveSettings).mockImplementation((s) => { disk = { ...s }; return Promise.resolve(); });
   vi.mocked(git.commands).mockImplementation(() => Promise.resolve(savedCommands.map((c) => ({ ...c }))));
   vi.mocked(git.saveCommands).mockImplementation((c) => { savedCommands = c; return Promise.resolve(); });
+  vi.mocked(git.hiddenScripts).mockImplementation(() => Promise.resolve(structuredClone(savedHidden)));
+  vi.mocked(git.saveHiddenScripts).mockImplementation((h) => { savedHidden = h; return Promise.resolve(); });
+  vi.mocked(git.packageScripts).mockResolvedValue(null);
   vi.mocked(git.commandIcons).mockResolvedValue({});
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<OverlayHost />));
@@ -487,6 +492,66 @@ describe('commands', () => {
     button('Save').click();
     await tick();
     expect(savedCommands).toEqual([cmd('Lint', 'pnpm lint', HERE)]);
+  });
+
+  it('lists this repo\'s package.json scripts, and hides one and shows it again, keeping other repos\' hidden ones',
+    async () => {
+      vi.mocked(git.packageScripts).mockResolvedValue({
+        runner: 'pnpm', scripts: [{ name: 'dev', command: 'vite' }, { name: 'test', command: 'vitest run' }],
+      });
+      savedHidden = { '/Users/me/projects/lib': ['dev'] };
+      await openSettings('commands');
+      await tick();
+      const scripts = () => [...document.querySelectorAll('.cmd-scripts .cmd-row')]
+        .map((r) => [r.querySelector('.cmd-name')!.textContent, r.classList.contains('off')]);
+      expect(document.querySelector('.cmd-group')!.querySelector('.cmd-sub')!.textContent).toBe('package.json · pnpm');
+      expect(scripts()).toEqual([['dev', false], ['test', false]]);
+      // a script can only be hidden: nothing to edit or delete
+      expect(document.querySelectorAll('.cmd-scripts button')).toHaveLength(2);
+
+      button('Hide dev').click();
+      await tick();
+      expect(savedHidden).toEqual({ '/Users/me/projects/lib': ['dev'], [HERE]: ['dev'] });
+      expect(scripts()).toEqual([['dev', true], ['test', false]]);
+      expect(document.querySelector('.cmd-scripts .pill')!.textContent).toBe('Hidden');
+
+      button('Show dev').click();
+      await tick();
+      expect(savedHidden).toEqual({ '/Users/me/projects/lib': ['dev'] });
+      expect(scripts()).toEqual([['dev', false], ['test', false]]);
+    });
+
+  it('shows the scripts\' hidden state as the file has it, and nothing where there is no package.json', async () => {
+    savedHidden = { [HERE]: ['test', 'gone'] };
+    vi.mocked(git.packageScripts).mockResolvedValue({ runner: 'npm', scripts: [{ name: 'test', command: 'jest' }] });
+    await openSettings('commands');
+    await tick();
+    expect(button('Show test')).toBeDefined();
+    closeSettings();
+    vi.mocked(git.packageScripts).mockResolvedValue(null);
+    await openSettings('commands');
+    await tick();
+    expect(document.querySelector('.cmd-scripts')).toBeNull();
+  });
+
+  it('says what went wrong with package.json in place of its scripts', async () => {
+    vi.mocked(git.packageScripts).mockRejectedValue({ kind: 'Io', detail: 'package.json: expected value' });
+    await openSettings('commands');
+    await tick();
+    expect(document.querySelector('.cmd-group')!.textContent).toContain('package.json: expected value');
+  });
+
+  it('shows a script again and says why when hiding it fails', async () => {
+    vi.mocked(git.packageScripts).mockResolvedValue({ runner: 'pnpm', scripts: [{ name: 'dev', command: 'vite' }] });
+    vi.mocked(git.saveHiddenScripts).mockRejectedValue({ kind: 'Io', detail: 'disk full' });
+    await openSettings('commands');
+    await tick();
+    button('Hide dev').click();
+    await tick();
+    await tick();
+    expect(S.hiddenScripts).toEqual({});
+    expect(button('Hide dev')).toBeDefined();
+    expect(S.toasts.map((t) => [t.kind, t.message])).toEqual([['err', expect.stringContaining('disk full')]]);
   });
 
   it('puts the list back and says why when the save fails', async () => {

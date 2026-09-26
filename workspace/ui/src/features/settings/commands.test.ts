@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CustomCommand } from '#ipc/settings';
-import { commandGroups, inMenu } from './commands';
+import { commandGroups, inMenu, scriptHidden } from './commands';
 
 const cmd = (command: string, repo: string | null): CustomCommand =>
   ({ name: '', command, repo, hide_terminal: false, icon: null });
@@ -18,5 +18,13 @@ describe('saved commands', () => {
       ['/r', []], [null, ['g']], ['/b', ['x', 'z']], ['/a', ['y']],
     ]);
     expect(commandGroups([], null).map((g) => g.repo)).toEqual([null]);
+  });
+
+  it('hides a script only in the repo it was hidden in', () => {
+    const hidden = { '/r': ['dev'] };
+    expect(scriptHidden(hidden, '/r', 'dev')).toBe(true);
+    expect(scriptHidden(hidden, '/r', 'test')).toBe(false);
+    expect(scriptHidden(hidden, '/other', 'dev')).toBe(false);
+    expect(scriptHidden(hidden, null, 'dev')).toBe(false);
   });
 });

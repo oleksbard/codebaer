@@ -2,7 +2,7 @@ import { view } from '#core/session';
 import { setEditorDark } from '#editor/editor-theme';
 import { retheme } from '#features/terminals';
 import { errText, git } from '#ipc/git';
-import { DEFAULTS, type CustomCommand, type SettingKey, type Settings } from '#ipc/settings';
+import { DEFAULTS, type CustomCommand, type HiddenScripts, type SettingKey, type Settings } from '#ipc/settings';
 import { toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
 import { idle } from '#kernel/registry';
@@ -32,14 +32,16 @@ function showTheme(): void {
   retheme();
 }
 
-/** Like `confirmed`, for the command list. */
+/** Like `confirmed`, for the command list and the hidden scripts. */
 let confirmedCommands: CustomCommand[] = [];
+let confirmedHidden: HiddenScripts = {};
 
 export function loadSettings(): Promise<void> {
   return inOrder(async () => {
-    const [settings, commands] = await Promise.all([git.settings(), git.commands()]);
+    const [settings, commands, hidden] = await Promise.all([git.settings(), git.commands(), git.hiddenScripts()]);
     S.settings = confirmed = settings;
     S.commands = confirmedCommands = commands;
+    S.hiddenScripts = confirmedHidden = hidden;
     showTheme();
     notify();
   });
@@ -47,7 +49,9 @@ export function loadSettings(): Promise<void> {
 
 export function loadCommands(): Promise<void> {
   return inOrder(async () => {
-    S.commands = confirmedCommands = await git.commands();
+    const [commands, hidden] = await Promise.all([git.commands(), git.hiddenScripts()]);
+    S.commands = confirmedCommands = commands;
+    S.hiddenScripts = confirmedHidden = hidden;
     notify();
   });
 }
@@ -65,6 +69,29 @@ export function saveCommands(list: CustomCommand[]): Promise<void> {
     } catch (e) {
       S.commands = confirmedCommands;
       toast(`Commands not saved: ${errText(e)}`, 'err');
+    }
+    notify();
+  });
+}
+
+/** Leaves one of this repo's package.json scripts out of the command menu, or puts it back. */
+export function hideScript(name: string, hidden: boolean): Promise<void> {
+  const root = S.root;
+  if (root === null) return Promise.resolve();
+  const rest = (S.hiddenScripts[root] ?? []).filter((n) => n !== name);
+  const names = hidden ? [...rest, name] : rest;
+  const others = Object.entries(S.hiddenScripts).filter(([r]) => r !== root);
+  S.hiddenScripts = Object.fromEntries(names.length ? [...others, [root, names]] : others);
+  notify();
+  return inOrder(async () => {
+    const sent = S.hiddenScripts;
+    if (sent === confirmedHidden) return;
+    try {
+      await git.saveHiddenScripts(sent);
+      confirmedHidden = sent;
+    } catch (e) {
+      S.hiddenScripts = confirmedHidden;
+      toast(`Scripts not saved: ${errText(e)}`, 'err');
     }
     notify();
   });

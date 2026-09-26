@@ -43,6 +43,7 @@ beforeEach(() => {
   S.root = HERE;
   S.terminals = [];
   S.taskView = null;
+  S.hiddenScripts = {};
   S.commands = [
     { name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false, icon: null },
     { name: '', command: 'make deploy', repo: null, hide_terminal: true, icon: null },
@@ -98,6 +99,28 @@ it('runs the command picked as it was saved, and a script by its name', async ()
   );
   item(await openMenu(), 'test').click();
   expect(c.runTask).toHaveBeenLastCalledWith({ t: 'Script', name: 'test' });
+});
+
+it('leaves out the scripts hidden for this repo, and asks no icon for them', async () => {
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  S.commands = [];
+  // names no other test asks about: the icons module remembers every ask
+  vi.mocked(c.taskMenu).mockResolvedValue({
+    runner: 'pnpm', scripts: [{ name: 'e2e', command: 'playwright test' }, { name: 'fmt', command: 'prettier .' }],
+  });
+  S.hiddenScripts = { [HERE]: ['e2e'], '/Users/me/projects/lib': ['fmt'] };
+  vi.mocked(git.aiCommandIcons).mockResolvedValue([null]);
+  const items = await openMenu();
+  expect(items.map((i) => i.textContent)).toEqual(['fmtprettier .', 'Manage commands…']);
+  await vi.waitFor(() => expect(git.aiCommandIcons).toHaveBeenCalledOnce());
+  expect(vi.mocked(git.aiCommandIcons).mock.calls[0]![0]).toEqual([{ name: 'fmt', command: 'prettier .' }]);
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
+});
+
+it('drops the package.json section when every script is hidden', async () => {
+  S.hiddenScripts = { [HERE]: ['build', 'test'] };
+  await openMenu();
+  expect(document.querySelector('.task-menu')!.textContent).not.toContain('package.json');
 });
 
 it('says what went wrong with package.json instead of listing nothing', async () => {

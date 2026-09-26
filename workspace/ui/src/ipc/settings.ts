@@ -12,4 +12,9 @@ export type CustomCommand = {
   name: string; command: string; repo: string | null; hide_terminal: boolean; icon: string | null;
 };
 
+/** Stored in the settings file under `commands.hidden-scripts`: the package.json scripts the command menu leaves
+ *  out, by name, keyed by canonical repository root like `CustomCommand.repo`. A name is kept after its script
+ *  goes, so a branch that drops the script for a while does not bring it back. */
+export type HiddenScripts = Record<string, string[]>;
+
 export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };

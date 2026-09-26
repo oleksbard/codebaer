@@ -69,6 +69,12 @@ pub struct CustomCommand {
 /// Written by `commands_set` alone; `Settings` does not know it, so a settings save keeps it.
 const COMMANDS: &str = "commands.custom";
 
+/// Package.json scripts left out of the command menu, as lists of names keyed by canonical repository root.
+/// Written by `hidden_scripts_set` alone, like `COMMANDS`.
+const HIDDEN_SCRIPTS: &str = "commands.hidden-scripts";
+
+pub type HiddenScripts = BTreeMap<String, Vec<String>>;
+
 /// Each entry falls back alone, like an option: one that is not an object with a command in it is
 /// dropped, a `name` that is not a string reads as blank, a `hide_terminal` that is not a bool as false, and an
 /// `icon` that is not a string as none.
@@ -90,6 +96,18 @@ fn commands_from(map: &Map<String, Value>) -> Vec<CustomCommand> {
             let hide_terminal = o.get("hide_terminal").and_then(Value::as_bool).unwrap_or_default();
             let icon = text("icon");
             Some(CustomCommand { name: text("name").unwrap_or_default(), command, repo, hide_terminal, icon })
+        })
+        .collect()
+}
+
+/// A repository whose value is not a list is dropped, and so is a name that is not a string.
+fn hidden_scripts_from(map: &Map<String, Value>) -> HiddenScripts {
+    let Some(Value::Object(repos)) = map.get(HIDDEN_SCRIPTS) else { return HiddenScripts::new() };
+    repos
+        .iter()
+        .filter_map(|(root, v)| {
+            let names = v.as_array()?.iter().filter_map(Value::as_str).map(String::from).collect();
+            Some((root.clone(), names))
         })
         .collect()
 }
@@ -155,6 +173,10 @@ fn commands_at(path: &Path) -> Vec<CustomCommand> {
     read_with(path, commands_from)
 }
 
+fn hidden_scripts_at(path: &Path) -> HiddenScripts {
+    read_with(path, hidden_scripts_from)
+}
+
 fn icons_at(path: &Path) -> BTreeMap<String, String> {
     read_with(path, |m| m.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect())
 }
@@ -191,6 +213,11 @@ fn write_commands_at(path: &Path, commands: &[CustomCommand]) -> Result<(), AppE
     }
     let list = serde_json::to_value(commands).map_err(|e| AppError::Io(e.to_string()))?;
     write_keys(path, Map::from_iter([(COMMANDS.to_string(), list)]))
+}
+
+fn write_hidden_scripts_at(path: &Path, hidden: &HiddenScripts) -> Result<(), AppError> {
+    let map = serde_json::to_value(hidden).map_err(|e| AppError::Io(e.to_string()))?;
+    write_keys(path, Map::from_iter([(HIDDEN_SCRIPTS.to_string(), map)]))
 }
 
 /// Every key but `known` is kept, whether this build knows it or not. A file that is there but cannot
@@ -247,6 +274,18 @@ pub fn commands_get(app: AppHandle) -> Vec<CustomCommand> {
 pub fn commands_set(app: AppHandle, commands: Vec<CustomCommand>) -> Result<(), AppError> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     write_commands_at(&store(&app)?, &commands)
+}
+
+#[tauri::command(async)]
+pub fn hidden_scripts_get(app: AppHandle) -> HiddenScripts {
+    store(&app).map(|f| hidden_scripts_at(&f)).unwrap_or_default()
+}
+
+/// Every repository's at once, like `commands_set`.
+#[tauri::command(async)]
+pub fn hidden_scripts_set(app: AppHandle, hidden: HiddenScripts) -> Result<(), AppError> {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    write_hidden_scripts_at(&store(&app)?, &hidden)
 }
 
 #[tauri::command(async)]
@@ -513,6 +552,32 @@ mod tests {
         for v in ["null", "{}", r#""make""#] {
             let (_d, f) = file(&format!(r#"{{"commands.custom": {v}}}"#));
             assert_eq!(commands_at(&f), Vec::new(), "value {v}");
+        }
+    }
+
+    #[test]
+    fn hidden_scripts_round_trip_and_leave_the_rest_alone() {
+        let (_d, f) = file(r#"{"general.headless-ai-provider": "claude"}"#);
+        write_commands_at(&f, &[saved("Lint", "pnpm lint", None)]).unwrap();
+        let hidden = HiddenScripts::from([("/r".into(), vec!["dev".into(), "e2e".into()]), ("/s".into(), vec![])]);
+        write_hidden_scripts_at(&f, &hidden).unwrap();
+        assert_eq!(hidden_scripts_at(&f), hidden);
+        assert_eq!(read_at(&f), CLAUDE);
+        assert_eq!(commands_at(&f), vec![saved("Lint", "pnpm lint", None)]);
+        write_at(&f, &CLAUDE).unwrap();
+        write_commands_at(&f, &[]).unwrap();
+        assert_eq!(hidden_scripts_at(&f), hidden);
+        let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(on_disk["commands.hidden-scripts"]["/r"], serde_json::json!(["dev", "e2e"]));
+    }
+
+    #[test]
+    fn a_bad_hidden_scripts_entry_is_dropped_alone() {
+        let (_d, f) = file(r#"{"commands.hidden-scripts": {"/r": ["dev", 1, null, "lint"], "/s": "dev", "/t": {}}}"#);
+        assert_eq!(hidden_scripts_at(&f), HiddenScripts::from([("/r".into(), vec!["dev".into(), "lint".into()])]));
+        for v in ["null", "[]", r#""dev""#] {
+            let (_d, f) = file(&format!(r#"{{"commands.hidden-scripts": {v}}}"#));
+            assert_eq!(hidden_scripts_at(&f), HiddenScripts::new(), "value {v}");
         }
     }
 

@@ -11,5 +11,5 @@ export const settings = defineFeature({
   overlays: [{ id: 'settings', isOpen: () => S.settingsOpen, component: SettingsDialog }],
 });
 
-export { commandTitle, HIDDEN_TASK_MS, inMenu } from './commands';
+export { commandTitle, HIDDEN_TASK_MS, inMenu, scriptHidden } from './commands';
 export { loadCommands, loadSettings, openSettings } from './settings';

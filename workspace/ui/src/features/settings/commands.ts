@@ -1,4 +1,4 @@
-import type { CustomCommand } from '#ipc/settings';
+import type { CustomCommand, HiddenScripts } from '#ipc/settings';
 import type { DeepReadonly } from '#kernel/store';
 
 /** A command saved to hide its terminal that is still running after this long is stopped and closed. */
@@ -9,6 +9,9 @@ export const commandTitle = (c: DeepReadonly<CustomCommand>): string => c.name.t
 /** Another repo's commands are kept and edited in Settings, but never offered to run here. */
 export const inMenu = (c: DeepReadonly<CustomCommand>, root: string | null): boolean =>
   c.repo === null || c.repo === root;
+
+export const scriptHidden = (hidden: DeepReadonly<HiddenScripts>, root: string | null, name: string): boolean =>
+  root !== null && (hidden[root]?.includes(name) ?? false);
 
 export type CommandGroup<C> = { repo: string | null; commands: C[] };
 
