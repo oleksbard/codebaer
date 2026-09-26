@@ -59,12 +59,13 @@ export function homeFrom(cwd: string): string | null {
 const AGENTS = ['claude', 'codex'] as const;
 export type Agent = (typeof AGENTS)[number];
 
+export const agentNamed = (name: string): Agent | null => AGENTS.find((a) => a === name) ?? null;
+
 /** Which agent a session is, for the icon on its sidebar button. A `Command` session carries the
  *  program as its title; a shell only reveals one while it runs it, and only on the marks tier. */
 export function agentOf(s: DeepReadonly<Info>): Agent | null {
   const running = s.state.t === 'Running' ? s.state.command : null;
-  const name = baseName((running ?? s.title).split(' ')[0] ?? '').toLowerCase();
-  return AGENTS.find((a) => a === name) ?? null;
+  return agentNamed(baseName((running ?? s.title).split(' ')[0] ?? '').toLowerCase());
 }
 
 export const kindOf = (s: DeepReadonly<Info>): string => agentOf(s) ?? (baseName(s.title) || 'terminal');

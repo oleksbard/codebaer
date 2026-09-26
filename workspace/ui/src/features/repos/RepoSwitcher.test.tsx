@@ -48,7 +48,7 @@ async function openMenu(): Promise<HTMLElement[]> {
 describe('header repo switcher', () => {
   it('is absent until a repo is open', () => {
     expect(trigger()).toBeNull();
-    expect(head().querySelector('.cmd-field')).not.toBeNull();
+    expect(head().querySelector('.palette-field')).not.toBeNull();
   });
 
   it('names the repo by its folder, with the full path on hover', async () => {

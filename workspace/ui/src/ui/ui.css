@@ -230,6 +230,8 @@ kbd {
   place-items: center;
   width: 16px;
   height: 16px;
+  /* WebKit's button padding would leave a 2px content box and push the check out past the border */
+  padding: 0;
   border: 1px solid var(--faint);
   border-radius: var(--r-1);
   background: var(--bg);

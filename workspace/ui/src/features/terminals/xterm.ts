@@ -1,4 +1,3 @@
-import { CanvasAddon } from '@xterm/addon-canvas';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -13,8 +12,6 @@ export type Term = {
   fit: FitAddon;
   search: SearchAddon;
   el: HTMLDivElement;
-  /** Held only so it can be disposed before the terminal is; see dispose(). */
-  canvas: CanvasAddon;
 };
 
 const FONT_KEY = 'codebaer.term.fontSize';
@@ -153,11 +150,10 @@ function create(id: number, el: HTMLDivElement): Term {
   } catch {
     // the addon registers the table; an older xterm without it keeps its built-in widths
   }
+  // no renderer addon, so xterm's DOM renderer draws, and a session kept alive off screen holds no
+  // viewport-sized canvases. The webgl addon has an open corruption bug reproduced under Tauri on
+  // macOS, and xterm 6 dropped the canvas addon.
   term.open(el);
-  // canvas, not webgl: there is an open corruption bug for the webgl renderer reproduced
-  // under Tauri on macOS, and canvas renders the same content correctly
-  const canvas = new CanvasAddon();
-  term.loadAddon(canvas);
   // the agent CLIs read ESC CR as "insert a newline"; xterm sends a bare CR for shift-enter,
   // which they read as submit. This is what a terminal's own Claude Code setup binds.
   term.attachCustomKeyEventHandler((e) => {
@@ -179,7 +175,7 @@ function create(id: number, el: HTMLDivElement): Term {
     void inputBytes(id, bytes);
   });
   term.onResize(({ cols, rows }) => void resize(id, cols, rows));
-  const t = { term, fit, search, el, canvas };
+  const t = { term, fit, search, el };
   terms.set(id, t);
   return t;
 }
@@ -218,10 +214,6 @@ export function focus(id: number): void {
 export function dispose(id: number): void {
   const t = terms.get(id);
   if (!t) return;
-  // first, and not left to the terminal's own addon teardown: the canvas addon puts the DOM
-  // renderer back as it goes, and that renderer's constructor wants a linkifier the terminal
-  // has already disposed by the time it gets round to its addons
-  t.canvas.dispose();
   t.term.dispose();
   t.el.remove();
   terms.delete(id);

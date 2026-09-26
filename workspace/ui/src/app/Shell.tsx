@@ -12,7 +12,7 @@ export function Header() {
   return (
     <header className="head" data-tauri-drag-region>
       <RepoSwitcher />
-      <button type="button" className="cmd-field" onClick={() => void openPalette()}>
+      <button type="button" className="palette-field" onClick={() => void openPalette()}>
         <SearchIcon />
         <span className="txt">Search commands</span>
         <Kbd>{keyLabel('app.palette')}</Kbd>
