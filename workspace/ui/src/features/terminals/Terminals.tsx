@@ -33,7 +33,7 @@ function ClaudeMark({ busy }: { busy: boolean }) {
 
 function CodexIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M8 1.8 13.4 5v6L8 14.2 2.6 11V5z" />
       <path d="M8 5.4 10.9 7v2.9L8 11.6 5.1 9.9V7z" />
@@ -41,7 +41,28 @@ function CodexIcon() {
   );
 }
 
-const ICONS: Record<Agent, (p: { busy: boolean }) => ReactElement> = { claude: ClaudeMark, codex: CodexIcon };
+function OpenCodeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1" />
+      <rect x="5.6" y="5.6" width="4.8" height="4.8" />
+    </svg>
+  );
+}
+
+const ICONS: Record<Agent, (p: { busy: boolean }) => ReactElement> = {
+  claude: ClaudeMark, codex: CodexIcon, opencode: OpenCodeIcon,
+};
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinecap="round" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}
 
 function TerminalIcon() {
   return (
@@ -148,8 +169,9 @@ export function TerminalRail() {
         const wants = app.termAttention.has(s.id);
         const home = homeFrom(s.cwd);
         const away = awayLabel(s, app.root, home);
+        const name = names.get(s.id) ?? s.title;
         // the number and the glyph are both decorative once the label carries the same words
-        const label = `${names.get(s.id) ?? s.title} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
+        const label = `${name} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
           + `${wants ? ' · wants attention' : ''}`;
         return (
           <ContextMenu
@@ -164,16 +186,19 @@ export function TerminalRail() {
           >
             <button
               type="button"
-              className={`rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`}
+              className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`}
               aria-current={s.id === active || undefined}
               aria-label={label}
               title={label}
               onClick={() => selectTerminal(s.id)}
             >
-              <Glyph session={s} />
-              {away && <Away />}
-              <Dot session={s} />
-              {wants && <span className="bell" aria-hidden="true" />}
+              <span className="tile">
+                <Glyph session={s} />
+                {away && <Away />}
+                <Dot session={s} />
+                {wants && <span className="bell" aria-hidden="true" />}
+              </span>
+              <span className="cap">{name}</span>
             </button>
           </ContextMenu>
         );
@@ -196,8 +221,11 @@ function NewMenu() {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="rail-b new" title={`New terminal (${keyLabel('terminals.new')})`}
-          aria-label="New terminal">+</button>
+        <button type="button" className="rail-item rail-b new" title={`New terminal (${keyLabel('terminals.new')})`}
+          aria-label="New terminal">
+          <span className="tile"><PlusIcon /></span>
+          <span className="cap">New</span>
+        </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu term-menu" side="right" align="end" sideOffset={6}>

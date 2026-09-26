@@ -2,7 +2,9 @@ import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Recent,
   Rev, Scripts, StageResult, Status } from '#ipc/git';
-import { DEFAULTS, type CustomCommand, type HiddenScripts, type Settings } from '#ipc/settings';
+import {
+  AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
+} from '#ipc/settings';
 import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
 import { isTheme } from '#ui/theme';
 import { createPty } from './pty';
@@ -26,6 +28,8 @@ export type MockApi = {
   /** The next call to `cmd` rejects with `error`. */
   fail(cmd: string, error: AppError): void;
   state(): Snapshot;
+  /** Someone else pushes `n` commits to `upstream`; the next fetch or pull brings them in. */
+  remotePush(upstream: string, n: number): void;
   /** Everything a terminal session printed; the newest session for no id. */
   terminalText(id?: number): string;
   /** Resolves once no command or backend timer has been pending for a moment. */
@@ -209,7 +213,13 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     list_dir: ({ path }: { path: string }): string[] => repo.listDir(path),
     push: () => net(() => repo.push()),
     pull: () => net(() => repo.pull()),
-    fetch: () => net(() => {}),
+    fetch: () => net(() => repo.fetch()),
+    // no FETCH_HEAD, so like the real one it fires the watcher only when a remote-tracking ref moves
+    fetch_background: async () => {
+      if (settings['general.auto-fetch'] === 'off' || cancelNet) return;
+      await sleep(opts.slow);
+      if (repo.fetch()) changed();
+    },
     cancel: () => cancelNet?.(),
     ai_commit_message: async (): Promise<string> => {
       if (settings['general.headless-ai-provider'] === 'off') {
@@ -238,6 +248,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       return items.map((it) => `${it.name} ${it.command}`.toLowerCase().split(/[^a-z0-9]+/)
         .map((w) => ICON_WORDS[w]).find((id) => id !== undefined && known.has(id)) ?? null);
     },
+    // the backend finds the CLIs the way it finds the terminal menu's commands
+    installed_ai_providers: (): AiProvider[] => AI_PROVIDERS.filter((p) => sc.menu.commands.includes(p)),
     package_scripts: (): Scripts | null => scripts(),
     task_run: ({ task }: { task: Task }): number => pty.runTask(task),
     term_menu: (): Menu => sc.menu,
@@ -291,6 +303,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     menu: (item, path) => emit(MENU_EVENTS[item], path),
     fail: (cmd, error) => { failures.set(cmd, error); },
     state: () => repo.snapshot(),
+    remotePush: (upstream, n) => repo.remotePush(upstream, n),
     terminalText: (id) => pty.text(id),
     idle: () => new Promise((resolve) => {
       const check = (): void => { if (pending) onSettle.push(check); else resolve(); };

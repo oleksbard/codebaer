@@ -2,6 +2,7 @@ import { view } from '#core/session';
 import { setEditorDark } from '#editor/editor-theme';
 import { retheme } from '#features/terminals';
 import { errText, git } from '#ipc/git';
+import { logError } from '#ipc/log';
 import { DEFAULTS, type CustomCommand, type HiddenScripts, type SettingKey, type Settings } from '#ipc/settings';
 import { toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
@@ -97,12 +98,29 @@ export function hideScript(name: string, hidden: boolean): Promise<void> {
   });
 }
 
+const installedEpoch = epoch();
+
+/** Asked on every opening, so a CLI installed while the app runs shows up. */
+async function checkInstalled(): Promise<void> {
+  const live = installedEpoch.next();
+  try {
+    const list = await git.installedAiProviders();
+    if (!live()) return;
+    S.aiInstalled = list;
+    notify();
+  } catch (e) {
+    logError(e, 'installed AI providers');
+  }
+}
+
 /** Bumped per opening, so an earlier opening still reading the file cannot reopen it after Escape. */
 const settingsEpoch = epoch();
 
 /** Reads the file first, so an edit made to it by hand shows up. */
 export async function openSettings(section = 'general'): Promise<void> {
   const live = settingsEpoch.next();
+  // not awaited: until it answers, every provider stays enabled
+  void checkInstalled();
   try {
     await loadSettings();
   } catch (e) {

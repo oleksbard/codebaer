@@ -23,6 +23,10 @@ export type Command = {
 
 export type Overlay = { id: string; isOpen(): boolean; component: ComponentType };
 
+/** Something a feature asks the headless AI provider for, through the backend command `command`. `icon` is an
+ *  icon id such as `lucide:shapes`. */
+export type AiUse = { command: `ai_${string}`; label: string; icon: string };
+
 export type Feature = {
   id: string;
   commands?: readonly Command[];
@@ -35,6 +39,8 @@ export type Feature = {
   /** After every successful status read and before the open file is refreshed, in feature order. */
   onRefresh?(): void | Promise<void>;
   onRepoChange?: { confirm?(): Promise<boolean>; reset(): void };
+  /** Listed by the headless AI provider option in Settings. */
+  aiUses?: readonly AiUse[];
 };
 
 export const defineFeature = <const F extends Feature>(f: F): F => f;
@@ -75,6 +81,8 @@ export function run(id: string): void {
 }
 
 export const editorExtensions = (): Extension[] => list.flatMap((f) => f.editorExtensions ?? []);
+
+export const aiUses = (): AiUse[] => list.flatMap((f) => f.aiUses ?? []);
 
 export async function openPalette(): Promise<void> {
   const entries: PaletteEntry[] = [];

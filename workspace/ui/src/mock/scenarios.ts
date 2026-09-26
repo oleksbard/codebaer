@@ -136,7 +136,7 @@ const UNCHANGED: Record<string, FileSeed> = {
 const MENU: Menu = {
   shells: [{ path: '/bin/zsh', name: 'zsh' }, { path: '/bin/bash', name: 'bash' }],
   default: '/bin/zsh',
-  commands: ['claude', 'codex', 'node', 'python3', 'bun'],
+  commands: ['claude', 'codex', 'opencode', 'node', 'python3', 'bun'],
 };
 
 const REPO: RepoSeed = {

@@ -15,6 +15,7 @@ import { AlertDialog } from './AlertDialog';
 import { ContextMenu } from './ContextMenu';
 import { FileIcon } from './FileIcon';
 import { DiffStat, diffBlocks } from './DiffStat';
+import { InfoTip } from './InfoTip';
 
 const roots: Root[] = [];
 function mount(el: ReactElement): HTMLElement {
@@ -163,6 +164,28 @@ describe('primitives', () => {
     expect(items.map((i) => i.textContent)).toEqual(['One', 'Two']);
     items[0]!.click();
     expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('InfoTip opens on focus, stays open when its (i) is pressed, and opens again from a click', async () => {
+    const h = mount(<InfoTip label="What uses it"><ul><li>Commit messages</li></ul></InfoTip>);
+    const info = h.querySelector<HTMLButtonElement>('.info-tip')!;
+    const tip = () => document.querySelector('.tip');
+    expect(info.getAttribute('aria-label')).toBe('What uses it');
+    info.focus();
+    await tick();
+    expect(tip()?.textContent).toBe('Commit messages');
+    info.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(tip()).not.toBeNull();
+    info.click();
+    await tick();
+    expect(tip()).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    expect(tip()).toBeNull();
+    info.click();
+    await tick();
+    expect(tip()).not.toBeNull();
   });
 
   it('FileIcon resolves a per-extension glyph and a theme colour, and falls back for unknown names', () => {

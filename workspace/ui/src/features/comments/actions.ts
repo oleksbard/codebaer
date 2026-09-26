@@ -268,7 +268,7 @@ export async function sendComments(): Promise<void> {
   const labels = termLabels(terminalsOf(S.terminals));
   const targets = eligible(terminalsOf(S.terminals), S.root)
     .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));
-  if (!targets.length) { toast('No claude or codex session is open in this repo.', 'warn'); return; }
+  if (!targets.length) { toast('No claude, codex or opencode session is open in this repo.', 'warn'); return; }
   const id = await pick(targets.map((s) => ({
     label: labels.get(s.id) ?? s.title,
     detail: statusLabel(s, Date.now(), homeFrom(s.cwd)),

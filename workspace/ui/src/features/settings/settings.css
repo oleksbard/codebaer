@@ -89,6 +89,12 @@
   gap: 2px;
 }
 
+.setting-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .setting-label {
   font-size: var(--fs-3);
   font-weight: 500;
@@ -255,3 +261,6 @@
   .tx { width: 10px; background: var(--text); }
   .cm { width: 36px; background: var(--syn-comment); }
 }
+
+/* centred on the first line of a label that wraps */
+.tip li > .cicon { margin-top: 2px; }

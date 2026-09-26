@@ -101,6 +101,8 @@ export function createRepo(seed: RepoSeed) {
   const log = [...seed.log];
   let head: string | null = log.length ? oidOf(log.join('\n')) : null;
   const stash: Map<string, Entry>[] = [];
+  /** Commits on the remote that no fetch has brought in yet, keyed by upstream. */
+  const unfetched = new Map<string, number>();
 
   const entry = (path: string): Entry => {
     let e = files.get(path);
@@ -335,7 +337,21 @@ export function createRepo(seed: RepoSeed) {
 
     pull(): void {
       if (!upstream) gitError('There is no tracking information for the current branch.');
+      unfetched.delete(upstream);
       behind = 0;
+    },
+
+    /** Only the current upstream's commits: nothing else keeps a count to show them in. False when none came in. */
+    fetch(): boolean {
+      const n = upstream ? unfetched.get(upstream) ?? 0 : 0;
+      if (!upstream || !n) return false;
+      behind += n;
+      unfetched.delete(upstream);
+      return true;
+    },
+
+    remotePush(to: string, n: number): void {
+      unfetched.set(to, (unfetched.get(to) ?? 0) + n);
     },
 
     stagedPaths: (): string[] => [...files].filter(([, e]) => !same(e.head, e.index)).map(([p]) => p).sort(),

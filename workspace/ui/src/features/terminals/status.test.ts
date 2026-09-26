@@ -63,6 +63,7 @@ describe('agentOf', () => {
   it('names the agent a command session was spawned as', () => {
     expect(agentOf({ ...base, title: 'claude', tier: 'process' })).toBe('claude');
     expect(agentOf({ ...base, title: 'codex', tier: 'process' })).toBe('codex');
+    expect(agentOf({ ...base, title: 'opencode', tier: 'process' })).toBe('opencode');
   });
 
   it('names the agent a shell is running right now', () => {

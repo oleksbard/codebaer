@@ -442,7 +442,7 @@ describe('sending', () => {
     pickMock.mockClear();
     await m.sendComments();
     expect(pickMock).not.toHaveBeenCalled();
-    expect(S.toasts.at(-1)).toMatchObject({ message: 'No claude or codex session is open in this repo.' });
+    expect(S.toasts.at(-1)).toMatchObject({ message: 'No claude, codex or opencode session is open in this repo.' });
     expect(S.comments).toHaveLength(1);
   });
 

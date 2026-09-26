@@ -14,7 +14,7 @@ import { outcome, withoutSharedPrefix } from './tasks';
 
 function PlayIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M5.25 3.25v9.5L12.75 8z" />
     </svg>
@@ -78,11 +78,14 @@ export function TaskMenu() {
   return (
     <DropdownMenu.Root onOpenChange={(open) => { if (open) void load(); }}>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="rail-b task-b" aria-label={label} title={label}>
-          <span className={launched ? 'tab-icon launch' : 'tab-icon'} key={launched}>
-            <PlayIcon />
-            {running > 0 && <span className="tab-count" aria-hidden="true">{running}</span>}
+        <button type="button" className="rail-item task-b" aria-label={label} title={label}>
+          <span className="tile">
+            <span className={launched ? 'tab-icon launch' : 'tab-icon'} key={launched}>
+              <PlayIcon />
+              {running > 0 && <span className="tab-count" aria-hidden="true">{running}</span>}
+            </span>
           </span>
+          <span className="cap">Commands</span>
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

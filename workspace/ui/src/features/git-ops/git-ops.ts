@@ -4,6 +4,7 @@ import { errKind, errText, git, type Branch } from '#ipc/git';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
 import { pick, type Item } from '#kernel/pick';
 import { notify, refs, S } from '#kernel/store';
+import { fetched } from './auto-fetch';
 
 export async function commit(): Promise<void> {
   if (S.committing) return;
@@ -52,6 +53,7 @@ export async function network(name: Net): Promise<void> {
   S.cancellable = true;
   try {
     await withBusy(NET[name].run);
+    if (name !== 'push') fetched();
     toast(NET[name].done, 'ok');
   } catch (e) {
     if (errKind(e) === 'Cancelled') toast('Cancelled', 'info');

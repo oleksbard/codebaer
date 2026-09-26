@@ -7,6 +7,7 @@ import type { Snapshot } from '../src/mock/repo';
 export type Mock = {
   idle(): Promise<void>;
   state(): Promise<Snapshot>;
+  remotePush(upstream: string, n: number): Promise<void>;
   agentEdit(path: string, text: string | null, opts?: { watcher?: boolean }): Promise<void>;
   emit(event: string): Promise<void>;
   fail(cmd: string, error: AppError): Promise<void>;
@@ -19,6 +20,7 @@ export type Mock = {
 const mockOf = (page: Page): Mock => ({
   idle: () => page.evaluate(() => globalThis.__mock!.idle()),
   state: () => page.evaluate(() => globalThis.__mock!.state()),
+  remotePush: (upstream, n) => page.evaluate(([u, k]) => globalThis.__mock!.remotePush(u, k), [upstream, n] as const),
   agentEdit: (path, text, opts) =>
     page.evaluate(([p, t, o]) => globalThis.__mock!.agentEdit(p, t, o), [path, text, opts] as const),
   emit: (event) => page.evaluate((e) => globalThis.__mock!.emit(e), event),

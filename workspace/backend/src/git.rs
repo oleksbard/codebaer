@@ -33,6 +33,10 @@ pub struct Out {
 }
 
 pub fn kill_group(pid: u32) {
+    signal_group(pid, libc::SIGKILL);
+}
+
+fn signal_group(pid: u32, signal: libc::c_int) {
     // pid 0 means "this process's own group" and 1 is init/launchd: never valid
     // targets here, and passing either through to libc::kill would take out the
     // app itself (0) or every process on the machine the caller can signal (1).
@@ -40,7 +44,7 @@ pub fn kill_group(pid: u32) {
         return;
     }
     unsafe {
-        libc::kill(-(pid as i32), libc::SIGKILL);
+        libc::kill(-(pid as i32), signal);
     }
 }
 
@@ -104,6 +108,16 @@ fn drain(rx: mpsc::Receiver<Vec<u8>>) -> Vec<u8> {
     out
 }
 
+fn git_command(root: &Path, args: &[&str]) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.args(args)
+        .current_dir(root)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
+        .env_remove("GIT_SSH_COMMAND");
+    cmd
+}
+
 pub fn run_raw(
     root: &Path,
     args: &[&str],
@@ -111,13 +125,7 @@ pub fn run_raw(
     timeout: Option<Duration>,
     pid_slot: Option<&Mutex<Option<u32>>>,
 ) -> Result<Out, AppError> {
-    let mut cmd = Command::new("git");
-    cmd.args(args)
-        .current_dir(root)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("LC_ALL", "C")
-        .env_remove("GIT_SSH_COMMAND");
-    run_child(cmd, stdin, timeout, pid_slot)
+    run_child(git_command(root, args), stdin, timeout, pid_slot)
 }
 
 /// Runs the command in its own process group so a timeout kills its children too.
@@ -291,6 +299,13 @@ pub struct AppState {
     pub net_pid: Mutex<Option<u32>>,
     pub net_lock: Mutex<()>,
     pub cancelled: AtomicBool,
+    /// Set while `net_lock` is held by a background fetch, which a push, pull or fetch may stop.
+    pub net_background: AtomicBool,
+    /// The background fetch's git, kept apart from `net_pid` so stopping it can never signal the user's own.
+    pub background_pid: Mutex<Option<u32>>,
+    /// Set while a push, pull or fetch waits for a background fetch to let go: no new one starts meanwhile, and
+    /// a Cancel counts even with no git running.
+    pub net_waiting: AtomicBool,
     pub watcher: Mutex<Option<crate::watcher::Handle>>,
 }
 
@@ -304,6 +319,9 @@ impl AppState {
             net_pid: Mutex::new(None),
             net_lock: Mutex::new(()),
             cancelled: AtomicBool::new(false),
+            net_background: AtomicBool::new(false),
+            background_pid: Mutex::new(None),
+            net_waiting: AtomicBool::new(false),
             watcher: Mutex::new(None),
         }
     }
@@ -1010,6 +1028,13 @@ pub fn run_net(state: &AppState, args: &[&str]) -> Result<(), AppError> {
     let _net_guard = match state.net_lock.try_lock() {
         Ok(g) => g,
         Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) if state.net_background.swap(false, Ordering::SeqCst) => {
+            state.cancelled.store(false, Ordering::SeqCst);
+            state.net_waiting.store(true, Ordering::SeqCst);
+            let g = take_from_background(state);
+            state.net_waiting.store(false, Ordering::SeqCst);
+            g?
+        }
         Err(std::sync::TryLockError::WouldBlock) => {
             return Err(AppError::Git("a push or pull is already running".to_string()))
         }
@@ -1026,7 +1051,36 @@ pub fn run_net(state: &AppState, args: &[&str]) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Signals the background git and waits for `net_lock`. The pid is read on every try, since a fetch that had
+/// not spawned its git yet had none. SIGTERM lets git remove its lock files; a second into the wait it is SIGKILL.
+/// A background fetch that cannot exit, e.g. stuck on a dead mount, is left behind by a Cancel.
+fn take_from_background(state: &AppState) -> Result<std::sync::MutexGuard<'_, ()>, AppError> {
+    let start = Instant::now();
+    loop {
+        let g = match state.net_lock.try_lock() {
+            Ok(g) => Some(g),
+            Err(std::sync::TryLockError::Poisoned(p)) => Some(p.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        };
+        if state.cancelled.swap(false, Ordering::SeqCst) {
+            return Err(AppError::Cancelled);
+        }
+        if let Some(g) = g {
+            return Ok(g);
+        }
+        if let Some(pid) = *state.background_pid.lock().unwrap_or_else(|e| e.into_inner()) {
+            // a fetch that took the lock after the one this was waiting for reads it as stopped too
+            state.net_background.store(false, Ordering::SeqCst);
+            signal_group(pid, if start.elapsed() < Duration::from_secs(1) { libc::SIGTERM } else { libc::SIGKILL });
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 pub fn cancel_impl(state: &AppState) {
+    if state.net_waiting.load(Ordering::SeqCst) {
+        state.cancelled.store(true, Ordering::SeqCst);
+    }
     if let Some(pid) = *state.net_pid.lock().unwrap_or_else(|e| e.into_inner()) {
         state.cancelled.store(true, Ordering::SeqCst);
         kill_group(pid);
@@ -1049,6 +1103,50 @@ pub fn pull(state: State<AppState>) -> Result<(), AppError> {
 #[tauri::command(async)]
 pub fn fetch(state: State<AppState>) -> Result<(), AppError> {
     run_net(&state, &["fetch", "--prune"])
+}
+
+/// Long enough for a fetch after weeks away; a hung connection holds nothing the user needs, since a push,
+/// pull or fetch stops it.
+const BACKGROUND: Duration = Duration::from_secs(120);
+
+/// The fetch the app runs on its own to keep ahead/behind current. It skips while a push, pull or fetch runs or
+/// waits, and gives way to one that starts. Git, askpass and Git Credential Manager do not prompt: a remote that
+/// needs credentials they do not already have fails instead. An SSH agent or the keychain can still ask.
+/// No --prune, unlike the user's Fetch: a refspec into refs/heads would have it delete unpushed local branches.
+/// Auto gc is off because the user did not ask for anything to run, and FETCH_HEAD is left to a fetch run by hand
+/// in a terminal.
+pub fn fetch_background_impl(state: &AppState) -> Result<(), AppError> {
+    if state.net_waiting.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let _net_guard = match state.net_lock.try_lock() {
+        Ok(g) => g,
+        Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
+    };
+    let root = state.root()?;
+    state.net_background.store(true, Ordering::SeqCst);
+    let mut cmd = git_command(&root, &["fetch", "--no-auto-gc", "--no-write-fetch-head"]);
+    cmd.env("GIT_ASKPASS", "/usr/bin/false").env("SSH_ASKPASS_REQUIRE", "never").env("GCM_INTERACTIVE", "never");
+    let res = run_child(cmd, None, Some(BACKGROUND), Some(&state.background_pid));
+    // cleared by run_net, which stopped this fetch to run its own
+    if !state.net_background.swap(false, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let out = res?;
+    if out.code != 0 {
+        return Err(AppError::Git(out.stderr));
+    }
+    Ok(())
+}
+
+/// Checks the settings file on every call, like the AI gate, so a hand edit turning it off holds at once.
+#[tauri::command(async)]
+pub fn fetch_background(app: tauri::AppHandle, state: State<AppState>) -> Result<(), AppError> {
+    if crate::settings::load(&app).auto_fetch == crate::settings::AutoFetch::Off {
+        return Ok(());
+    }
+    fetch_background_impl(&state)
 }
 
 #[tauri::command(async)]

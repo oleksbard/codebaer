@@ -1,11 +1,21 @@
+import { useEffect } from 'react';
+import { logError } from '#ipc/log';
 import { useApp } from '#kernel/store';
 import { StrokeIcon } from '#ui/Icon';
-import { glyph, iconKey, type Glyph } from './icons';
+import { glyph, iconKey, loadIconSets, type Glyph } from './icons';
 
 const PROMPT = 'M3.5 4.75L6.75 8 3.5 11.25M8.75 11.5h3.75';
 
 export function GlyphSvg({ g }: { g: Glyph }) {
   return <svg viewBox={`0 0 ${g.width} ${g.height}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: g.body }} />;
+}
+
+/** Blank until the sets have loaded. */
+export function SetIcon({ id }: { id: string }) {
+  useApp();
+  useEffect(() => { loadIconSets().catch((e: unknown) => logError(e, 'load icon sets')); }, []);
+  const g = glyph(id);
+  return <span className="cicon" aria-hidden="true">{g && <GlyphSvg g={g} />}</span>;
 }
 
 /** The user's pick, else the AI's, else a prompt sign, which also stands in while the icon sets load. */

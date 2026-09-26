@@ -138,29 +138,57 @@ kbd {
   /* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
      the tint is too close to the track, as in several light themes */
   &[data-state="on"] { background: var(--accent-soft); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+  &:disabled { color: var(--faint); }
 }
 
 .tabs.vert {
   flex: none;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
   border-bottom: 0;
-  padding: 0 0 4px;
+  padding: 0 0 10px;
 
-  .tab {
-    width: 40px;
-    height: 40px;
-    padding: 0;
+  .tab { padding: 0; margin-bottom: 0; border-bottom: 0; }
+}
+
+/* the Slack rail: an icon on a tile with its name under it; hover and selection tint the tile only */
+.rail-item {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 68px;
+  padding: 0;
+  color: var(--muted);
+
+  > .tile {
+    position: relative;
     display: grid;
     place-items: center;
-    margin-bottom: 0;
-    border-bottom: 0;
-    border-radius: var(--r-4);
-
-    &:hover { background: var(--panel); color: var(--text); }
-    &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-5);
   }
+
+  > .cap {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 600 var(--fs-1)/14px var(--ui);
+  }
+
+  &:hover,
+  &:is(.on, [data-state="active"]) { color: var(--text); }
+
+  &:hover > .tile { background: var(--panel); }
+  &:is(.on, [data-state="active"]) > .tile { background: var(--accent-soft); }
+
+  /* the rail clips its sides, and a ring round the caption too would read as a box */
+  &:focus-visible { outline: 0; }
+  &:focus-visible > .tile { outline: 2px solid var(--focus); outline-offset: 1px; }
 }
 
 .scrim {
@@ -270,6 +298,36 @@ kbd {
   height: 1px;
   margin: 4px 0;
   background: var(--line);
+}
+
+.info-tip {
+  display: inline-grid;
+  place-items: center;
+  padding: 1px;
+  border-radius: 50%;
+  color: var(--muted);
+  vertical-align: middle;
+
+  &:hover, &[data-state$="open"] { color: var(--text); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  svg { display: block; }
+}
+
+.tip {
+  max-width: 320px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--fs-2);
+  line-height: 1.45;
+  z-index: 30;
+
+  ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  li { display: flex; align-items: flex-start; gap: 8px; }
+  p { margin: 0 0 6px; color: var(--muted); }
 }
 
 .detail {

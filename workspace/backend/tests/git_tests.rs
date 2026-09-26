@@ -2,7 +2,7 @@ use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
-use codebaer_lib::git::{cancel_impl, diff_stat_impl, push_args, run_net, AppState, DiffStat};
+use codebaer_lib::git::{cancel_impl, diff_stat_impl, fetch_background_impl, push_args, run_net, AppState, DiffStat};
 use codebaer_lib::settings::AiProvider;
 use codebaer_lib::AppError;
 use std::fs;
@@ -943,6 +943,109 @@ fn run_net_refuses_a_second_concurrent_network_command() {
     cancel_impl(state.as_ref());
     let res = t.join().unwrap();
     assert_eq!(res.unwrap_err(), AppError::Cancelled);
+}
+
+#[test]
+fn a_background_fetch_counts_new_commits_and_moves_nothing_else() {
+    let (d, bare) = repo_with_remote();
+    let r = d.path();
+    let other = tempfile::tempdir().unwrap();
+    sh(other.path(), &["clone", "-q", "-b", "main", bare.path().to_str().unwrap(), "."]);
+    sh(other.path(), &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "theirs"]);
+    sh(other.path(), &["push", "-q"]);
+    fs::write(r.join("a.txt"), "mine\n").unwrap();
+    fs::write(r.join("b.txt"), "staged\n").unwrap();
+    sh(r, &["add", "b.txt"]);
+    let head = sh(r, &["rev-parse", "HEAD"]);
+    let index = sh(r, &["ls-files", "--stage"]);
+    let state = AppState::new();
+    *state.repo.lock().unwrap() = Some(discover(r).unwrap());
+    fetch_background_impl(&state).unwrap();
+    assert_eq!(sh(r, &["rev-list", "--count", "main..origin/main"]).trim(), "1");
+    assert_eq!(sh(r, &["rev-parse", "HEAD"]), head);
+    assert_eq!(sh(r, &["ls-files", "--stage"]), index);
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "mine\n");
+    assert!(!r.join(".git/FETCH_HEAD").exists());
+    assert!(!state.net_background.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+/// `main` fetches from a remote that never answers.
+fn repo_tracking_a_slow_remote() -> TempDir {
+    let d = repo();
+    let r = d.path();
+    sh(r, &["remote", "add", "slow", "ext::sleep 30"]);
+    sh(r, &["config", "protocol.ext.allow", "always"]);
+    sh(r, &["config", "branch.main.remote", "slow"]);
+    sh(r, &["config", "branch.main.merge", "refs/heads/main"]);
+    d
+}
+
+#[test]
+fn a_background_fetch_skips_while_a_network_command_runs() {
+    let d = repo_tracking_a_slow_remote();
+    let state = std::sync::Arc::new(AppState::new());
+    *state.repo.lock().unwrap() = Some(discover(d.path()).unwrap());
+    let s2 = state.clone();
+    let t = std::thread::spawn(move || run_net(s2.as_ref(), &["fetch", "slow"]));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let start = std::time::Instant::now();
+    fetch_background_impl(state.as_ref()).unwrap();
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    cancel_impl(state.as_ref());
+    assert_eq!(t.join().unwrap().unwrap_err(), AppError::Cancelled);
+}
+
+#[test]
+fn a_network_command_stops_a_background_fetch_and_runs() {
+    let d = repo_tracking_a_slow_remote();
+    let state = std::sync::Arc::new(AppState::new());
+    *state.repo.lock().unwrap() = Some(discover(d.path()).unwrap());
+    let s2 = state.clone();
+    let t = std::thread::spawn(move || fetch_background_impl(s2.as_ref()));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let start = std::time::Instant::now();
+    run_net(state.as_ref(), &["--version"]).unwrap();
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(t.join().unwrap(), Ok(()));
+}
+
+#[test]
+fn cancel_frees_a_network_command_waiting_on_a_background_fetch_that_cannot_exit() {
+    let d = repo();
+    let state = std::sync::Arc::new(AppState::new());
+    *state.repo.lock().unwrap() = Some(discover(d.path()).unwrap());
+    // the lock held by a background fetch with no git to signal
+    let stuck = state.net_lock.lock().unwrap();
+    state.net_background.store(true, std::sync::atomic::Ordering::SeqCst);
+    let s2 = state.clone();
+    let t = std::thread::spawn(move || run_net(s2.as_ref(), &["--version"]));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(fetch_background_impl(state.as_ref()).is_ok());
+    cancel_impl(state.as_ref());
+    assert_eq!(t.join().unwrap().unwrap_err(), AppError::Cancelled);
+    assert!(!state.net_waiting.load(std::sync::atomic::Ordering::SeqCst));
+    drop(stuck);
+}
+
+#[test]
+fn a_background_fetch_turns_off_every_credential_prompt() {
+    let d = repo();
+    let r = d.path();
+    let out = tempfile::tempdir().unwrap();
+    let env_file = out.path().join("env.txt");
+    // ext:: splits its command on spaces, and "% " is a literal one
+    sh(r, &["remote", "add", "probe", &format!("ext::sh -c env% >% {}", env_file.display())]);
+    sh(r, &["config", "protocol.ext.allow", "always"]);
+    sh(r, &["config", "branch.main.remote", "probe"]);
+    sh(r, &["config", "branch.main.merge", "refs/heads/main"]);
+    let state = AppState::new();
+    *state.repo.lock().unwrap() = Some(discover(r).unwrap());
+    // the probe speaks no protocol, so the fetch itself fails
+    assert!(fetch_background_impl(&state).is_err());
+    let env = fs::read_to_string(&env_file).unwrap();
+    for want in ["GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/usr/bin/false", "SSH_ASKPASS_REQUIRE=never", "GCM_INTERACTIVE=never"] {
+        assert!(env.lines().any(|l| l == want), "{want} is missing from\n{env}");
+    }
 }
 
 #[test]

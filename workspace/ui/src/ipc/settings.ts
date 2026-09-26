@@ -1,9 +1,12 @@
 import { DEFAULT_THEME, type Theme } from '#ui/theme';
 
-export type AiProvider = 'off' | 'claude';
+export const AI_PROVIDERS = ['claude', 'codex', 'opencode'] as const;
+export type AiProvider = 'off' | (typeof AI_PROVIDERS)[number];
 
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
-export type Settings = { 'general.headless-ai-provider': AiProvider; 'appearance.theme': Theme };
+export type Settings = {
+  'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off'; 'appearance.theme': Theme;
+};
 export type SettingKey = keyof Settings;
 
 /** Stored in the settings file too, under `commands.custom`; `repo` is a canonical root, or null for every repo.
@@ -17,4 +20,6 @@ export type CustomCommand = {
  *  goes, so a branch that drops the script for a while does not bring it back. */
 export type HiddenScripts = Record<string, string[]>;
 
-export const DEFAULTS: Settings = { 'general.headless-ai-provider': 'off', 'appearance.theme': DEFAULT_THEME };
+export const DEFAULTS: Settings = {
+  'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'appearance.theme': DEFAULT_THEME,
+};

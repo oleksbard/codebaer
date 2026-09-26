@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Tabs as RT } from 'radix-ui';
+import { SetIcon } from '#features/command-icons';
 import { useApp } from '#kernel/store';
 import { Dialog } from '#ui/Dialog';
+import { InfoTip } from '#ui/InfoTip';
 import { Segmented } from '#ui/Segmented';
 import { SECTIONS, type Option } from './catalog';
 import { CommandsPane } from './CommandSettings';
@@ -9,9 +11,18 @@ import { closeSettings, setSetting } from './settings';
 import { ThemePicker } from './ThemePicker';
 
 function OptionText({ option, id }: { option: Option; id: string }) {
+  const uses = option.uses?.() ?? [];
   return (
     <div className="setting-text">
-      <span className="setting-label" id={`${id}-label`}>{option.label}</span>
+      <div className="setting-head">
+        <span className="setting-label" id={`${id}-label`}>{option.label}</span>
+        {uses.length > 0 && (
+          <InfoTip label={`What uses the ${option.label.replace(/^\w/, (c) => c.toLowerCase())}`}>
+            <p>Used by:</p>
+            <ul>{uses.map((u) => <li key={u.label}><SetIcon id={u.icon} />{u.label}</li>)}</ul>
+          </InfoTip>
+        )}
+      </div>
       <p className="setting-desc" id={`${id}-desc`}>{option.description}</p>
       <code className="setting-key">{option.key}</code>
     </div>
@@ -30,10 +41,12 @@ function OptionRow({ option }: { option: Option }) {
       </div>
     );
   }
+  const off = option.unavailable?.() ?? new Map<string, string>();
+  const items = option.choices.map((c) => ({ ...c, disabled: off.has(c.value), title: off.get(c.value) }));
   return (
     <div className="setting">
       <OptionText option={option} id={id} />
-      <Segmented value={s.settings[option.key]} items={option.choices} {...aria}
+      <Segmented value={s.settings[option.key]} items={items} {...aria}
         onValueChange={(v) => void setSetting(option.key, v)} />
     </div>
   );

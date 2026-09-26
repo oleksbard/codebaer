@@ -24,6 +24,7 @@ await import('#app/bootstrap');
 
 const KEY = 'general.headless-ai-provider';
 const THEME = 'appearance.theme';
+const AUTO_FETCH = 'general.auto-fetch';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
@@ -38,6 +39,7 @@ beforeEach(() => {
   S.palette = null; S.confirm = null; S.prompt = null; S.orphans = null; S.toasts = []; S.sidebarHidden = false;
   S.settings = { ...DEFAULTS };
   S.settingsOpen = false;
+  S.aiInstalled = null;
   disk = { ...DEFAULTS };
   savedCommands = [];
   savedHidden = {};
@@ -50,6 +52,7 @@ beforeEach(() => {
   vi.mocked(git.saveHiddenScripts).mockImplementation((h) => { savedHidden = h; return Promise.resolve(); });
   vi.mocked(git.packageScripts).mockResolvedValue(null);
   vi.mocked(git.commandIcons).mockResolvedValue({});
+  vi.mocked(git.installedAiProviders).mockResolvedValue(['claude', 'codex', 'opencode']);
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<OverlayHost />));
 });
@@ -60,11 +63,14 @@ afterEach(() => {
 });
 
 const dialog = () => document.querySelector<HTMLElement>('.dialog.settings');
-const choice = (label: string) =>
-  [...document.querySelectorAll<HTMLButtonElement>('.settings .seg-item')].find((b) => b.textContent === label)!;
-const pressed = () =>
-  [...document.querySelectorAll<HTMLButtonElement>('.settings .seg-item')]
-    .filter((b) => b.dataset.state === 'on').map((b) => b.textContent);
+/** The segments of one option's row; the AI provider's unless another key is given. */
+const segments = (key: string = KEY) => [
+  ...[...document.querySelectorAll<HTMLElement>('.settings .setting')]
+    .find((r) => r.querySelector('.setting-key')?.textContent === key)
+    ?.querySelectorAll<HTMLButtonElement>('.seg-item') ?? [],
+];
+const choice = (label: string, key?: string) => segments(key).find((b) => b.textContent === label)!;
+const pressed = (key?: string) => segments(key).filter((b) => b.dataset.state === 'on').map((b) => b.textContent);
 
 describe('the catalog', () => {
   it('prefixes every key with its section and offers its default as a choice', () => {
@@ -92,8 +98,47 @@ describe('settings dialog', () => {
     const row = d.querySelector<HTMLElement>('.setting')!;
     expect(row.querySelector('.setting-label')!.textContent).toBe('Headless AI provider');
     expect(row.querySelector('.setting-key')!.textContent).toBe(KEY);
-    expect(row.querySelector('.setting-desc')!.textContent).toMatch(/commit message/i);
+    expect(row.querySelector('.setting-desc')!.textContent).toMatch(/in the background/i);
     expect(pressed()).toEqual(['Off']);
+    expect([...row.querySelectorAll('.seg-item')].map((b) => b.textContent))
+      .toEqual(['Off', 'Claude', 'Codex', 'OpenCode']);
+  });
+
+  it('disables a provider whose CLI is not installed and says why', async () => {
+    vi.mocked(git.installedAiProviders).mockResolvedValue(['claude']);
+    await openSettings();
+    await tick();
+    const state = (label: string) => [choice(label).disabled, choice(label).title];
+    expect(state('Off')).toEqual([false, '']);
+    expect(state('Claude')).toEqual([false, '']);
+    expect(state('Codex')).toEqual([true, 'The codex CLI is not installed']);
+    expect(state('OpenCode')).toEqual([true, 'The opencode CLI is not installed']);
+  });
+
+  it('keeps every provider enabled until the check answers, and asks again on the next opening', async () => {
+    vi.mocked(git.installedAiProviders).mockReturnValue(new Promise(() => {}));
+    await openSettings();
+    await tick();
+    expect(['Off', 'Claude', 'Codex', 'OpenCode'].map((l) => choice(l).disabled)).toEqual([false, false, false, false]);
+    closeSettings();
+    vi.mocked(git.installedAiProviders).mockResolvedValue(['codex']);
+    await openSettings();
+    await tick();
+    expect(git.installedAiProviders).toHaveBeenCalledTimes(2);
+    expect(['Claude', 'Codex'].map((l) => choice(l).disabled)).toEqual([true, false]);
+  });
+
+  it('lists what uses the AI provider, as the features declare it, behind the info button', async () => {
+    await openSettings();
+    await tick();
+    const info = dialog()!.querySelector<HTMLButtonElement>('.setting .info-tip')!;
+    expect(info.getAttribute('aria-label')).toBe('What uses the headless AI provider');
+    expect(document.querySelector('.tip')).toBeNull();
+    info.focus();
+    await tick();
+    expect([...document.querySelectorAll('.tip li')].map((li) => li.textContent)).toEqual([
+      'Writes the commit message from the staged diff', 'Picks an icon for each command in the command menu',
+    ]);
   });
 
   it('tabs from the section list straight to the options, not to the panel around them', async () => {
@@ -115,10 +160,21 @@ describe('settings dialog', () => {
     await tick();
     choice('Claude').click();
     await tick();
-    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ [KEY]: 'claude', [THEME]: 'codebaer' });
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [KEY]: 'claude' });
     expect(disk[KEY]).toBe('claude');
     expect(S.settings[KEY]).toBe('claude');
     expect(pressed()).toEqual(['Claude']);
+  });
+
+  it('offers auto fetch, on by default, and saves turning it off', async () => {
+    await openSettings();
+    await tick();
+    expect(pressed(AUTO_FETCH)).toEqual(['On']);
+    choice('Off', AUTO_FETCH).click();
+    await tick();
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [AUTO_FETCH]: 'off' });
+    expect(pressed(AUTO_FETCH)).toEqual(['Off']);
+    expect(pressed()).toEqual(['Off']);
   });
 
   it('keeps the choice when the pressed item is clicked again', async () => {
@@ -246,7 +302,7 @@ describe('appearance', () => {
     await tick();
     expect(document.documentElement.dataset.theme).toBe('catppuccin-latte');
     expect(localStorage.getItem('codebaer.theme')).toBe('catppuccin-latte');
-    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ [KEY]: 'off', [THEME]: 'catppuccin-latte' });
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [THEME]: 'catppuccin-latte' });
     expect(checked()).toEqual(['Catppuccin Latte']);
   });
 

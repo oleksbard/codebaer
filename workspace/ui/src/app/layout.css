@@ -4,7 +4,7 @@
   height: 100%;
   display: grid;
   grid-template-rows: 38px minmax(0,1fr);
-  grid-template-columns: 56px minmax(0,1fr);
+  grid-template-columns: 72px minmax(0,1fr);
   grid-template-areas: "head head" "act frame";
   background: var(--chrome);
 
@@ -52,10 +52,10 @@
 .brand {
   flex: none;
   padding: 0;
-  margin: 4px 0 14px;
-  border-radius: var(--r-4);
+  margin: 4px 0 16px;
+  border-radius: var(--r-5);
 
-  img { display: block; width: 30px; height: 30px; border-radius: inherit; }
+  img { display: block; width: 36px; height: 36px; border-radius: inherit; }
 }
 
 .tab-icon {

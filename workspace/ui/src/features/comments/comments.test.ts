@@ -89,8 +89,9 @@ describe('which terminals take comments', () => {
       session(3, 'claude', { cwd: '/elsewhere' }),
       session(4, 'claude', { state: { t: 'Exited', code: 1 } }),
       session(5, 'codex'),
+      session(6, 'opencode'),
     ];
-    expect(eligible(all, '/r').map((s) => s.id)).toEqual([2, 5]);
+    expect(eligible(all, '/r').map((s) => s.id)).toEqual([2, 5, 6]);
     expect(eligible(all, null)).toEqual([]);
   });
 
@@ -110,6 +111,9 @@ describe('which terminals take comments', () => {
       "claude 'x'|cat", 'claude "x";ls', 'claude "x"&&python3', 'codex resume && python3', 'codex resume < /dev/null',
       'codex resume --last > log', 'codex resume | tee log', 'codex resume $(foo)', 'claude -r -p "x"',
       'claude --resume --print "x"', "claude $'-p' \"q\"", 'claude "x"python3',
+      'opencode run "fix it"', 'opencode run', 'opencode serve', 'opencode auth login', 'opencode acp', 'opencode web',
+      'opencode -m anthropic/claude run "x"', 'opencode --agent plan run x', 'opencode | tee log', 'opencode < p.txt',
+      'opencode "x"; ls', 'opencode models', 'opencode upgrade', 'opencode ./app run "x"', 'opencode . serve',
     ]) {
       expect([command, takesComments(session(5, 'zsh', running(command)))]).toEqual([command, false]);
     }
@@ -120,6 +124,10 @@ describe('which terminals take comments', () => {
       'FOO="a b" claude', 'claude --append-system-prompt update', 'claude --resume abc', 'codex resume --last',
       'claude --model=opus "fix it"', 'claude -w feat', 'claude --worktree feat', 'claude --from-pr 12',
       'claude --debug api', 'codex resume abc123', 'claude -r', 'claude --resume abc -c',
+      'opencode', 'opencode .', 'opencode ~/projects/app', 'opencode ../app', 'opencode src/app',
+      '/opt/homebrew/bin/opencode', 'opencode -c', 'opencode --continue', 'opencode -s ses_123',
+      'opencode -m anthropic/claude-sonnet', 'opencode --prompt "fix the cart"', 'opencode --agent build .',
+      'opencode attach http://localhost:4096', 'opencode --port 4096 --hostname 127.0.0.1',
     ]) {
       expect([command, takesComments(session(6, 'zsh', running(command)))]).toEqual([command, true]);
     }

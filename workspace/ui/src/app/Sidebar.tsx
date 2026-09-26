@@ -17,7 +17,7 @@ import { setTab } from './actions';
 
 function ChangesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
       aria-hidden="true">
       <circle cx="4.5" cy="3" r="1.75" />
       <circle cx="4.5" cy="13" r="1.75" />
@@ -29,7 +29,7 @@ function ChangesIcon() {
 
 function FilesIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.2"
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
       strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
       <path d="M9.5 1.75V5h3.25" />
@@ -67,6 +67,7 @@ export function ActivityBar() {
     {
       value: 'changes',
       label: unstaged ? `Changes - ${unstaged} to review` : 'Changes',
+      caption: 'Changes',
       icon: (
         <span className="tab-icon">
           <ChangesIcon />
@@ -74,7 +75,7 @@ export function ActivityBar() {
         </span>
       ),
     },
-    { value: 'files', label: 'Files', icon: <FilesIcon /> },
+    { value: 'files', label: 'Files', caption: 'Files', icon: <FilesIcon /> },
   ];
   return (
     <div className="act">

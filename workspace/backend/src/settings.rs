@@ -15,6 +15,16 @@ pub enum AiProvider {
     #[default]
     Off,
     Claude,
+    Codex,
+    Opencode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoFetch {
+    #[default]
+    On,
+    Off,
 }
 
 /// The ids of the frontend's `THEMES` in `workspace/ui/src/ui/theme.ts`; a theme added there needs its variant here.
@@ -49,6 +59,8 @@ pub enum Theme {
 pub struct Settings {
     #[serde(rename = "general.headless-ai-provider")]
     pub headless_ai_provider: AiProvider,
+    #[serde(rename = "general.auto-fetch")]
+    pub auto_fetch: AutoFetch,
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
 }
@@ -124,6 +136,7 @@ fn choice<T: DeserializeOwned + Default>(map: &Map<String, Value>, key: &str) ->
 fn from_file(map: &Map<String, Value>) -> Settings {
     Settings {
         headless_ai_provider: choice(map, "general.headless-ai-provider"),
+        auto_fetch: choice(map, "general.auto-fetch"),
         theme: choice(map, "appearance.theme"),
     }
 }
@@ -311,7 +324,8 @@ mod tests {
         (d, f)
     }
 
-    const CLAUDE: Settings = Settings { headless_ai_provider: AiProvider::Claude, theme: Theme::Codebaer };
+    const CLAUDE: Settings =
+        Settings { headless_ai_provider: AiProvider::Claude, auto_fetch: AutoFetch::On, theme: Theme::Codebaer };
 
     #[test]
     fn a_missing_file_reads_as_the_defaults() {
@@ -336,6 +350,29 @@ mod tests {
     fn a_valid_value_is_read() {
         let (_d, f) = file(r#"{"general.headless-ai-provider": "claude"}"#);
         assert_eq!(read_at(&f), CLAUDE);
+    }
+
+    #[test]
+    fn every_provider_is_read_by_its_lowercase_name() {
+        for (v, want) in [("codex", AiProvider::Codex), ("opencode", AiProvider::Opencode)] {
+            let (_d, f) = file(&format!(r#"{{"general.headless-ai-provider": "{v}"}}"#));
+            assert_eq!(read_at(&f).headless_ai_provider, want, "value {v}");
+        }
+        for v in ["OpenCode", "open-code", "open_code"] {
+            let (_d, f) = file(&format!(r#"{{"general.headless-ai-provider": "{v}"}}"#));
+            assert_eq!(read_at(&f), Settings::default(), "value {v}");
+        }
+    }
+
+    #[test]
+    fn auto_fetch_is_on_unless_the_file_says_off() {
+        assert_eq!(Settings::default().auto_fetch, AutoFetch::On);
+        let (_d, f) = file(r#"{"general.auto-fetch": "off"}"#);
+        assert_eq!(read_at(&f), Settings { auto_fetch: AutoFetch::Off, ..Settings::default() });
+        for v in [r#""OFF""#, "false", "0", "null"] {
+            let (_d, f) = file(&format!(r#"{{"general.auto-fetch": {v}}}"#));
+            assert_eq!(read_at(&f).auto_fetch, AutoFetch::On, "value {v}");
+        }
     }
 
     #[test]
@@ -377,7 +414,10 @@ mod tests {
         let f = d.path().join("settings-codebaer.json");
         write_at(&f, &CLAUDE).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(on_disk, serde_json::json!({ "general.headless-ai-provider": "claude", "appearance.theme": "codebaer" }));
+        let want = serde_json::json!({
+            "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "appearance.theme": "codebaer",
+        });
+        assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, ..CLAUDE };
         write_at(&f, &rose).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
@@ -399,7 +439,8 @@ mod tests {
         write_at(&f, &CLAUDE).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
-            "general.future": [1, 2], "general.headless-ai-provider": "claude", "appearance.theme": "codebaer",
+            "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
+            "appearance.theme": "codebaer",
         });
         assert_eq!(on_disk, want);
     }
@@ -596,7 +637,9 @@ mod tests {
     #[test]
     fn the_command_argument_is_strict() {
         use serde_json::json;
-        let with = |ai: &str, theme: &str| json!({ "general.headless-ai-provider": ai, "appearance.theme": theme });
+        let with = |ai: &str, theme: &str| {
+            json!({ "general.headless-ai-provider": ai, "general.auto-fetch": "on", "appearance.theme": theme })
+        };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());
         assert!(serde_json::from_value::<Settings>(with("claude", "solarised")).is_err());
         assert!(serde_json::from_value::<Settings>(json!({ "general.headless-ai-provider": "claude" })).is_err());

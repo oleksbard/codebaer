@@ -14,7 +14,7 @@ use super::shells::{self, Shell};
 use crate::AppError;
 
 /// Commands worth offering in the new-terminal menu when the login shell can find them.
-const PROBE: [&str; 6] = ["claude", "codex", "node", "python3", "bun", "deno"];
+const PROBE: [&str; 7] = ["claude", "codex", "opencode", "node", "python3", "bun", "deno"];
 /// Input is split at this size. A paste is one `onData` string of any length, and a frame
 /// over `proto::MAX_FRAME` would be refused by the far side and take the connection with it.
 const INPUT_CHUNK: usize = 256 * 1024;
@@ -53,7 +53,7 @@ pub(super) fn sock_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, AppEr
     Ok(dir.join(format!("ptyd-{}.sock", proto::PROTO)))
 }
 
-fn executable(p: &std::path::Path) -> bool {
+pub(crate) fn executable(p: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }

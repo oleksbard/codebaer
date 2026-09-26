@@ -77,7 +77,7 @@
       ] }] }
     },
     {
-      "files": ["src/mock/backend.test.ts"],
+      "files": ["src/mock/backend.test.ts", "src/app/features.test.ts"],
       "rules": { "no-restricted-imports": "off" }
     },
     { "files": ["e2e/**"], "rules": { "no-restricted-imports": "off" } }

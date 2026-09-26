@@ -1,5 +1,5 @@
 import type { Info } from '#ipc/terminal';
-import { agentOf, isExited, outsideRepo } from '#features/terminals';
+import { agentNamed, agentOf, isExited, outsideRepo, type Agent } from '#features/terminals';
 import { baseName } from '#kernel/paths';
 import type { DeepReadonly } from '#kernel/store';
 
@@ -111,32 +111,39 @@ export function sanitize(text: string): string {
 export const pastePayload = (text: string): string =>
   `\x1b[200~${sanitize(text).replace(/\n/g, '\r')}\x1b[201~`;
 
-type Cli = 'claude' | 'codex';
-
 /** Bare words that are the interactive interface itself. Every other bare word is taken for a
  *  subcommand, which runs once without reading the terminal, so the shell under it would read the
  *  paste and its Enter once it ends. A list of the one-shot subcommands would go stale unsafely. */
-const INTERACTIVE: Record<Cli, ReadonlySet<string>> = { claude: new Set(), codex: new Set(['resume']) };
+const INTERACTIVE: Record<Agent, ReadonlySet<string>> = {
+  claude: new Set(), codex: new Set(['resume']), opencode: new Set(['attach']),
+};
+
+/** opencode's interface takes a project folder. A word with a slash in it cannot be a subcommand, and the words
+ *  after it are still checked. */
+const isFolder = (cli: Agent, w: string): boolean =>
+  cli === 'opencode' && (w.includes('/') || w === '.' || w === '..' || w === '~');
 
 /** Flags whose value comes next. A value-taking flag missing here makes its value read as a
  *  subcommand, which hides the session rather than offering a wrong one. */
-const VALUE_FLAGS: Record<Cli, ReadonlySet<string>> = {
+const VALUE_FLAGS: Record<Agent, ReadonlySet<string>> = {
   claude: new Set(['--add-dir', '--plugin-dir', '--model', '--fallback-model', '--permission-mode', '--settings',
     '--setting-sources', '--mcp-config', '--append-system-prompt', '--system-prompt', '--session-id', '--resume', '-r',
     '--agent', '--agents', '--allowedTools', '--allowed-tools', '--disallowedTools', '--disallowed-tools', '--tools',
     '--betas', '-w', '--worktree', '--from-pr', '--debug']),
   codex: new Set(['-c', '--config', '-p', '--profile', '-m', '--model', '-i', '--image', '-s', '--sandbox', '-a',
     '--ask-for-approval', '-C', '--cd', '--add-dir', '--enable', '--disable', '--local-provider']),
+  opencode: new Set(['-m', '--model', '-s', '--session', '--prompt', '--agent', '--port', '--hostname',
+    '--log-level']),
 };
 
 /** The agent a shell command line runs interactively, or null. A quoted word is the prompt. */
-function interactiveCli(command: string): Cli | null {
+function interactiveCli(command: string): Agent | null {
   const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
   let i = 0;
   while (i < words.length && /^[A-Za-z_]\w*=/.test(words[i]!)) i++;
   const word = words[i];
-  const cli = word === undefined ? undefined : baseName(word).toLowerCase();
-  if (cli !== 'claude' && cli !== 'codex') return null;
+  const cli = word === undefined ? null : agentNamed(baseName(word).toLowerCase());
+  if (cli === null) return null;
   const bare = (w: string | undefined) => w?.replace(/["']/g, '');
   let resumed = false;
   for (let k = i + 1; k < words.length; k++) {
@@ -152,6 +159,7 @@ function interactiveCli(command: string): Cli | null {
       // a value never starts with a dash, since claude's --resume takes one only optionally
       if (VALUE_FLAGS[cli].has(a) && !(bare(words[k + 1]) ?? '-').startsWith('-')) k++;
     } else if (!/^(?:"[^"]*"|'[^']*')$/.test(word) && !resumed) {
+      if (isFolder(cli, a)) continue;
       if (!INTERACTIVE[cli].has(a)) return null;
       resumed = true;
     }

@@ -1,4 +1,4 @@
-import { DEFAULTS, type CustomCommand, type HiddenScripts, type Settings } from '#ipc/settings';
+import { DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings } from '#ipc/settings';
 
 declare module '#kernel/store' {
   interface State {
@@ -10,9 +10,12 @@ declare module '#kernel/store' {
     commands: CustomCommand[];
     /** Every repo's, read and saved with the commands. */
     hiddenScripts: HiddenScripts;
+    /** The providers whose CLI is installed, checked on each opening of Settings; null before the first answer. */
+    aiInstalled: AiProvider[] | null;
   }
 }
 
 export const settingsState = () => ({
   settings: { ...DEFAULTS }, settingsOpen: false, settingsSection: 'general', commands: [], hiddenScripts: {},
+  aiInstalled: null,
 });

@@ -52,7 +52,8 @@ export const terminals = defineFeature({
 
 export { Terminals, TerminalRail } from './Terminals';
 export {
-  agentOf, homeFrom, isExited, isTask, outsideRepo, shortCwd, statusLabel, termLabels, terminalsOf,
+  agentNamed, agentOf, homeFrom, isExited, isTask, outsideRepo, shortCwd, statusLabel, termLabels, terminalsOf,
+  type Agent,
 } from './status';
 export {
   closeTerminal, connectTerminals, killTerminal, onTermEvent, selectTerminal, showTerminals, taskEvents,

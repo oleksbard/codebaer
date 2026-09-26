@@ -56,7 +56,7 @@ export function homeFrom(cwd: string): string | null {
   return user ? `${HOME_ROOT}${user}` : null;
 }
 
-const AGENTS = ['claude', 'codex'] as const;
+const AGENTS = ['claude', 'codex', 'opencode'] as const;
 export type Agent = (typeof AGENTS)[number];
 
 export const agentNamed = (name: string): Agent | null => AGENTS.find((a) => a === name) ?? null;

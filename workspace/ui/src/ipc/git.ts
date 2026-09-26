@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CustomCommand, HiddenScripts, Settings } from './settings';
+import type { AiProvider, CustomCommand, HiddenScripts, Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
 export type Rev = 'index' | 'head';
@@ -106,12 +106,16 @@ export const git = {
   /** One id per item, in order; null where the AI named no icon from the sets. */
   aiCommandIcons: (items: IconItem[], sets: IconSet[]) =>
     invoke<(string | null)[]>('ai_command_icons', { items, sets }),
+  /** Every provider but off whose CLI the backend can find; it asks a login shell, so it can take a second. */
+  installedAiProviders: () => invoke<AiProvider[]>('installed_ai_providers'),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),
   push: () => invoke<void>('push'),
   pull: () => invoke<void>('pull'),
   fetch: () => invoke<void>('fetch'),
+  /** Skips, and resolves, while a push, pull or fetch runs or the setting is off. */
+  fetchBackground: () => invoke<void>('fetch_background'),
   cancel: () => invoke<void>('cancel'),
   stashPush: () => invoke<void>('stash_push'),
   stashPop: () => invoke<void>('stash_pop'),

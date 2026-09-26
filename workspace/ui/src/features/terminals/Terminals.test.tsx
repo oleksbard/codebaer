@@ -33,7 +33,8 @@ afterEach(() => {
 });
 
 const button = (id: number): HTMLButtonElement =>
-  [...document.querySelectorAll<HTMLButtonElement>('.rail-b')].find((b) => b.textContent.includes(String(id)))!;
+  [...document.querySelectorAll<HTMLButtonElement>('.rail-b')]
+    .find((b) => b.querySelector('.num')?.textContent === String(id))!;
 
 it('marks only the session that left the repo, and says so in its label', () => {
   S.terminals = [session(1, '/Users/me/projects/x/src'), session(2, '/Users/me/other')];
