@@ -13,8 +13,6 @@ function setup(mouseTrackingMode: Mode, type: 'normal' | 'alternate' = 'normal')
   const screen = document.createElement('div');
   screen.className = 'xterm-screen';
   Object.defineProperty(screen, 'offsetHeight', { value: CELL * ROWS });
-  const target = document.createElement('canvas');
-  screen.append(target);
   element.append(screen);
   document.body.append(element);
   const handler = wheelHandler({ modes: { mouseTrackingMode }, buffer: { active: { type } }, rows: ROWS, element });
@@ -25,7 +23,8 @@ function setup(mouseTrackingMode: Mode, type: 'normal' | 'alternate' = 'normal')
   });
   const wheel = (deltaY: number, init: WheelEventInit = {}): WheelEvent => {
     const e = new WheelEvent('wheel', { deltaY, clientX: 30, clientY: 40, bubbles: true, cancelable: true, ...init });
-    target.dispatchEvent(e);
+    // the DOM renderer's rows take no pointer events, so the wheel lands on the screen itself
+    screen.dispatchEvent(e);
     return e;
   };
   return { processed, wheel };

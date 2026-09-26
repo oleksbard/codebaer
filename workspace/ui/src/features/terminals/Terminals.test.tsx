@@ -23,6 +23,7 @@ beforeEach(() => {
   S.activeTerm = null;
   S.termAttention = new Set();
   S.root = '/Users/me/projects/x';
+  S.termMenu = null;
   root = createRoot(document.getElementById('host')!);
 });
 
@@ -77,3 +78,21 @@ it('gives a task no button until it is moved to the rail', () => {
   expect([...document.querySelectorAll('.rail-b:not(.new)')].map((b) => b.getAttribute('aria-label')))
     .toEqual(['zsh:1 · ~/projects/x']);
 });
+
+it('gives each new-terminal entry an icon: an agent its own mark, a runtime its language, anything else a terminal',
+  async () => {
+    S.terminals = [];
+    S.termMenu = {
+      shells: [{ path: '/bin/zsh', name: 'zsh' }], default: '/bin/zsh', commands: ['claude', 'node', 'bun'],
+    };
+    flushSync(() => root.render(<TerminalRail />));
+    document.querySelector('.rail-b.new')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+
+    const icons = [...document.querySelectorAll('.term-menu .prog')].map((p) => {
+      if (p.classList.contains('agent')) return p.className;
+      if (p.querySelector('.ficon svg')) return 'language';
+      return p.querySelector(':scope > svg rect') ? 'terminal' : 'none';
+    });
+    expect(icons).toEqual(['terminal', 'prog agent claude', 'language', 'terminal']);
+  });

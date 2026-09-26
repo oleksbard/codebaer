@@ -6,9 +6,12 @@ import { baseName } from '#kernel/paths';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { ContextMenu } from '#ui/ContextMenu';
+import { FileIcon } from '#ui/FileIcon';
 import { Kbd } from '#ui/Kbd';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './sessions';
-import { agentOf, awayLabel, homeFrom, isExited, statusLabel, termLabels, terminalsOf, type Agent } from './status';
+import {
+  agentNamed, agentOf, awayLabel, homeFrom, isExited, statusLabel, termLabels, terminalsOf, type Agent,
+} from './status';
 import * as term from './xterm';
 
 const STILL = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
@@ -39,6 +42,29 @@ function CodexIcon() {
 }
 
 const ICONS: Record<Agent, (p: { busy: boolean }) => ReactElement> = { claude: ClaudeMark, codex: CodexIcon };
+
+function TerminalIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" />
+      <path d="M4.5 6.25 6.5 8l-2 1.75M8.25 9.75h3.25" />
+    </svg>
+  );
+}
+
+/** A runtime wears the Seti icon its source files get in the Files tree. */
+const LANGS = new Map([['node', 'index.js'], ['python3', 'main.py']]);
+
+function ProgramIcon({ name }: { name: string }) {
+  const agent = agentNamed(name);
+  if (agent) {
+    const Icon = ICONS[agent];
+    return <span className={`prog agent ${agent}`}><Icon busy={false} /></span>;
+  }
+  const lang = LANGS.get(name);
+  return <span className="prog">{lang ? <FileIcon name={lang} /> : <TerminalIcon />}</span>;
+}
 
 function useTick(active: boolean, ms: number): number {
   const [n, set] = useState(0);
@@ -182,6 +208,7 @@ function NewMenu() {
               className="menu-item"
               onSelect={() => void newTerminal({ t: 'Shell', path: sh.path })}
             >
+              <ProgramIcon name={sh.name} />
               {sh.name}
               {sh.path === m?.default && <span className="detail">default <Kbd>{keyLabel('terminals.new')}</Kbd></span>}
             </DropdownMenu.Item>
@@ -193,6 +220,7 @@ function NewMenu() {
               className="menu-item"
               onSelect={() => void newTerminal({ t: 'Command', argv0: c })}
             >
+              <ProgramIcon name={c} />
               {c}
             </DropdownMenu.Item>
           ))}

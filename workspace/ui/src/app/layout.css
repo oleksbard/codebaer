@@ -102,7 +102,7 @@
   padding: 0 84px;
 }
 
-.cmd-field {
+.palette-field {
   grid-column: 2;
   display: flex;
   align-items: center;
