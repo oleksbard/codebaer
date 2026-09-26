@@ -1,0 +1,92 @@
+.pal input,
+.prompt input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: var(--fs-4) var(--ui);
+  padding: 12px 40px 12px 14px;
+  outline: none;
+}
+
+.pal .dialog-x,
+.prompt .dialog-x { top: 11px; }
+
+.prompt {
+  width: min(440px, calc(100vw - 32px));
+
+  .dialog-actions { padding: 12px 14px; }
+}
+
+/* Top-anchored, not centered: the list shrinks as you type and a centered box would jump. */
+.pal {
+  margin-top: 10vh;
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    max-height: min(420px,60vh);
+    overflow: auto;
+  }
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 10px;
+    border-radius: var(--r-3);
+    cursor: pointer;
+
+    & + li { margin-top: 2px; }
+
+    &.on,
+    &:hover { background: var(--sel); }
+
+    .k { color: var(--muted); font: var(--fs-1) var(--mono); }
+  }
+
+  .desc { color: var(--faint); font-size: var(--fs-2); }
+}
+
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 30;
+  max-width: min(420px,calc(100vw - 32px));
+}
+
+.toast {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-4);
+  padding: 9px 12px;
+  box-shadow: var(--shadow);
+  font-size: var(--fs-2);
+  cursor: pointer;
+  white-space: pre-wrap;
+
+  &.err { border-left-color: var(--del); font: var(--fs-2)/1.5 var(--mono); }
+  &.warn { border-left-color: var(--warn); }
+  &.ok { border-left-color: var(--add); }
+}
+
+.chord {
+  position: fixed;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-3);
+  padding: 4px 10px;
+  font-size: var(--fs-2);
+  color: var(--muted);
+  z-index: 30;
+}

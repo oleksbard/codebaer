@@ -1,0 +1,20 @@
+.cm-editor {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ties @codemirror/language's own two-class base theme rule; StyleModule injects that one at low
+   priority, so the tie breaks this way round */
+.cm-editor .cm-foldPlaceholder {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  color: var(--muted);
+  font-size: var(--fs-2);
+  padding: 0 8px;
+  margin: 0 2px;
+}
+
+.cm-editor .cm-scroller {
+  overflow: auto;
+}

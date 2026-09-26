@@ -1,0 +1,140 @@
+/* two layers: the chrome (header, activity bar) is one flat surface, and the sidebar and
+   main area float on it together as the rounded .frame */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 38px minmax(0,1fr);
+  grid-template-columns: 56px minmax(0,1fr);
+  grid-template-areas: "head head" "act frame";
+  background: var(--chrome);
+
+  &.nosidebar { grid-template-columns: 0 minmax(0,1fr); }
+}
+
+.app.nosidebar .act,
+.app.nosidebar .side,
+.app.nosidebar .gutter {
+  display: none;
+}
+
+.frame {
+  grid-area: frame;
+  display: grid;
+  /* the terminals layout re-templates the same columns, so the width lives here only */
+  grid-template-columns: min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);
+  grid-template-rows: minmax(0,1fr);
+  grid-template-areas: "side main";
+  min-width: 0;
+  min-height: 0;
+  margin: 0 6px 6px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-frame);
+  background: var(--bg);
+  /* the editor and the terminal paint square to their edges; this is what rounds them */
+  overflow: hidden;
+}
+
+.app.nosidebar .frame {
+  grid-template-columns: 0 minmax(0,1fr);
+  margin-left: 6px;
+}
+
+.act {
+  grid-area: act;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* the app menu, sitting where a title bar would name the app */
+.brand {
+  flex: none;
+  padding: 0;
+  margin: 4px 0 14px;
+  border-radius: var(--r-4);
+
+  img { display: block; width: 30px; height: 30px; border-radius: inherit; }
+}
+
+.tab-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/* unreviewed files; the tab's label carries the same number for a screen reader */
+.tab-count {
+  position: absolute;
+  top: -6px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 10px/16px var(--ui);
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--chrome);
+}
+
+.gutter {
+  grid-area: side;
+  justify-self: end;
+  width: 7px;
+  margin-right: -3px;
+  cursor: col-resize;
+  z-index: 1;
+
+  &:hover { background: var(--accent-soft); }
+}
+
+.head {
+  grid-area: head;
+  display: grid;
+  /* equal outer columns keep the field centred however long the repo name gets */
+  grid-template-columns: minmax(0,1fr) minmax(0,560px) minmax(0,1fr);
+  column-gap: 12px;
+  align-items: center;
+  /* clears the macOS window buttons, which sit over this row; mirrored so the field stays centred */
+  padding: 0 84px;
+}
+
+.cmd-field {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-3);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--faint);
+  font-size: var(--fs-2);
+
+  .txt { flex: 1; text-align: left; }
+  kbd { border-color: transparent; }
+
+  &:hover { background: var(--panel2); color: var(--muted); }
+}
+
+.main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.side {
+  grid-area: side;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

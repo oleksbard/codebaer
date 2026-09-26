@@ -1,16 +1,16 @@
 import type { CSSProperties } from 'react';
-import { Main } from './Main';
-import { Terminals } from './Terminals';
-import { Overlays } from './Overlays';
+import { ReviewPane } from '#features/review';
+import { Terminals } from '#features/terminals';
+import { OverlayHost } from './OverlayHost';
 import { Gutter, Header } from './Shell';
 import { ActivityBar, Sidebar } from './Sidebar';
-import { S, useApp } from './store';
+import { useApp } from '#kernel/store';
 
 export function App() {
-  useApp();
-  if (S.fatal) return <div className="fatal">CodeBär needs git on this machine. {S.fatal}</div>;
-  const style = S.sideWidth ? ({ '--side-w': `${S.sideWidth}px` } as CSSProperties) : undefined;
-  const cls = `app${S.sidebarHidden ? ' nosidebar' : ''}${S.tab === 'terminals' ? ' terminals' : ''}`;
+  const s = useApp();
+  if (s.fatal) return <div className="fatal">CodeBär needs git on this machine. {s.fatal}</div>;
+  const style = s.sideWidth ? ({ '--side-w': `${s.sideWidth}px` } as CSSProperties) : undefined;
+  const cls = `app${s.sidebarHidden ? ' nosidebar' : ''}${s.tab === 'terminals' ? ' terminals' : ''}`;
   return (
     <>
       <div className={cls} id="shell" style={style}>
@@ -19,10 +19,10 @@ export function App() {
         <div className="frame">
           <Sidebar />
           <Gutter />
-          {S.tab === 'terminals' ? <Terminals /> : <Main />}
+          {s.tab === 'terminals' ? <Terminals /> : <ReviewPane />}
         </div>
       </div>
-      <Overlays />
+      <OverlayHost />
     </>
   );
 }

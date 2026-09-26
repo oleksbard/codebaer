@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
-import type { AppError, Scripts, Status } from '../git';
-import type { CustomCommand } from '../settings';
-import type { Info, Menu, Orphans, ServerMsg, SpawnKind, Task, TermState } from '../terminal';
+import type { AppError, Scripts, Status } from '#ipc/git';
+import type { CustomCommand } from '#ipc/settings';
+import type { Info, Menu, Orphans, ServerMsg, SpawnKind, Task, TermState } from '#ipc/terminal';
 
 /** `id` is handed out in order; `transcript` is what the host's ring holds, replayed on subscribe. */
 export type SessionSeed = Omit<Info, 'id' | 'cwd'> & { cwd?: string; transcript?: string };
@@ -30,7 +30,7 @@ const enc = new TextEncoder();
 const color = (code: number, text: string): string => `\x1b[${code}m${text}\x1b[0m`;
 const running = (command: string | null): TermState => ({ t: 'Running', command, since_ms: Date.now() });
 
-/** The frame `route()` in terminal.ts reads: a little-endian session id, then the bytes. */
+/** The frame `route()` in features/terminals/xterm.ts reads: a little-endian session id, then the bytes. */
 function frame(id: number, bytes: Uint8Array): ArrayBuffer {
   const buf = new ArrayBuffer(4 + bytes.length);
   new DataView(buf).setUint32(0, id, true);

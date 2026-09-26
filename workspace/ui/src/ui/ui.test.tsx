@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick } from '../test-setup';
+import { tick } from '#test-setup';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
 import { Kbd } from './Kbd';
@@ -14,6 +14,7 @@ import { Dialog } from './Dialog';
 import { AlertDialog } from './AlertDialog';
 import { ContextMenu } from './ContextMenu';
 import { FileIcon } from './FileIcon';
+import { DiffStat, diffBlocks } from './DiffStat';
 
 const roots: Root[] = [];
 function mount(el: ReactElement): HTMLElement {
@@ -31,6 +32,23 @@ afterEach(() => {
 });
 
 describe('primitives', () => {
+  it('diffBlocks splits five squares by share, lights one per line under five, keeps both sides', () => {
+    expect(diffBlocks(0, 0)).toEqual(['none', 'none', 'none', 'none', 'none']);
+    expect(diffBlocks(2, 1)).toEqual(['add', 'add', 'del', 'none', 'none']);
+    expect(diffBlocks(30, 10)).toEqual(['add', 'add', 'add', 'add', 'del']);
+    expect(diffBlocks(1000, 1)).toEqual(['add', 'add', 'add', 'add', 'del']);
+    expect(diffBlocks(0, 7)).toEqual(['del', 'del', 'del', 'del', 'del']);
+  });
+
+  it('DiffStat names the target counts for assistive tech and draws the squares', () => {
+    const h = mount(<DiffStat added={1234} removed={5} />);
+    const stat = h.querySelector('.diffstat')!;
+    expect(stat.getAttribute('role')).toBe('img');
+    expect(stat.getAttribute('aria-label')).toBe('1,234 lines added, 5 removed');
+    expect([...stat.querySelectorAll('.blk')].map((b) => b.className)).toEqual(
+      ['blk add', 'blk add', 'blk add', 'blk add', 'blk del']);
+  });
+
   it('Button variants map to classes and forward native props', () => {
     const h = mount(<><Button>a</Button><Button variant="primary" disabled>b</Button>
       <Button variant="ghost">c</Button></>);

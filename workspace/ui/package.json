@@ -2,6 +2,19 @@
   "name": "@codebaer/ui",
   "private": true,
   "type": "module",
+  "imports": {
+    "#ui/*": "./src/ui/*.js",
+    "#editor/*": "./src/editor/*.js",
+    "#ipc/*": "./src/ipc/*.js",
+    "#kernel/*": "./src/kernel/*.js",
+    "#core/*": "./src/core/*.js",
+    "#features/*/state": "./src/features/*/state.js",
+    "#features/*": "./src/features/*/index.js",
+    "#app/*": "./src/app/*.js",
+    "#main": "./src/main.js",
+    "#test-setup": "./src/test-setup.js",
+    "#test-app": "./src/test-app.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

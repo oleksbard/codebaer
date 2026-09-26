@@ -1,0 +1,15 @@
+.st {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  /* the git letter stays in the DOM, unrendered, so the dot is not colour-only to a reader */
+  font-size: 0;
+}
+
+.empty-sec {
+  padding: 6px 16px 10px;
+  color: var(--faint);
+  font-size: var(--fs-2);
+}

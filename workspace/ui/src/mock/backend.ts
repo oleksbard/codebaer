@@ -1,10 +1,10 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import type { AppError, Blob, BlameLine, Branch, Eol, FileText, Listing, Opened, Recent, Rev, Scripts, StageResult,
-  Status } from '../git';
-import { DEFAULTS, type CustomCommand, type Settings } from '../settings';
-import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '../terminal';
-import { isTheme } from '../ui/theme';
+import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, Listing, Opened, Recent, Rev, Scripts,
+  StageResult, Status } from '#ipc/git';
+import { DEFAULTS, type CustomCommand, type Settings } from '#ipc/settings';
+import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
+import { isTheme } from '#ui/theme';
 import { createPty } from './pty';
 import { createRepo, type Snapshot } from './repo';
 import type { Scenario } from './scenarios';
@@ -174,6 +174,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       return { root: sc.root, label: label(sc.root), title: title() };
     },
     status: (): Status => repo.status(),
+    diff_stat: (): DiffStat => repo.diffStat(),
     read_file: ({ path }: { path: string }): FileText => repo.readFile(path),
     write_file: ({ path, text, eol, expected }: { path: string; text: string; eol: Eol; expected: string | null }) =>
       mutate(() => repo.writeFile(path, text, eol, expected)),

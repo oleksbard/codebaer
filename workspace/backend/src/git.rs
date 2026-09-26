@@ -3,7 +3,9 @@ use crate::eol::Eol;
 use crate::error::AppError;
 use crate::status::{self, Status};
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::io::{Read, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
@@ -410,6 +412,60 @@ pub fn status(state: State<AppState>) -> Result<Status, AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     status_impl(&root)
+}
+
+#[derive(Debug, Default, Serialize, PartialEq)]
+pub struct DiffStat {
+    pub added: u64,
+    pub removed: u64,
+}
+
+/// Sums `diff --numstat -z --no-renames`, where every record is `added\tremoved\tpath`.
+/// A binary file reports `-\t-` and counts nothing.
+pub fn parse_numstat(out: &[u8]) -> DiffStat {
+    let num = |c: Option<&[u8]>| c.and_then(|c| std::str::from_utf8(c).ok()?.parse::<u64>().ok());
+    let mut stat = DiffStat::default();
+    for rec in out.split(|&b| b == 0) {
+        let mut cols = rec.splitn(3, |&b| b == b'\t');
+        if let (Some(a), Some(r)) = (num(cols.next()), num(cols.next())) {
+            stat.added += a;
+            stat.removed += r;
+        }
+    }
+    stat
+}
+
+/// The lines `--numstat` would count for an untracked file.
+// ponytail: a file over MAX_BYTES counts as zero instead of being read on every refresh
+fn untracked_lines(full: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(full) else { return 0 };
+    if !meta.is_file() || meta.len() > MAX_BYTES {
+        return 0;
+    }
+    let Ok(bytes) = std::fs::read(full) else { return 0 };
+    if bytes.iter().take(8000).any(|&b| b == 0) {
+        return 0;
+    }
+    let newlines = bytes.iter().filter(|&&b| b == b'\n').count() as u64;
+    newlines + u64::from(bytes.last().is_some_and(|&b| b != b'\n'))
+}
+
+/// Lines added and removed across the review queue: index to working tree, plus untracked files.
+pub fn diff_stat_impl(root: &Path) -> Result<DiffStat, AppError> {
+    let tracked = run(root, &["diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv"], None, Some(LOCAL))?;
+    let mut stat = parse_numstat(&tracked.stdout);
+    let others = run(root, &["ls-files", "--others", "--exclude-standard", "-z"], None, Some(LOCAL))?;
+    for rel in others.stdout.split(|&b| b == 0).filter(|p| !p.is_empty()) {
+        stat.added += untracked_lines(&root.join(OsStr::from_bytes(rel)));
+    }
+    Ok(stat)
+}
+
+#[tauri::command(async)]
+pub fn diff_stat(state: State<AppState>) -> Result<DiffStat, AppError> {
+    let root = state.root()?;
+    let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    diff_stat_impl(&root)
 }
 
 pub const MAX_BYTES: u64 = 2 * 1024 * 1024;

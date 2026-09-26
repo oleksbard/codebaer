@@ -32,3 +32,14 @@ test('accepting the whole file stages every hunk', async ({ page, open }) => {
   const cart = (await mock.state()).files['src/cart.ts']!;
   expect(cart.index).toBe(cart.work);
 });
+
+test('with no file open the view counts the lines left to review and follows the agent', async ({ page, open }) => {
+  const mock = await open();
+  await page.getByRole('button', { name: 'Close file' }).click();
+  await mock.idle();
+  await expect(page.getByRole('img', { name: '12 lines added, 12 removed' })).toBeVisible();
+  await mock.agentEdit('src/new.ts', 'one\ntwo\n');
+  await mock.idle();
+  await expect(page.getByRole('img', { name: '14 lines added, 12 removed' })).toBeVisible();
+  await expect(page.locator('.diffstat .n.add')).toHaveText('+14');
+});

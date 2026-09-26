@@ -1,4 +1,6 @@
-import type { AppError, BlameLine, Blob, Branch, Eol, FileEntry, FileText, Listing, StageResult, Status } from '../git';
+import type {
+  AppError, BlameLine, Blob, Branch, DiffStat, Eol, FileEntry, FileText, Listing, StageResult, Status,
+} from '#ipc/git';
 
 export type Version = { text: string; eol: Eol };
 /** null is absent at that stage. `kind` makes every read of the path fail the way the real one does. */
@@ -53,6 +55,21 @@ function gitError(detail: string): never {
 const same = (a: Version | null, b: Version | null): boolean =>
   a === b || (a !== null && b !== null && a.text === b.text && a.eol === b.eol);
 const oidOfVersion = (v: Version): string => oidOf(`${v.eol}\0${v.text}`);
+
+/** Lines as `--numstat` counts them: an unterminated last line is a line of its own. */
+const linesOf = (v: Version | null): string[] => (v ? v.text.match(/[^\n]*\n|[^\n]+$/g) ?? [] : []);
+
+/** `--numstat` for one file, from a longest common subsequence of lines. */
+function lineStat(a: string[], b: string[]): DiffStat {
+  let prev = Array.from({ length: b.length + 1 }, () => 0);
+  for (const x of a) {
+    const row = [0];
+    b.forEach((y, j) => row.push(x === y ? prev[j]! + 1 : Math.max(prev[j + 1]!, row[j]!)));
+    prev = row;
+  }
+  const common = prev[b.length]!;
+  return { added: b.length - common, removed: a.length - common };
+}
 
 const ZERO = '0'.repeat(40);
 const AUTHORS = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds'];
@@ -129,6 +146,19 @@ export function createRepo(seed: RepoSeed) {
     },
 
     readFile,
+
+    /** `diff_stat_impl`: a binary file and an untracked one over the size cap count nothing, and an
+     *  unmerged path is diffed against ours, which is HEAD. */
+    diffStat(): DiffStat {
+      const sum = { added: 0, removed: 0 };
+      for (const e of files.values()) {
+        if (e.kind === 'binary' || (e.kind === 'large' && !e.index)) continue;
+        const d = lineStat(linesOf(e.conflicted ? e.head : e.index), linesOf(e.work));
+        sum.added += d.added;
+        sum.removed += d.removed;
+      }
+      return sum;
+    },
 
     readBlob(rev: 'index' | 'head', path: string): Blob {
       const e = files.get(path);

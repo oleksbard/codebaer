@@ -1,0 +1,99 @@
+/* how a task ended; `run` comes from terminal.css */
+.term-dot {
+  &.ok { background: var(--add); }
+  &.warn { background: var(--del); }
+  &.info { background: var(--faint); }
+}
+
+.task-menu {
+  max-width: 440px;
+
+  .term-dot { align-self: center; margin-right: 8px; }
+  .detail { max-width: 240px; }
+}
+
+.menu-empty {
+  padding: 5px 10px;
+  color: var(--faint);
+  font-size: var(--fs-2);
+}
+
+/* a command that hides its terminal opens no dialog, so the button answers the click */
+.task-b .tab-icon.launch {
+  svg { animation: task-launch 0.45s ease-out; }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1.5px solid var(--accent);
+    border-radius: var(--r-pill);
+    opacity: 0;
+    pointer-events: none;
+    animation: task-ping 0.7s ease-out;
+  }
+}
+
+@keyframes task-launch {
+  35% { transform: scale(0.78); color: var(--accent); }
+  70% { transform: scale(1.12); color: var(--accent); }
+}
+
+@keyframes task-ping {
+  from { opacity: 0.9; transform: scale(0.55); }
+  to { opacity: 0; transform: scale(1.4); }
+}
+
+@keyframes task-flash {
+  30% { color: var(--accent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-b .tab-icon.launch {
+    svg { animation: task-flash 0.6s ease-out; }
+    &::after { animation: none; }
+  }
+}
+
+.task { width: min(960px, calc(100vw - 48px)); }
+
+.task .dialog-x { top: 16px; right: 14px; }
+
+.task-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 48px 0 16px;
+  border-bottom: 1px solid var(--line);
+
+  .dialog-title {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.task-state {
+  flex: none;
+  font: var(--fs-1) var(--mono);
+  color: var(--muted);
+
+  &.ok { color: var(--add); }
+  &.warn { color: var(--del); }
+}
+
+.task-acts {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* a fixed height: xterm fits itself to its host, so a host sized by its content would never grow */
+.term-host.task-term {
+  flex: none;
+  height: min(560px, calc(100vh - 160px));
+  padding: 8px 0 8px 12px;
+}

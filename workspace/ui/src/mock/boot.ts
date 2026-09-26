@@ -37,4 +37,4 @@ globalThis.addEventListener('keydown', (e) => {
   void backend.api.menu(item);
 });
 
-await import('../main');
+await import('#main');

@@ -1,5 +1,5 @@
-import type { AiProvider, CustomCommand } from '../settings';
-import type { Menu, Orphans, Proc } from '../terminal';
+import type { AiProvider, CustomCommand } from '#ipc/settings';
+import type { Menu, Orphans, Proc } from '#ipc/terminal';
 import type { SessionSeed } from './pty';
 import type { FileSeed, RepoSeed } from './repo';
 

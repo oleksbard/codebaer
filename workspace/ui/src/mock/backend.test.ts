@@ -3,8 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import lib from '../../../backend/src/lib.rs?raw';
-import { errKind, type Blob, type FileText, type Status } from '../git';
-import type { ServerMsg } from '../terminal';
+import { errKind, type Blob, type FileText, type Status } from '#ipc/git';
+import type { ServerMsg } from '#ipc/terminal';
 import { createBackend } from './backend';
 import { SCENARIOS } from './scenarios';
 
@@ -51,6 +51,17 @@ describe('status', () => {
     expect(entry(await invoke<Status>('status'), 'src/cart.ts')).toMatchObject({ conflicted: true });
     await expect(invoke('read_blob', { rev: 'index', path: 'src/cart.ts' })).rejects.toEqual({ kind: 'Conflicted' });
   });
+});
+
+test('diff_stat counts the review queue in lines, untracked whole, staged and binary not at all', async () => {
+  const b = boot();
+  const before = await invoke<{ added: number; removed: number }>('diff_stat');
+  b.api.agentEdit('src/new.ts', 'a\nb\nc');
+  b.api.agentEdit('static/logo.png', 'PNG v3');
+  await b.api.idle();
+  expect(await invoke('diff_stat')).toEqual({ added: before.added + 3, removed: before.removed });
+  await invoke('stage_path', { path: 'src/new.ts' });
+  expect(await invoke('diff_stat')).toEqual(before);
 });
 
 describe('writes carry a baseline', () => {

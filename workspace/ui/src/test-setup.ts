@@ -1,3 +1,5 @@
+import './app/state';
+import './app/keymap';
 // jsdom implements no Range geometry, and CodeMirror measures the document
 // whenever a dispatch asks to scroll a chunk into view
 const rangeProto = Range.prototype as unknown as Record<string, unknown>;

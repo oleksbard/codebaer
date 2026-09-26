@@ -1,5 +1,5 @@
 import { test as base, expect, type Page } from '@playwright/test';
-import type { AppError } from '../src/git';
+import type { AppError } from '../src/ipc/git';
 import type { MenuItem } from '../src/mock/backend';
 import type { Snapshot } from '../src/mock/repo';
 

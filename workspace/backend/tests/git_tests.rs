@@ -2,7 +2,7 @@ use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
-use codebaer_lib::git::{cancel_impl, push_args, run_net, AppState};
+use codebaer_lib::git::{cancel_impl, diff_stat_impl, push_args, run_net, AppState, DiffStat};
 use codebaer_lib::settings::AiProvider;
 use codebaer_lib::AppError;
 use std::fs;
@@ -678,6 +678,26 @@ fn discard_all_previews_then_removes_and_restores_on_an_unborn_branch() {
     fs::write(empty.path().join("n.txt"), "n\n").unwrap();
     discard_all_impl(empty.path()).unwrap();
     assert!(!empty.path().join("n.txt").exists());
+}
+
+#[test]
+fn diff_stat_counts_unstaged_and_untracked_lines_but_not_staged_ignored_or_binary() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("t.bin"), b"\0\n").unwrap();
+    sh(r, &["add", "t.bin"]);
+    sh(r, &["commit", "-qm", "binary"]);
+    assert_eq!(diff_stat_impl(r).unwrap(), DiffStat::default());
+    fs::write(r.join("t.bin"), b"\0\n\x01\n").unwrap();
+    fs::write(r.join("a.txt"), "a\nB\nc\nd\ne\n").unwrap();
+    fs::write(r.join("s.txt"), "staged\n").unwrap();
+    sh(r, &["add", "s.txt"]);
+    fs::create_dir(r.join("dir with space")).unwrap();
+    fs::write(r.join("dir with space/ü.txt"), "one\ntwo").unwrap();
+    fs::write(r.join(".gitignore"), "ignored.log\n").unwrap();
+    fs::write(r.join("ignored.log"), "x\ny\nz\n").unwrap();
+    fs::write(r.join("blob.bin"), b"\0\x01\n\x02\n").unwrap();
+    assert_eq!(diff_stat_impl(r).unwrap(), DiffStat { added: 5, removed: 1 });
 }
 
 #[test]
