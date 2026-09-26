@@ -1,0 +1,182 @@
+.list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 6px 0;
+  outline: none;
+}
+
+summary.sec {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  margin: 0 8px;
+  padding: 3px 8px;
+  border-radius: var(--r-3);
+  color: var(--muted);
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+
+  &:hover { background-color: var(--panel2); color: var(--text); }
+
+  /* the tree indents by nesting level; the change queue has no --depth. A folder is named like a file,
+     and its chevron gets the file icon's 20px column, so siblings line up at any depth. */
+  &.d {
+    color: var(--text);
+    font-weight: 400;
+    padding-left: calc(4px + var(--depth, 0) * 12px);
+
+    .l { min-width: 0; }
+    .l::before { flex: none; margin: 0 6px; color: var(--muted); }
+    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+}
+
+/* listed so the tree matches the working copy, dimmed because git is not tracking them; only the label,
+   so the icon keeps its colour */
+.row.ignored .name,
+summary.ignored .l {
+  color: var(--faint);
+}
+
+/* an indent guide per ancestor folder, under its chevron: each row draws the part beside it, so the
+   hover and selection fills above are background-color only and leave this layer alone */
+summary.sec.d,
+.row.f {
+  background-image: repeating-linear-gradient(90deg, var(--guide, var(--line)) 0 1px, transparent 1px 12px);
+  background-position: 14px 0;
+  background-size: calc(var(--depth, 0) * 12px) 100%;
+  background-repeat: no-repeat;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.sec {
+  .l {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    /* geometry rather than the ▾ / ▸ glyphs: both are drawn low in their em box and ride
+       about 1.5px under the label at any font size */
+    &::before {
+      content: '';
+      width: 0;
+      height: 0;
+      margin: 0 2px;
+      border: 4px solid transparent;
+      border-bottom-width: 0;
+      border-top-color: currentColor;
+    }
+  }
+
+  .n {
+    display: grid;
+    place-items: center;
+    font: var(--fs-1)/1 var(--mono);
+    background: var(--panel2);
+    border-radius: var(--r-pill);
+    padding: 0 6px;
+    min-width: 18px;
+    height: 18px;
+  }
+
+  .r { display: flex; align-items: center; gap: 6px; }
+}
+
+details:not([open])>.sec .l::before {
+  rotate: -90deg;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin: 0 8px;
+  padding: 2px 8px;
+  border-radius: var(--r-3);
+  cursor: pointer;
+  min-height: 26px;
+
+  &:hover { background-color: var(--panel2); }
+  /* --line all but vanishes on the selection tint, so the guides beside it step up */
+  &.sel { background-color: var(--accent-soft); --guide: var(--faint); }
+  &.f { padding-left: calc(4px + var(--depth, 0) * 12px); }
+
+  &[data-st="D"] .name { text-decoration: line-through; color: var(--muted); }
+
+  /* the file icon recedes until the row is the one being looked at */
+  .ficon { opacity: .7; transition: opacity 120ms ease; }
+  &:hover .ficon,
+  &.sel .ficon { opacity: 1; }
+
+  .tail { display: flex; align-items: center; gap: 6px; }
+  .acts { display: flex; gap: 2px; visibility: hidden; }
+  &:hover .acts { visibility: visible; }
+}
+
+.path {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+
+  .name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dir {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: var(--fs-2);
+
+    &:empty { display: none; }
+  }
+}
+
+[data-st="M"], [data-st="T"] { --st: var(--mod); }
+[data-st="A"], [data-st="U"], [data-st="R"], [data-st="C"] { --st: var(--add); }
+[data-st="D"], [data-st="!"] { --st: var(--del); }
+
+/* the letter, not just its colour: several themes' modified and added hues are too close to tell apart */
+.st {
+  flex: none;
+  min-width: 14px;
+  border-radius: var(--r-1);
+  color: var(--st, var(--muted));
+  font: 600 var(--fs-1)/16px var(--mono);
+  text-align: center;
+}
+
+/* a conflict is the one letter that has to be acted on, so it alone gets a fill */
+[data-st="!"] .st { background: var(--del-bg); }
+
+/* a folder's roll-up of the changes under it; its text is for a screen reader only */
+.st-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--st);
+  font-size: 0;
+
+  /* a shape apart from the hue: a ring for only new files, a halo for a conflict; a folder of deletions alone
+     would share the filled dot, but visibleFiles leaves those files out of the tree */
+  &[data-st="A"] { background: none; box-shadow: inset 0 0 0 1.5px var(--st); }
+  &[data-st="!"] { box-shadow: 0 0 0 3px var(--del-bg); }
+}

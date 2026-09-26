@@ -1,0 +1,5 @@
+.empty-sec {
+  padding: 6px 16px 10px;
+  color: var(--faint);
+  font-size: var(--fs-2);
+}

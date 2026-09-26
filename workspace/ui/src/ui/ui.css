@@ -1,0 +1,345 @@
+.btn {
+  padding: 5px 10px;
+  border-radius: var(--r-3);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--fs-2);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+
+  &:hover { background: var(--panel2); }
+  &:disabled { cursor: default; }
+  &:disabled:not(.busy) { background: none; color: var(--faint); }
+
+  &.primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: transparent;
+    font-weight: 600;
+
+    /* neutral rather than a faded accent, which on most themes reads as a second, paler colour */
+    &:disabled:not(.busy) { background: var(--panel2); color: var(--faint); }
+  }
+
+  .spinner { border-color: currentColor; border-top-color: transparent; }
+
+  &.ghost {
+    padding: 3px 8px;
+    border-color: transparent;
+    color: var(--muted);
+
+    &:hover { background: var(--panel2); color: var(--text); }
+  }
+
+  /* the one keycap, in the button's own colour so it reads on the accent fill too */
+  kbd {
+    color: inherit;
+    opacity: .7;
+  }
+}
+
+.ico {
+  width: 20px;
+  height: 20px;
+  /* the UA's 6px side padding leaves a 20px box too narrow to centre an icon wider than 8px */
+  padding: 0;
+  border-radius: var(--r-2);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: var(--fs-2);
+
+  &:hover { background: var(--line); color: var(--text); }
+  &:disabled { opacity: .35; pointer-events: none; }
+  &.busy:disabled { opacity: 1; color: var(--accent); }
+  &.busy svg { animation: spin 1.2s linear infinite; }
+}
+
+/* the edge comes from the text colour, not --line, so it holds on a hovered or highlighted row as well */
+kbd {
+  font: var(--fs-1)/16px var(--mono);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: var(--r-2);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.pill {
+  font-size: var(--fs-1);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+
+  &.warn {
+    color: var(--warn);
+    border-color: var(--warn);
+
+    button { color: inherit; text-decoration: underline; padding: 0 0 0 6px; }
+  }
+}
+
+.badge {
+  font: var(--fs-1) var(--mono);
+  padding: 0 5px;
+  border-radius: var(--r-1);
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+
+.tab {
+  padding: 8px 10px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-weight: 500;
+
+  &[data-state="active"] { color: var(--text); border-bottom-color: var(--accent); }
+}
+
+.seg {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+
+.seg-item {
+  padding: 3px 12px;
+  border-radius: var(--r-2);
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 500;
+
+  &:hover { color: var(--text); }
+  /* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
+     the tint is too close to the track, as in several light themes */
+  &[data-state="on"] { background: var(--accent-soft); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+}
+
+.tabs.vert {
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 0;
+  padding: 0 0 4px;
+
+  .tab {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    margin-bottom: 0;
+    border-bottom: 0;
+    border-radius: var(--r-4);
+
+    &:hover { background: var(--panel); color: var(--text); }
+    &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
+  }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 20;
+}
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  width: min(600px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-5);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 21;
+  outline: none;
+
+  &.alert {
+    width: min(440px, calc(100vw - 32px));
+    padding: 16px 18px 14px;
+
+    .dialog-title { padding-right: 24px; }
+  }
+}
+
+.dialog-x {
+  position: absolute;
+  top: 16px;
+  right: 12px;
+}
+
+.dialog-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-4);
+  font-weight: 600;
+}
+
+.dialog-body {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: var(--fs-2);
+  white-space: pre-wrap;
+}
+
+.dialog.error .dialog-body {
+  font: var(--fs-2)/1.5 var(--mono);
+  color: var(--text);
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--faint);
+  border-radius: var(--r-1);
+  background: var(--bg);
+  color: var(--accent-ink);
+
+  &[data-state='checked'] {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  svg { display: block; }
+}
+
+.menu {
+  min-width: 160px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow);
+  z-index: 30;
+}
+
+.menu-item {
+  display: flex;
+  align-items: baseline;
+  padding: 5px 10px;
+  border-radius: var(--r-3);
+  cursor: default;
+  outline: none;
+
+  &[data-highlighted] { background: var(--sel); }
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+
+.detail {
+  margin-left: auto;
+  padding-left: 12px;
+  font: var(--fs-1) var(--mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ficon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+
+  svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+}
+
+.diffstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel);
+  font: 500 var(--fs-2) var(--mono);
+  font-variant-numeric: tabular-nums;
+  animation: diffstat-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  .n { display: inline-block; }
+  .n.add { color: var(--add); }
+  .n.del { color: var(--del); }
+  .bump { animation: diffstat-bump 0.6s ease-out; }
+
+  .blocks { display: inline-flex; gap: 2px; }
+
+  .blk {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--line);
+    animation: diffstat-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--i) * 45ms + 80ms) backwards;
+
+    &.add { background: var(--add); box-shadow: 0 0 6px var(--add-bg); }
+    &.del { background: var(--del); box-shadow: 0 0 6px var(--del-bg); }
+  }
+}
+
+@keyframes diffstat-in {
+  from { opacity: 0; transform: translateY(5px) scale(0.96); filter: blur(3px); }
+}
+
+@keyframes diffstat-bump {
+  30% { transform: translateY(-1px) scale(1.16); text-shadow: 0 0 10px currentColor; }
+}
+
+@keyframes diffstat-pop {
+  from { opacity: 0; transform: scale(0.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diffstat, .diffstat .bump, .diffstat .blk { animation: none; }
+}

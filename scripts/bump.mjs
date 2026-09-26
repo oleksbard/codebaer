@@ -57,8 +57,8 @@ function lastRelease() {
 function main() {
   const level = process.argv[2];
   if (!LEVELS.includes(level)) throw new Error('usage: pnpm bump patch|minor|major');
-  const toml = fileURLToPath(new URL('../src-tauri/Cargo.toml', import.meta.url));
-  const lock = fileURLToPath(new URL('../src-tauri/Cargo.lock', import.meta.url));
+  const toml = fileURLToPath(new URL('../workspace/backend/Cargo.toml', import.meta.url));
+  const lock = fileURLToPath(new URL('../workspace/backend/Cargo.lock', import.meta.url));
   const text = readFileSync(toml, 'utf8');
   const current = PATTERNS.toml[0].exec(text)?.[2];
   if (current === undefined) throw new Error('no package version in Cargo.toml');

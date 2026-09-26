@@ -20,27 +20,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: { components: clippy }
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: src-tauri }
+        with: { workspaces: workspace/backend }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc --noEmit
-      - run: pnpm exec tsc -p e2e --noEmit
+      - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
       - uses: actions/cache@v4
         with:
           path: ~/Library/Caches/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: pnpm exec playwright install webkit
+      - run: pnpm --filter @codebaer/ui --fail-if-no-match exec playwright install webkit
       - run: pnpm e2e --project=webkit
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: workspace/ui/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path workspace/backend/Cargo.toml
       - run: pnpm tauri build --ci
       - run: scripts/smoke.sh
       - if: ${{ !cancelled() }}
@@ -54,7 +53,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           test "$(uname -m)" = arm64
-          bundle=src-tauri/target/release/bundle
+          bundle=workspace/backend/target/release/bundle
           app=$(basename "$bundle"/macos/*.app)
           codesign --verify --deep --strict "$bundle/macos/$app"
           mkdir "$RUNNER_TEMP/release"
@@ -95,9 +94,9 @@ jobs:
             echo "::notice::main has moved on from this commit, a newer run drafts the release"
             exit 0
           fi
-          version=$(grep -m 1 '^version = "' src-tauri/Cargo.toml | cut -d '"' -f 2 || true)
+          version=$(grep -m 1 '^version = "' workspace/backend/Cargo.toml | cut -d '"' -f 2 || true)
           if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
-            echo "::error::no plain x.y.z package version in src-tauri/Cargo.toml"
+            echo "::error::no plain x.y.z package version in workspace/backend/Cargo.toml"
             exit 1
           fi
           tag="v$version"

@@ -1,0 +1,57 @@
+/* nordtheme.com/docs/colors-and-palettes; Nord keeps its chrome flat, so --chrome is a step below nord0 */
+[data-theme="nord"] {
+  color-scheme: dark;
+
+  --chrome: #242933;
+  --bg: #2e3440;
+  --panel: #3b4252;
+  --panel2: #434c5e;
+  --line: #4c566a;
+  --faint: #616e88;
+  --muted: #9aa5b8;
+  --text: #d8dee9;
+
+  --accent: #88c0d0;
+  --accent-ink: #2e3440;
+  --accent-soft: #88c0d033;
+  --sel: #88c0d01f;
+  --focus: #88c0d0;
+
+  --add: #a3be8c;
+  --add-bg: #a3be8c26;
+  --del: #bf616a;
+  --del-bg: #bf616a2e;
+
+  --warn: #d08770;
+  --info: #81a1c1;
+  --mod: #ebcb8b;
+  --scrim: #1d212999;
+  --shadow: 0 14px 44px #00000073;
+
+  --syn-keyword: #81a1c1;
+  --syn-name: #d8dee9;
+  --syn-function: #88c0d0;
+  --syn-constant: #b48ead;
+  --syn-type: #8fbcbb;
+  --syn-operator: #81a1c1;
+  --syn-comment: #616e88;
+  --syn-string: #a3be8c;
+  --syn-invalid: #bf616a;
+
+  --ansi-black: #3b4252;
+  --ansi-red: #bf616a;
+  --ansi-green: #a3be8c;
+  --ansi-yellow: #ebcb8b;
+  --ansi-blue: #81a1c1;
+  --ansi-magenta: #b48ead;
+  --ansi-cyan: #88c0d0;
+  --ansi-white: #e5e9f0;
+  --ansi-bright-black: #4c566a;
+  --ansi-bright-red: #bf616a;
+  --ansi-bright-green: #a3be8c;
+  --ansi-bright-yellow: #ebcb8b;
+  --ansi-bright-blue: #81a1c1;
+  --ansi-bright-magenta: #b48ead;
+  --ansi-bright-cyan: #8fbcbb;
+  --ansi-bright-white: #eceff4;
+}

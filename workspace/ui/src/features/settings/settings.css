@@ -1,0 +1,257 @@
+/* top-anchored like the palette: each section is as tall as its content, and a switch moves only the
+   bottom edge, never the nav under the pointer */
+.settings {
+  width: min(760px, calc(100vw - 32px));
+  margin-top: max(32px, 10vh);
+}
+
+.settings .dialog-x { top: 14px; right: 14px; }
+
+.settings-body {
+  display: flex;
+  min-height: 280px;
+  max-height: min(620px, calc(100vh - max(32px, 10vh) - 32px));
+}
+
+/* --chrome is below --panel in every theme, light ones included, so the eye lands on the options first */
+.settings-side {
+  flex: none;
+  width: 164px;
+  padding: 14px 8px;
+  background: var(--chrome);
+  border-right: 1px solid var(--line);
+
+  .dialog-title { margin: 0 8px 12px; }
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-tab {
+  padding: 5px 8px;
+  border-radius: var(--r-3);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  text-align: left;
+
+  &:hover { color: var(--text); }
+  &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
+}
+
+/* the title row stays put, with the dialog's close button centred in it; only the options scroll */
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.settings-pane-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  margin: 0;
+  padding: 0 48px 0 16px;
+  border-bottom: 1px solid var(--line);
+  /* the nav already names the section; the dialog's one title is the nav's */
+  color: var(--muted);
+  font-size: var(--fs-3);
+  font-weight: 500;
+}
+
+.settings-pane-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 16px;
+  overflow-y: auto;
+
+  > .setting:first-child { border-top: 0; }
+}
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setting-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-label {
+  font-size: var(--fs-3);
+  font-weight: 500;
+}
+
+.setting-key {
+  margin-top: 4px;
+  font: var(--fs-1) var(--mono);
+  color: var(--muted);
+}
+
+.setting-desc {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-2);
+  line-height: 1.45;
+}
+
+.setting.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.theme-group-title {
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 500;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 14px 12px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  /* WebKit's own button styles shrink a button to its content on both axes */
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border-radius: var(--r-4);
+  text-align: left;
+}
+
+/* the ring lives outside the preview: inside it, var(--accent) is the previewed theme's accent */
+.theme-swatch {
+  display: block;
+  padding: 2px;
+  border-radius: calc(var(--r-4) + 3px);
+  box-shadow: 0 0 0 1px transparent;
+  transition: box-shadow 120ms ease;
+
+  .theme-card:hover & { box-shadow: 0 0 0 1px var(--faint); }
+  .theme-card[data-state="checked"] & { box-shadow: 0 0 0 2px var(--accent); }
+}
+
+.theme-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: var(--fs-2);
+
+  .theme-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-card:hover &,
+  .theme-card[data-state="checked"] & { color: var(--text); }
+  .theme-card[data-state="checked"] & { font-weight: 500; }
+}
+
+.theme-check {
+  display: grid;
+  flex: none;
+  color: var(--accent);
+}
+
+.theme-preview {
+  display: flex;
+  flex-direction: column;
+  height: 74px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--chrome);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tp-head {
+  flex: none;
+  display: flex;
+  gap: 3px;
+  padding: 4px 5px;
+
+  span { width: 4px; height: 4px; border-radius: 50%; }
+  span:nth-child(1) { background: var(--del); }
+  span:nth-child(2) { background: var(--warn); }
+  span:nth-child(3) { background: var(--add); }
+}
+
+.tp-frame {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  margin: 0 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  overflow: hidden;
+}
+
+.tp-side {
+  flex: none;
+  width: 30%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 4px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.tp-row {
+  height: 4px;
+  width: 85%;
+  border-radius: 2px;
+  background: var(--faint);
+
+  &.on { background: var(--accent); }
+  &.short { width: 55%; }
+}
+
+.tp-code {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 0;
+  background: var(--bg);
+}
+
+.tp-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 6px;
+  padding: 0 5px;
+
+  &.add { background: var(--add-bg); box-shadow: inset 2px 0 var(--add); }
+  &.del { background: var(--del-bg); box-shadow: inset 2px 0 var(--del); }
+
+  span { flex: none; height: 3px; border-radius: 2px; }
+  .kw { width: 11px; background: var(--syn-keyword); }
+  .fn { width: 16px; background: var(--syn-function); }
+  .ty { width: 12px; background: var(--syn-type); }
+  .co { width: 9px; background: var(--syn-constant); }
+  .st { width: 20px; background: var(--syn-string); }
+  .tx { width: 10px; background: var(--text); }
+  .cm { width: 36px; background: var(--syn-comment); }
+}

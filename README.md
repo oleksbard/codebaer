@@ -49,7 +49,7 @@ pnpm tauri build
 ## Test
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path workspace/backend/Cargo.toml
 pnpm test
 pnpm lint
 ```

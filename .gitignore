@@ -1,8 +1,8 @@
 node_modules/
-dist/
+workspace/ui/dist/
 .DS_Store
-src-tauri/target/
-src-tauri/gen/schemas/
+workspace/backend/target/
+workspace/backend/gen/schemas/
 test-results/
 playwright-report/
 docs/

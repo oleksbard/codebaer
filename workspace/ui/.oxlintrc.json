@@ -1,0 +1,85 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "ignorePatterns": ["dist"],
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/unbound-method": "off",
+    "import/no-cycle": "error",
+    "no-restricted-imports": ["error", { "patterns": [
+      { "group": ["../*", "../**"], "message": "Import across folders through a # key." }
+    ] }]
+  },
+  "overrides": [
+    { "files": ["src/test-setup.ts"], "rules": { "typescript/no-unnecessary-condition": "off" } },
+    {
+      "files": ["src/**/*.tsx"],
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [{ "group": ["../*", "../**"], "message": "Import across folders through a # key." }],
+        "paths": [{ "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." }]
+      }] }
+    },
+    {
+      "files": ["src/**/*.test.tsx"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." }
+      ] }] }
+    },
+    {
+      "files": ["src/ui/**", "src/editor/**", "src/ipc/**", "src/mock/**"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["#kernel/**", "#core/**", "#features/**", "#app/**"],
+          "message": "ui, editor, ipc and the fake backend sit below the kernel." }
+      ] }] }
+    },
+    {
+      "files": ["src/kernel/**"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["#core/**", "#features/**", "#app/**"], "message": "The kernel knows nothing of core, features or app." }
+      ] }] }
+    },
+    {
+      "files": ["src/core/**"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["#features/**", "#app/**"], "message": "Core reaches features only through the registry." }
+      ] }] }
+    },
+    {
+      "files": ["src/features/**"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." }
+      ] }] }
+    },
+    {
+      "files": ["src/features/**/*.tsx"],
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." }
+        ],
+        "paths": [{ "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." }]
+      }] }
+    },
+    {
+      "files": ["src/features/**/*.test.ts", "src/features/**/*.test.tsx"],
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["#features/*/*"], "message": "A feature reaches another only through its index." }
+      ] }] }
+    },
+    {
+      "files": ["src/mock/backend.test.ts"],
+      "rules": { "no-restricted-imports": "off" }
+    },
+    { "files": ["e2e/**"], "rules": { "no-restricted-imports": "off" } }
+  ]
+}

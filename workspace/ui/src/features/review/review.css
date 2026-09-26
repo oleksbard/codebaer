@@ -1,0 +1,44 @@
+.tbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 36px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 500;
+
+    .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dir { color: var(--muted); font-weight: 400; }
+  }
+
+  .pos,
+  .mode { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; }
+  .blame {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--fs-1) var(--mono);
+    color: var(--faint);
+  }
+  .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .right .ico { width: 24px; height: 24px; }
+  .right .ico[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  /* the pressed rule outranks .ico:hover, so the toggle needs its own hover state to keep one */
+  .right .ico[aria-pressed="true"]:hover { background: var(--accent); color: var(--panel); }
+}
+
+.editor-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+
+  .cm-editor { flex: 1; min-width: 0; font: var(--fs-3)/1.6 var(--mono); }
+}

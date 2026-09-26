@@ -1,0 +1,67 @@
+.commit {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  textarea {
+    resize: none;
+    max-height: calc(11.2em + 16px); /* 8 lines at 1.4 line-height, plus padding and border */
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    background: var(--bg);
+    color: var(--text);
+    font: var(--fs-2)/1.4 var(--ui);
+    padding: 7px 9px;
+  }
+
+  .branch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    /* fixed, because which actions show changes with the branch state and the row must not jump */
+    height: 28px;
+    font: var(--fs-2) var(--mono);
+    color: var(--muted);
+
+    .co {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      /* at the 180px sidebar floor the counts are what gets cut */
+      overflow: hidden;
+      margin-left: -6px;
+      padding: 3px 6px;
+      border-radius: var(--r-3);
+      color: var(--text);
+
+      &:hover { background: var(--panel2); }
+      svg { flex: none; color: var(--muted); }
+    }
+
+    .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .ab {
+      display: flex;
+      flex: none;
+      gap: 6px;
+      color: var(--faint);
+
+      .on { color: var(--accent); font-weight: 600; }
+    }
+
+    .remote,
+    .busy { display: flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
+    .busy { gap: 6px; }
+  }
+
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .hint { color: var(--faint); font-size: var(--fs-1); }
+  .r { display: flex; align-items: center; gap: 6px; }
+  .ai-wrap { display: flex; }
+  .ico { width: 26px; height: 26px; }
+}
