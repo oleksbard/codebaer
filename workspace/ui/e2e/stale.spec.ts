@@ -2,8 +2,8 @@ import { expect, test } from './fixtures';
 
 test('an agent edit under a dirty buffer is flagged, not overwritten', async ({ page, open }) => {
   const mock = await open();
-  // the file changes before the first keystroke and the watcher reports it only after the last, so
-  // neither the autosave nor the refresh can win a race: each finds a dirty buffer on a changed file
+  // the file changes before the first keystroke and the watcher reports it only after the last, so the
+  // refresh finds a buffer with unsaved changes on a changed file
   await mock.agentEdit('src/cart.ts', 'export const agent = true;\n', { watcher: false });
   await page.locator('.cm-content').first().click();
   await page.keyboard.press('End');

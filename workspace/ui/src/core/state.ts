@@ -29,7 +29,6 @@ declare module '#kernel/store' {
     selected: string | null;
     refreshing: boolean;
     refreshAgain: boolean;
-    saveTimer: ReturnType<typeof setTimeout>;
     flushing: Promise<boolean> | null;
     fatal: string | null;
     busy: boolean;
@@ -41,7 +40,7 @@ declare module '#kernel/store' {
 
 export const coreState = () => ({
   root: null, rootLabel: null, title: null, status: null, tab: 'changes' as Tab, open: null, selected: null,
-  refreshing: false, refreshAgain: false, saveTimer: 0, flushing: null, fatal: null, busy: false,
+  refreshing: false, refreshAgain: false, flushing: null, fatal: null, busy: false,
   changesOnly: localStorage.getItem('codebaer.changesOnly') === 'true',
   filesOpen: new Set<string>(),
 });

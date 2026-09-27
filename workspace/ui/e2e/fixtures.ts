@@ -12,6 +12,8 @@ export type Mock = {
   emit(event: string): Promise<void>;
   fail(cmd: string, error: AppError): Promise<void>;
   menu(item: MenuItem, path?: string): Promise<void>;
+  quit(): Promise<void>;
+  exited(): Promise<boolean>;
   /** The names of the commands invoked so far, in order. */
   calls(): Promise<string[]>;
   terminalText(id?: number): Promise<string>;
@@ -26,6 +28,8 @@ const mockOf = (page: Page): Mock => ({
   emit: (event) => page.evaluate((e) => globalThis.__mock!.emit(e), event),
   fail: (cmd, error) => page.evaluate(([c, e]) => globalThis.__mock!.fail(c, e), [cmd, error] as const),
   menu: (item, path) => page.evaluate(([i, p]) => globalThis.__mock!.menu(i, p), [item, path] as const),
+  quit: () => page.evaluate(() => globalThis.__mock!.quit()),
+  exited: () => page.evaluate(() => globalThis.__mock!.exited()),
   calls: () => page.evaluate(() => globalThis.__mock!.calls.map((c) => c.cmd)),
   terminalText: (id) => page.evaluate((i) => globalThis.__mock!.terminalText(i), id),
 });

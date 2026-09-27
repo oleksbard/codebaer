@@ -252,6 +252,8 @@ kbd {
   gap: 8px;
 }
 
+.dialog-actions .alt { margin-right: auto; }
+
 .check {
   flex: none;
   display: grid;

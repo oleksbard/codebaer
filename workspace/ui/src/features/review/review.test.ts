@@ -6,7 +6,7 @@ import { confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
-import { accept, reject, unstageHunk } from './hunks';
+import { accept, acceptFile, discardAll, reject, rejectFile, unstageHunk } from './hunks';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -49,6 +49,17 @@ describe('the two special reject cases', () => {
     expect(confirmMock).not.toHaveBeenCalled();
   });
 
+  it('a deleted file with unsaved text asks first, since the restore drops the text', async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('', false));
+    type('typed\n');
+
+    await reject();
+
+    expect(confirmMock).toHaveBeenCalledWith('Restore a.txt?\nYour unsaved changes to a.txt are discarded too.');
+    expect(g.revertPath!).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe('typed\n');
+  });
+
   it('a file with no index entry confirms first and calls nothing when the answer is no', async () => {
     await openUnstaged('n.txt', blob('', null), file('new\n'));
     expect(S.open!.originalExists).toBe(false);
@@ -58,6 +69,66 @@ describe('the two special reject cases', () => {
     expect(confirmMock).toHaveBeenCalledTimes(1);
     expect(g.revertPath!).not.toHaveBeenCalled();
     expect(g.writeFile!).not.toHaveBeenCalled();
+  });
+});
+
+describe('whole-file actions on a file with unsaved changes', () => {
+  beforeEach(async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+    type('mine\n');
+  });
+
+  it('Accept file saves it first and stages only after the write', async () => {
+    const order: string[] = [];
+    g.writeFile!.mockImplementation(async () => { order.push('write'); });
+    g.stagePath!.mockImplementation(async () => { order.push('stage'); });
+
+    await acceptFile('a.txt');
+
+    expect(order).toEqual(['write', 'stage']);
+    expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
+    expect(S.open!.dirty).toBe(false);
+  });
+
+  it('Accept file stages nothing when that save comes back Stale', async () => {
+    g.writeFile!.mockRejectedValue({ kind: 'Stale', detail: file('agent\n') });
+
+    await acceptFile('a.txt');
+
+    expect(g.stagePath!).not.toHaveBeenCalled();
+    expect(S.open!.dirty).toBe(true);
+    expect(S.open!.badge).toEqual(file('agent\n'));
+  });
+
+  it('Accept file on another file leaves this one unsaved', async () => {
+    await acceptFile('b.txt');
+    expect(g.stagePath!).toHaveBeenCalledWith('b.txt');
+    expect(g.writeFile!).not.toHaveBeenCalled();
+    expect(S.open!.dirty).toBe(true);
+  });
+
+  it('Reject file says the unsaved changes go too, and drops them without writing', async () => {
+    confirmMock.mockResolvedValue(true);
+    g.readFile!.mockResolvedValue(file('disk\n'));
+
+    await rejectFile('a.txt');
+
+    expect(confirmMock).toHaveBeenCalledWith('Discard unstaged changes in a.txt?\nAccepted hunks stay staged.'
+      + '\nYour unsaved changes to a.txt are discarded too.');
+    expect(g.revertPath!).toHaveBeenCalledWith('a.txt');
+    expect(g.writeFile!).not.toHaveBeenCalled();
+    expect(S.open!.dirty).toBe(false);
+  });
+
+  it('Discard all keeps them when the answer is no', async () => {
+    g.discardPreview!.mockResolvedValue([]);
+
+    await discardAll();
+
+    expect(confirmMock.mock.calls[0]![0]).toContain('Your unsaved changes to a.txt are discarded too.');
+    expect(g.discardAll!).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe('mine\n');
+    expect(S.open!.dirty).toBe(true);
   });
 });
 

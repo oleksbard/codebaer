@@ -25,6 +25,9 @@ export type MockApi = {
   emit(event: string, payload?: unknown): Promise<void>;
   /** What picking the item in the macOS menu bar sends. */
   menu(item: MenuItem, path?: string): Promise<void>;
+  /** Cmd-Q or the window's close button: the page is asked while it reported unsaved changes, else the app ends. */
+  quit(): Promise<void>;
+  exited(): boolean;
   /** The next call to `cmd` rejects with `error`. */
   fail(cmd: string, error: AppError): void;
   state(): Snapshot;
@@ -80,6 +83,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let icons: Record<string, string> = {};
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
+  let unsaved = false;
+  let exited = false;
 
   let pending = 0;
   let quiet: ReturnType<typeof setTimeout> | undefined;
@@ -179,6 +184,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       return 'git version 2.50.1';
     },
     initial_repo: (): string | null => sc.initial,
+    set_unsaved: ({ unsaved: on }: { unsaved: boolean }) => { unsaved = on; },
+    quit: () => { exited = true; },
     log_error: ({ message }: { message: string }) => console.error(`[backend] ${message}`),
     log_info: ({ message }: { message: string }) => console.info(`[backend] ${message}`),
     recent_repos: (): Recent[] => sc.recents.map((path) => ({ path, name: basename(path), label: label(path) })),
@@ -302,6 +309,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     emit: (event, payload) => emit(event, payload),
     menu: (item, path) => emit(MENU_EVENTS[item], path),
+    quit: async () => { if (unsaved) await emit('quit-requested'); else exited = true; },
+    exited: () => exited,
     fail: (cmd, error) => { failures.set(cmd, error); },
     state: () => repo.snapshot(),
     remotePush: (upstream, n) => repo.remotePush(upstream, n),

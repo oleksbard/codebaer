@@ -72,7 +72,11 @@ function TitleBar() {
   const blame = s.blame
     ? <span className="blame" title="Last commit to touch the line under the cursor">{s.blame}</span>
     : null;
-  const close = <IconButton label="Close file" onClick={() => void closeFile()}>✕</IconButton>;
+  // VS Code's dirty tab: a dot where the close button is, the button again under the pointer
+  const close = o.dirty
+    ? <IconButton label="Close file (unsaved changes)" className="close unsaved" onClick={() => void closeFile()}>
+      <span className="dot" /><span className="x">✕</span></IconButton>
+    : <IconButton label="Close file" className="close" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
     return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span>
       <div className="right"><PendingPill />{badge}{close}</div></div>;

@@ -1,17 +1,18 @@
 import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
 import { unfoldAll } from '@codemirror/language';
 import { foldToChanges } from '#editor/context-view';
 import { buildState, onCursor, replaceDoc, replaceOriginal, type ViewKind } from '#editor/editor';
 import { pickFolder } from '#ipc/dialog';
-import { errKind, errText, git, staleText, type Eol } from '#ipc/git';
+import { errKind, errText, git, staleText, type Eol, type FileText } from '#ipc/git';
 import { logInfo } from '#ipc/log';
-import { toast } from '#kernel/dialogs';
+import { choiceDialog, toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
 import { editorExtensions, features, run } from '#kernel/registry';
+import { baseName } from '#kernel/paths';
 import { notify, S } from '#kernel/store';
-import { buildQueue, decideRefresh, FLUSH_SET, plural, rowKey, type Row } from './model';
+import { buildQueue, decideRefresh, plural, rowKey, type Row } from './model';
 import type { Open } from './state';
 
 const PANEL_KINDS = new Set(['Binary', 'NotUtf8', 'TooLarge', 'Special']);
@@ -70,7 +71,8 @@ async function refreshOpen(): Promise<void> {
       try {
         const disk = await git.readFile(o.path);
         if (stale()) return;
-        o.badge = disk;
+        // a buffer carried out of the conflict editor lands here too, on a disk that has not moved
+        if (decideRefresh(disk, o.baseline, true) === 'badge') o.badge = disk;
       } catch (e) {
         if (stale()) return;
         toast(errText(e), 'err');
@@ -81,7 +83,7 @@ async function refreshOpen(): Promise<void> {
     return;
   }
   if (o.conflicted && !entry?.conflicted) {
-    // the single refresh path that flushes: dirty conflict-resolution edits would otherwise be dropped on reopen
+    // an unsaved resolution is carried over into the unstaged view of the same file, not dropped
     await openRow({ section: 'unstaged', path: o.path, letter: 'M', untracked: false, conflicted: false });
     return;
   }
@@ -118,41 +120,66 @@ async function refreshOpen(): Promise<void> {
   }
 }
 
-// ---------- autosave ----------
-function markDirty(): void {
+// ---------- saving ----------
+/** A missing file reads as an empty one, so an empty buffer on it has nothing to save. */
+const differs = (doc: Text, baseline: string | null): boolean =>
+  baseline === null ? doc.length > 0 : doc.length !== baseline.length || doc.toString() !== baseline;
+
+function onEdit(): void {
   const o = S.open;
   if (!o || o.view === 'staged') return;
-  o.dirty = true;
+  const dirty = differs(view.state.doc, o.baseline);
+  if (dirty === o.dirty) return;
+  o.dirty = dirty;
+  // an undo back to the saved text under a changed-on-disk pill: the refresh takes the disk text, as for any
+  // clean buffer
+  if (!dirty && o.badge) void refresh();
   notify();
-  clearTimeout(S.saveTimer);
-  S.saveTimer = setTimeout(() => void flush(), 300);
 }
 
+/** Writes the open file's unsaved changes. False when they are still unsaved: a Stale write puts up the pill,
+ *  any other failure a toast. */
 export async function flush(): Promise<boolean> {
   const inFlight = S.flushing;
   if (inFlight) return inFlight;
   const o = S.open;
   if (!o || !o.dirty || o.view === 'staged' || o.panel) return true;
-  clearTimeout(S.saveTimer);
   const p = (async (): Promise<boolean> => {
     try {
       // callers read `true` as "this record is settled and may be abandoned", so keystrokes
       // typed during a write have to be written here, not handed to a timer that would fire
       // after S.open moved on. Terminates once a write completes with no new keystroke.
+      let text: string;
+      let expected: string | null;
       for (;;) {
-        const text = view.state.doc.toString();
-        await git.writeFile(o.path, text, o.eol, o.baseline);
+        text = view.state.doc.toString();
+        expected = o.baseline;
+        await git.writeFile(o.path, text, o.eol, expected);
         o.baseline = text;
         if (S.open !== o || view.state.doc.toString() === text) break;
       }
-      clearTimeout(S.saveTimer);
+      // another view of this file that took the buffer over while the write was in flight still expects the text
+      // the write replaced
+      const now = S.open;
+      if (now && now !== o && now.path === o.path && now.view !== 'staged' && now.baseline === expected) {
+        now.baseline = text;
+        now.dirty = differs(view.state.doc, text);
+        // its open may have read this very write as the disk moving under it
+        if (now.badge?.text === text && now.badge.exists) now.badge = null;
+      }
       o.dirty = false;
       o.badge = null;
       notify();
       return true;
     } catch (e) {
       const stale = staleText(e);
-      if (stale) { o.badge = stale; notify(); return false; }
+      if (stale) {
+        o.badge = stale;
+        const now = S.open;
+        if (now && now !== o && now.path === o.path && now.view !== 'staged') now.badge = stale;
+        notify();
+        return false;
+      }
       toast(`not saved: ${errText(e)}`, 'err');
       return false;
     } finally {
@@ -161,6 +188,38 @@ export async function flush(): Promise<boolean> {
   })();
   S.flushing = p;
   return p;
+}
+
+/** flush(), with the reason shown when the changes stay unsaved. */
+export async function saveFirst(): Promise<boolean> {
+  if (await flush()) return true;
+  toast(S.open?.badge ? 'This file changed on disk. Reload or Keep mine first.' : 'not saved, see the error above',
+    'warn');
+  return false;
+}
+
+/** Asks whether to save the open file's unsaved changes before an action goes on without them: `ok` saves first,
+ *  `alt` goes on as they are. False when the user cancelled or the save failed. */
+export async function offerSave(message: (name: string) => string, ok: string, alt: string): Promise<boolean> {
+  await S.flushing;
+  const o = S.open;
+  if (!o?.dirty) return true;
+  const answer = await choiceDialog(message(baseName(o.path)), ok, alt);
+  // a refresh can replace the record while the dialog is open, and the answer still holds for another view of the
+  // same buffer
+  if (answer === null || S.open?.path !== o.path) return false;
+  return answer === 'alt' || saveFirst();
+}
+
+/** Before the open file's buffer is dropped: Save, Don't Save or Cancel. False when the caller has to stay. */
+export const settle = (): Promise<boolean> => offerSave(
+  (name) => `Do you want to save the changes you made to ${name}?\nYour changes will be lost if you don't save them.`,
+  'Save', "Don't Save",
+);
+
+/** What Cmd-Q and the window's close button ask for while the backend knows of unsaved changes. */
+export async function quit(): Promise<void> {
+  if (await settle()) await git.quit();
 }
 
 let busyDepth = 0;
@@ -180,13 +239,8 @@ export async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function guarded<T>(name: keyof typeof git, fn: () => Promise<T>): Promise<T | undefined> {
-  if (FLUSH_SET.has(name) && !(await flush())) {
-    toast(S.open?.badge
-      ? 'This file changed on disk. Reload or Keep mine first.'
-      : 'not saved, see the error above', 'warn');
-    return undefined;
-  }
+/** Nothing here saves the open file: an action that reads it from disk calls saveFirst() or offerSave() itself. */
+export async function guarded<T>(fn: () => Promise<T>): Promise<T | undefined> {
   try {
     return await withBusy(fn);
   } catch (e) {
@@ -207,13 +261,67 @@ function afterOpen(): void {
   for (const f of features()) f.onOpen?.();
 }
 
+/** Before a view of `path` replaces the open one. The open record when the new view shows the same file's
+ *  working tree, which takes its buffer over if it is unsaved by then; null for any other record, once settle()
+ *  let it go; false when the user chose to stay. */
+async function leave(path: string, staged: boolean): Promise<Open | null | false> {
+  await S.flushing;
+  const o = S.open;
+  if (o && !staged && o.path === path && o.view !== 'staged') return o;
+  return (await settle()) ? null : false;
+}
+
+type HandOver = {
+  /** For buildState, which calls it after its await: the buffer comes along if it is unsaved at that point. */
+  from?: () => EditorState | undefined;
+  /** Moves the record onto the new view when `from` handed the buffer over; says whether it did. */
+  carry(opened: Open, disk: FileText, doc: Text): boolean;
+  /** Whether the buffer is unsaved now, so a failed open has to leave it where it is. */
+  unsaved(): boolean;
+};
+
+/** `keep` is the record leave() returned. A save between the open's start and the handover knows more than
+ *  `disk`, which the open read in between. */
+function handOver(keep: Open | null): HandOver {
+  if (!keep) return { carry: () => false, unsaved: () => false };
+  const base = keep.baseline;
+  let took = false;
+  return {
+    from: () => { took = keep.dirty; return took ? view.state : undefined; },
+    carry: (opened, disk, doc) => {
+      if (!took) return false;
+      opened.baseline = keep.baseline;
+      opened.eol = keep.eol;
+      opened.badge = keep.baseline !== base ? keep.badge : decideRefresh(disk, base, true) === 'badge' ? disk : null;
+      opened.dirty = differs(doc, opened.baseline);
+      return true;
+    },
+    unsaved: () => keep.dirty,
+  };
+}
+
+/** A view that fails to open leaves an unsaved buffer it was to take over where it was, as a refresh does (6.1). */
+function keptOnFailure(e: unknown, selected: string | null): void {
+  S.selected = selected;
+  toast(errText(e), 'err');
+  notify();
+}
+
 export async function openRow(row: Row): Promise<void> {
-  if (!(await flush())) return;
-  clearTimeout(S.saveTimer);
+  const keep = await leave(row.path, row.section === 'staged');
+  if (keep === false) return;
+  const hand = handOver(keep);
   const live = openEpoch.next();
+  const was = S.selected;
   S.selected = rowKey(row);
   reveal(row.path);
-  if (row.conflicted) { await openConflict(row.path); onCursor.run(); notify(); return; }
+  if (row.conflicted) {
+    await openConflict(row.path, hand);
+    if (live() && keep && S.open === keep) S.selected = was;
+    onCursor.run();
+    notify();
+    return;
+  }
   const kind: ViewKind = row.section;
   try {
     const orig = await git.readBlob(kind === 'unstaged' ? 'index' : 'head', row.path);
@@ -221,9 +329,10 @@ export async function openRow(row: Row): Promise<void> {
     let baseline: string | null = null;
     let docOid: string | null = null;
     let eol: Eol = 'lf';
+    let disk: FileText | null = null;
     if (kind === 'unstaged') {
-      const f = await git.readFile(row.path);
-      doc = f.text; baseline = f.exists ? f.text : null; eol = f.eol;
+      disk = await git.readFile(row.path);
+      doc = disk.text; baseline = disk.exists ? disk.text : null; eol = disk.eol;
     } else {
       const idx = await git.readBlob('index', row.path);
       doc = idx.text; docOid = idx.oid; eol = idx.eol;
@@ -232,15 +341,19 @@ export async function openRow(row: Row): Promise<void> {
       path: row.path, view: kind, eol, baseline, originalOid: orig.oid, originalExists: orig.exists,
       docOid, dirty: false, badge: null, panel: null, conflicted: false,
     };
-    const state = await buildState(kind, row.path, doc, orig.text, markDirty, editorExtensions(),
-      kind === 'unstaged' ? { accept: () => run('review.accept'), reject: () => run('review.reject') } : undefined);
+    const state = await buildState(kind, row.path, doc, orig.text, onEdit, editorExtensions(),
+      kind === 'unstaged' ? { accept: () => run('review.accept'), reject: () => run('review.reject') } : undefined,
+      hand.from);
     if (!live()) return;
+    const carried = !!disk && hand.carry(opened, disk, state.doc);
     S.open = opened;
     view.setState(state);
     afterOpen();
-    selectChunk(0);
+    // a carried buffer keeps its cursor, which may be mid-edit
+    if (!carried) selectChunk(0);
   } catch (e) {
     if (!live()) return;
+    if (hand.unsaved()) { keptOnFailure(e, was); return; }
     // the panel is set for every error kind, not only the four with panel copy: it is what
     // disables accept, reject and flush. Without it the failed open leaves the previous file's
     // document mounted under this path, and one file's text reaches another file's index or disk
@@ -260,9 +373,11 @@ export async function openRow(row: Row): Promise<void> {
 }
 
 export async function openPlain(path: string): Promise<void> {
-  if (!(await flush())) return;
-  clearTimeout(S.saveTimer);
+  const keep = await leave(path, false);
+  if (keep === false) return;
+  const hand = handOver(keep);
   const live = openEpoch.next();
+  const was = S.selected;
   S.selected = `plain:${path}`;
   reveal(path);
   try {
@@ -271,13 +386,15 @@ export async function openPlain(path: string): Promise<void> {
       path, view: 'plain', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null,
       originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: false,
     };
-    const state = await buildState('plain', path, f.text, null, markDirty, editorExtensions());
+    const state = await buildState('plain', path, f.text, null, onEdit, editorExtensions(), undefined, hand.from);
     if (!live()) return;
+    hand.carry(opened, f, state.doc);
     S.open = opened;
     view.setState(state);
     afterOpen();
   } catch (e) {
     if (!live()) return;
+    if (hand.unsaved()) { keptOnFailure(e, was); return; }
     S.open = {
       path, view: 'plain', eol: 'lf', baseline: null, originalOid: null, originalExists: false,
       docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: false,
@@ -289,9 +406,9 @@ export async function openPlain(path: string): Promise<void> {
   notify();
 }
 
-export async function closeFile(): Promise<void> {
-  if (!(await flush())) return;
-  clearTimeout(S.saveTimer);
+/** False when the file stays open: the user cancelled, or its changes could not be saved. */
+export async function closeFile(): Promise<boolean> {
+  if (!(await settle())) return false;
   // bumping the epoch drops an open still in flight, which would otherwise land on the blank state
   openEpoch.bump();
   S.open = null;
@@ -299,9 +416,10 @@ export async function closeFile(): Promise<void> {
   view.setState(EditorState.create({ doc: '' }));
   onCursor.run();
   notify();
+  return true;
 }
 
-async function openConflict(path: string): Promise<void> {
+async function openConflict(path: string, hand = handOver(null)): Promise<void> {
   const live = openEpoch.next();
   try {
     const f = await git.readFile(path);
@@ -309,13 +427,15 @@ async function openConflict(path: string): Promise<void> {
       path, view: 'unstaged', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null,
       originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: true,
     };
-    const state = await buildState('plain', path, f.text, null, markDirty, editorExtensions());
+    const state = await buildState('plain', path, f.text, null, onEdit, editorExtensions(), undefined, hand.from);
     if (!live()) return;
+    hand.carry(opened, f, state.doc);
     S.open = opened;
     view.setState(state);
     afterOpen();
   } catch (e) {
     if (!live()) return;
+    if (hand.unsaved()) { toast(errText(e), 'err'); return; }
     const opened: Open = {
       path, view: 'unstaged', eol: 'lf', baseline: null, originalOid: null, originalExists: false,
       docOid: null, dirty: false, badge: null, panel: errKind(e), conflicted: true,
@@ -351,8 +471,11 @@ export function hasUnstaged(path: string): boolean {
   return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
 }
 
-export const viewChanges = (path: string): Promise<void> =>
-  openRow({ section: 'unstaged', path, letter: 'M', untracked: false, conflicted: false });
+export const viewChanges = (path: string): Promise<void> => openRow({
+  section: 'unstaged', path, letter: 'M', untracked: false,
+  // an unmerged path has no index blob to diff against, only the conflict editor
+  conflicted: !!S.status?.files.some((f) => f.path === path && f.conflicted),
+});
 
 export async function reload(): Promise<void> {
   await S.flushing; // an in-flight write would otherwise land its own text in the baseline set below
@@ -363,7 +486,6 @@ export async function reload(): Promise<void> {
   try {
     const disk = await git.readFile(o.path);
     if (S.open !== o) return;
-    clearTimeout(S.saveTimer);
     replaceDoc(view, disk.text);
     o.baseline = disk.exists ? disk.text : null;
     o.eol = disk.eol;
@@ -381,6 +503,8 @@ export function keepMine(): void {
   if (!o?.badge) return;
   o.baseline = o.badge.exists ? o.badge.text : null;
   o.badge = null;
+  // a buffer that matched its old baseline differs from the disk text it now has to overwrite
+  o.dirty = differs(view.state.doc, o.baseline);
   notify();
   void flush();
 }
@@ -388,17 +512,13 @@ export function keepMine(): void {
 // ---------- startup and repo switching ----------
 export async function openRepo(path: string): Promise<void> {
   for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return;
-  if (!(await flush())) {
-    toast('This file changed on disk. Reload or Keep mine before switching repos.', 'warn');
-    return;
-  }
+  if (!(await settle())) return;
   try {
     const opened = await git.openRepo(path);
     S.root = opened.root;
     S.rootLabel = opened.label;
     S.title = opened.title;
     localStorage.setItem('codebaer.lastRepo', path);
-    clearTimeout(S.saveTimer);
     S.open = null;
     S.selected = null;
     S.filesOpen.clear();

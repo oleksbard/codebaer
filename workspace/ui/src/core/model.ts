@@ -111,11 +111,6 @@ export function pinDefaultBranches(bs: Branch[]): Branch[] {
   return [...bs].sort((a, b) => rank(a) - rank(b));
 }
 
-export const FLUSH_SET: ReadonlySet<string> = new Set([
-  'stageContent', 'stagePath', 'unstagePath', 'revertPath', 'stageAll', 'unstageAll', 'discardAll',
-  'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo',
-]);
-
 export function rejectSpecialCase(
   baseline: string | null, originalExists: boolean,
 ): 'restore' | 'removeConfirm' | null {

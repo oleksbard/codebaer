@@ -1,10 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withBusy } from '#core/session';
-import { confirmDialog } from '#kernel/dialogs';
+import { choiceDialog, confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
-import { g, mountApp, status } from '#test-app';
+import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
-import { commit } from './git-ops';
+import { commit, network, stashPush } from './git-ops';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -15,7 +15,7 @@ vi.mock('#ipc/git', async () => {
 });
 vi.mock('#kernel/dialogs', async () => {
   const actual = await vi.importActual<typeof import('#kernel/dialogs')>('#kernel/dialogs');
-  return { ...actual, confirmDialog: vi.fn() };
+  return { ...actual, confirmDialog: vi.fn(), choiceDialog: vi.fn() };
 });
 vi.mock('#ipc/terminal', async () => {
   const actual = await vi.importActual<typeof import('#ipc/terminal')>('#ipc/terminal');
@@ -23,16 +23,57 @@ vi.mock('#ipc/terminal', async () => {
 });
 
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
+const choiceMock = choiceDialog as unknown as ReturnType<typeof vi.fn>;
 
 beforeAll(mountApp);
 
 beforeEach(() => {
   for (const fn of Object.values(g)) fn.mockReset().mockResolvedValue(undefined);
   confirmMock.mockReset().mockResolvedValue(false);
+  choiceMock.mockReset().mockResolvedValue(null);
   S.open = null;
   S.selected = null;
   S.flushing = null;
   S.status = status('a.txt');
+});
+
+describe('the open file with unsaved changes', () => {
+  beforeEach(async () => {
+    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+    type('mine\n');
+  });
+
+  it('is offered a save before a stash, which Cancel skips altogether', async () => {
+    await stashPush();
+    expect(choiceMock).toHaveBeenCalledWith(expect.stringMatching(/^a\.txt has unsaved changes\n/),
+      'Save & Stash', 'Stash Anyway');
+    expect(g.stashPush!).not.toHaveBeenCalled();
+  });
+
+  it('is saved before the stash on Save & Stash, and left unsaved on Stash Anyway', async () => {
+    choiceMock.mockResolvedValue('ok');
+    await stashPush();
+    expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
+    expect(g.stashPush!).toHaveBeenCalledOnce();
+
+    type('more\n');
+    g.writeFile!.mockClear();
+    choiceMock.mockResolvedValue('alt');
+    await stashPush();
+    expect(g.writeFile!).not.toHaveBeenCalled();
+    expect(g.stashPush!).toHaveBeenCalledTimes(2);
+    expect(S.open!.dirty).toBe(true);
+  });
+
+  it('stays unsaved through a commit and a pull, which take the index and the remote', async () => {
+    S.commitMessage = 'a message';
+    await commit();
+    await network('pull');
+    expect(g.commit!).toHaveBeenCalledOnce();
+    expect(g.pull!).toHaveBeenCalledOnce();
+    expect(choiceMock).not.toHaveBeenCalled();
+    expect(g.writeFile!).not.toHaveBeenCalled();
+  });
 });
 
 describe('a failed commit', () => {

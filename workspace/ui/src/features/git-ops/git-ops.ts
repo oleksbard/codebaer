@@ -1,5 +1,5 @@
 import { pinDefaultBranches } from '#core/model';
-import { flush, guarded, refresh, withBusy } from '#core/session';
+import { guarded, offerSave, refresh, withBusy } from '#core/session';
 import { errKind, errText, git, type Branch } from '#ipc/git';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
 import { pick, type Item } from '#kernel/pick';
@@ -49,7 +49,6 @@ const NET: Record<Net, { verb: string; done: string; run: () => Promise<void> }>
 export type Net = 'push' | 'pull' | 'fetch';
 
 export async function network(name: Net): Promise<void> {
-  if (name === 'pull' && !(await flush())) return;
   S.cancellable = true;
   try {
     await withBusy(NET[name].run);
@@ -72,8 +71,14 @@ export async function network(name: Net): Promise<void> {
   }
 }
 
+export async function stashPush(): Promise<void> {
+  const go = await offerSave((name) => `${name} has unsaved changes\nThey are not stashed unless you save them first.`,
+    'Save & Stash', 'Stash Anyway');
+  if (go) await guarded(() => git.stashPush());
+}
+
 export async function stashPop(): Promise<void> {
-  await guarded('stashPop', () => git.stashPop());
+  await guarded(() => git.stashPop());
   const st = await git.status().catch(() => null);
   const conflicts = st?.files.filter((f) => f.conflicted).map((f) => f.path) ?? [];
   if (conflicts.length) toast(`stash pop left conflicts:\n  ${conflicts.join('\n  ')}`, 'warn');
@@ -90,12 +95,12 @@ export async function checkout(): Promise<void> {
   ];
   const b = await pick(opts, 'Select a branch to checkout');
   if (b === 'create') await createBranch();
-  else if (b) await guarded('switchBranch', () => git.switchBranch(b));
+  else if (b) await guarded(() => git.switchBranch(b));
 }
 
 export async function createBranch(): Promise<void> {
   const name = await promptDialog('New branch name');
-  if (name) await guarded('createBranch', () => git.createBranch(name));
+  if (name) await guarded(() => git.createBranch(name));
 }
 
 export const cancel = (): Promise<void> => git.cancel();

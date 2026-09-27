@@ -22,6 +22,8 @@ cargo test --manifest-path workspace/backend/Cargo.toml
 pnpm changelog [--to ref] [--raw]   # release notes since the last release, written by Claude Opus; --raw prints the
                                     # commits it would send instead
 pnpm release                        # the owner's: drafts main's head with those notes and starts release.yml
+pnpm mem fixtures                   # memory against other apps (scripts/mem.py): test repos s, m, l in ../comparison;
+                                    # `run <app> --repo ../comparison/m` measures one app, `report` tabulates the runs
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also keeps the packaged app as an artifact, which is what a release ships. Run the ones that cover your change before you call it done.
@@ -35,7 +37,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 
 `workspace/ui/mock.html` runs the real frontend in a browser on a fake backend, so a UI change can be seen and tested without Tauri. `workspace/ui/src/mock/boot.ts` installs `mockIPC` from `@tauri-apps/api/mocks`, then loads `main.tsx` unchanged. `vite build` bundles only `index.html`, so nothing under `workspace/ui/src/mock/` ships.
 
-- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `calls`, `terminalText`.
+- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`).
 - `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call.
@@ -74,14 +76,15 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          state.ts files), `notify()`, `useApp()`
     registry.ts          defineFeature(): commands, events, overlays, editor extensions, hooks; the palette
     keymap.ts            the key engine: matching, contexts, the Cmd-K chord, keyLabel(), matches()
-    pick.ts, dialogs.ts  command palette/picker; toasts, confirm, prompt
+    pick.ts, dialogs.ts  command palette/picker; toasts, confirm, a three-way choice, prompt
     epoch.ts             the stale-result check for async work
     platform.ts          which platform the frontend runs on
     paths.ts             every platform path rule the frontend has (home root, base name, inside a folder)
     clipboard.ts         copy a path, and the menu item the queue and the tree share
     sleep.ts             a timed wait
   core/                  the review session every feature shares:
-    session.ts           refresh, open, autosave, guarded, repo switching, the shared editor view
+    session.ts           refresh, open, saving and the unsaved-changes prompts, guarded, repo switching, quitting,
+                         the shared editor view
     model.ts             pure review logic (queue building, accept/reject text, refresh decisions)
     state.ts             repo, status, open file, tab
     feature.ts           core's commands and backend events
@@ -159,7 +162,8 @@ Adding a feature:
 - State is declared where it is owned: a feature's `state.ts` adds its fields to `State` by declaration merging and returns their initial values, and `app/state.ts` sets them all. A state module imports only types and modules no test mocks.
 - A feature is registered, not wired by hand: its commands, backend events, overlays, editor extensions and hooks (`onOpen`, `onRefresh`, `onRepoChange`) go in its `defineFeature()`, and `app/features.ts` lists the features in order. The palette, key and menu dispatch, the overlay host and the repo switch read the registry. Don't call a feature from core or add a case to a shared switch.
 - Key bindings live in one table per platform (`app/keymap/mac.ts`), not on commands, and every shortcut label comes from `keyLabel()`. A component with its own key handler lists its keys as `local` rows and tests them with `matches()`. The table test fails on two bindings that could fire in the same place.
-- Actions that change git go through `guarded(name, fn)` in `core/session.ts`, which flushes a dirty buffer, shows the busy state and refreshes afterwards. Do not call `git.*` mutations directly from components.
+- Actions that change git go through `guarded(fn)` in `core/session.ts`, which shows the busy state and refreshes afterwards. Do not call `git.*` mutations directly from components.
+- Edits stay unsaved until Cmd+S (`Open.dirty`); nothing writes the open file on its own. An action that reads the file from disk saves it first with `saveFirst()` or asks with `offerSave()`, and anything that drops the buffer asks with `settle()`. Spec section 6.3 lists which does what.
 - Async work that writes state after an await takes a check from an `epoch()` (`kernel/epoch.ts`) before the await and returns when it is false, or checks that the record it started on is still `S.open`, so a late result cannot overwrite a newer view.
 - File writes carry an expected baseline. A conflict comes back as `Stale` or `StaleIndex` and must be shown to the user, never overwritten silently.
 - Adding a Tauri command: implement it in its module, add it to `generate_handler![]` in `lib.rs`, add a wrapper in `workspace/ui/src/ipc/git.ts` or `workspace/ui/src/ipc/terminal.ts`, and add its handler in `workspace/ui/src/mock/backend.ts`. `capabilities/default.json` only needs a change for core or plugin permissions.

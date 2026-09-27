@@ -31,8 +31,8 @@ describe('the command palette', () => {
     }];
     S.termMenu = { shells: [{ path: '/bin/zsh', name: 'zsh' }], default: '/bin/zsh', commands: ['claude'] };
     expect(await shown()).toEqual([
-      ['Git: Commit', '⌘↩'], ['Git: Push', ''], ['Git: Pull', ''], ['Git: Fetch', ''], ['Git: Checkout to…', ''],
-      ['Git: Create Branch…', ''], ['Git: Stash', ''], ['Git: Pop Stash', ''],
+      ['File: Save', '⌘S'], ['Git: Commit', '⌘↩'], ['Git: Push', ''], ['Git: Pull', ''], ['Git: Fetch', ''],
+      ['Git: Checkout to…', ''], ['Git: Create Branch…', ''], ['Git: Stash', ''], ['Git: Pop Stash', ''],
       ['Git: Stage All Changes', '⌘⌥Y'], ['Git: Unstage All Changes', ''], ['Git: Discard All Changes', ''],
       ['Git: Stage File', '⌘⇧Y'], ['Git: Discard File', '⌘⇧N'], ['Git: Unstage File', ''],
       ['Show All Changes', '⌘⇧A'],

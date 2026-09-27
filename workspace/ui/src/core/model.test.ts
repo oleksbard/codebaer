@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptText, blameText, buildQueue, buildTree, decideRefresh, FLUSH_SET, pinDefaultBranches, rejectSpecialCase,
+  acceptText, blameText, buildQueue, buildTree, decideRefresh, pinDefaultBranches, rejectSpecialCase,
   rowKey, treeStatus, unstageText, visibleFiles,
 } from './model';
 import type { Branch, FileEntry, Status } from '#ipc/git';
@@ -131,13 +131,6 @@ describe('visibleFiles', () => {
 });
 
 describe('special cases', () => {
-  it('flush set matches the spec list and excludes commit and reads', () => {
-    const flushes = ['stageContent', 'stagePath', 'unstagePath', 'revertPath', 'stageAll', 'unstageAll',
-      'discardAll', 'switchBranch', 'pull', 'stashPush', 'stashPop', 'openRepo'];
-    for (const k of flushes) expect(FLUSH_SET.has(k)).toBe(true);
-    const skips = ['commit', 'status', 'readBlob', 'readFile', 'push', 'listFiles', 'branches'];
-    for (const k of skips) expect(FLUSH_SET.has(k)).toBe(false);
-  });
   it('reject special cases', () => {
     expect(rejectSpecialCase(null, true)).toBe('restore');
     expect(rejectSpecialCase('text', false)).toBe('removeConfirm');

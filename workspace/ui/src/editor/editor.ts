@@ -1,6 +1,6 @@
 import { ChangeSet, EditorState, Transaction, type Extension, type Text } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyField, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
@@ -40,6 +40,9 @@ export async function buildState(
   onDocChange: () => void,
   extensions: readonly Extension[] = [],
   controls?: { accept(): void; reject(): void },
+  /** A state whose document, selection and undo history the new one takes over in place of `doc`, if it returns
+   *  one. Read after the language loads, so keystrokes typed meanwhile come along. */
+  from?: () => EditorState | undefined,
 ): Promise<EditorState> {
   // the one await, before the theme is read: callers apply the state without awaiting again, so a
   // theme switch while the language loads is still seen
@@ -73,7 +76,7 @@ export async function buildState(
     keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap, { key: 'Ctrl-g', run: gotoLine }]),
     EditorView.editable.of(kind !== 'staged'),
     EditorView.updateListener.of((u) => {
-      // a refresh's replaceDoc annotates addToHistory:false; only real edits should arm autosave
+      // a refresh's replaceDoc annotates addToHistory:false; only real edits can leave the file unsaved
       if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.addToHistory) === false)) onDocChange();
       if (u.selectionSet || u.docChanged) onCursor.run();
     }),
@@ -103,7 +106,10 @@ export async function buildState(
       gutter: true,
     }));
   }
-  return EditorState.create({ doc, extensions: ext });
+  const was = from?.();
+  if (!was) return EditorState.create({ doc, extensions: ext });
+  const fields = { history: historyField };
+  return EditorState.fromJSON(was.toJSON(fields), { extensions: ext }, fields);
 }
 
 export function replaceDoc(view: EditorView, text: string): void {

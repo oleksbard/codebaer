@@ -10,7 +10,7 @@ vi.mock('#ipc/git', async () => {
 
 const { S } = await import('#kernel/store');
 const { pick } = await import('#kernel/pick');
-const { confirmDialog, errorDialog, promptDialog, toast } = await import('#kernel/dialogs');
+const { choiceDialog, confirmDialog, errorDialog, promptDialog, toast } = await import('#kernel/dialogs');
 const { run } = await import('#kernel/registry');
 const { OverlayHost } = await import('./OverlayHost');
 await import('./bootstrap');
@@ -126,6 +126,45 @@ describe('confirm dialog', () => {
     await tick();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await expect(p).resolves.toBe(false);
+  });
+});
+
+describe('choice dialog', () => {
+  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.dialog-actions button')];
+
+  it("puts the second answer first, then Cancel and the primary one, focused on Cancel", async () => {
+    const p = choiceDialog('Save a.txt?\nYour changes will be lost.', 'Save', "Don't Save");
+    await tick();
+    expect(buttons().map((b) => b.textContent)).toEqual(["Don't Save", 'Cancel', 'Save']);
+    expect(document.activeElement?.textContent).toBe('Cancel');
+    buttons()[2]!.click();
+    await expect(p).resolves.toBe('ok');
+  });
+
+  it("resolves 'alt' for the second answer and null for Cancel and Escape", async () => {
+    let p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
+    await tick();
+    buttons()[0]!.click();
+    await expect(p).resolves.toBe('alt');
+
+    p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
+    await tick();
+    buttons()[1]!.click();
+    await expect(p).resolves.toBe(null);
+
+    p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
+    await tick();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect(p).resolves.toBe(null);
+  });
+
+  it('is cancelled by a dialog that replaces it', async () => {
+    const p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
+    const next = confirmDialog('Discard?');
+    await expect(p).resolves.toBe(null);
+    await tick();
+    buttons()[0]!.click();
+    await expect(next).resolves.toBe(false);
   });
 });
 

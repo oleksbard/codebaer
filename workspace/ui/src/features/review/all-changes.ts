@@ -66,14 +66,7 @@ export async function showAllChanges(): Promise<void> {
   if (S.tab === 'terminals') S.tab = 'changes';
   if (S.allChanges && !S.open) { notify(); return; }
   const from = S.open?.path ?? null;
-  await closeFile();
-  if (S.open) {
-    // closeFile keeps a buffer it could not save open
-    toast(S.open.badge ? 'This file changed on disk. Reload or Keep mine first.' : 'not saved, see the error above',
-      'warn');
-    notify();
-    return;
-  }
+  if (!(await closeFile())) { notify(); return; }
   dropPage();
   S.allChanges = { order: [...queued().keys()], collapsed: new Set(), shown: new Set() };
   reveal = from === null ? null : { path: from, by: 0 };
@@ -239,7 +232,7 @@ async function fill(sec: Section): Promise<void> {
       notify();
       return;
     }
-    // read only: an edit here would need the one-file view's autosave and its Stale handling for every file
+    // read only: an edit here would need the one-file view's unsaved state and its Stale handling for every file
     const state = await buildState('unstaged', sec.path, disk.text, orig.text, () => {},
       [EditorState.readOnly.of(true), tracker(sec)],
       { accept: () => void acceptIn(sec), reject: () => void rejectIn(sec) });

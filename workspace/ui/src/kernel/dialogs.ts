@@ -21,7 +21,16 @@ export function removeToast(id: number): void {
 export function confirmDialog(message: string): Promise<boolean> {
   S.confirm?.resolve(false);
   return new Promise((resolve) => {
-    S.confirm = { message, resolve };
+    S.confirm = { message, resolve: (a) => resolve(a === true) };
+    notify();
+  });
+}
+
+/** OK, `alt` or Cancel, as 'ok', 'alt' or null. */
+export function choiceDialog(message: string, ok: string, alt: string): Promise<'ok' | 'alt' | null> {
+  S.confirm?.resolve(false);
+  return new Promise((resolve) => {
+    S.confirm = { message, ok, alt, resolve: (a) => resolve(a === true ? 'ok' : a === 'alt' ? 'alt' : null) };
     notify();
   });
 }
@@ -43,12 +52,12 @@ export function promptDialog(placeholder: string): Promise<string | null> {
   });
 }
 
-export function closeConfirm(req: DeepReadonly<ConfirmRequest>, ok: boolean): void {
+export function closeConfirm(req: DeepReadonly<ConfirmRequest>, answer: boolean | 'alt'): void {
   // Radix reports the close after our OK handler already resolved, so the second call is a no-op
   if (S.confirm !== req) return;
   S.confirm = null;
   notify();
-  req.resolve(ok);
+  req.resolve(answer);
 }
 
 export function closePrompt(req: DeepReadonly<PromptRequest>, value: string | null): void {

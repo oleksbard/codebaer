@@ -11,7 +11,7 @@ vi.mock('#ipc/git', async () => {
 });
 vi.mock('#kernel/dialogs', async () => {
   const actual = await vi.importActual<typeof import('#kernel/dialogs')>('#kernel/dialogs');
-  return { ...actual, confirmDialog: vi.fn() };
+  return { ...actual, confirmDialog: vi.fn(), choiceDialog: vi.fn() };
 });
 vi.mock('#kernel/pick', async () => {
   const actual = await vi.importActual<typeof import('#kernel/pick')>('#kernel/pick');
@@ -28,11 +28,12 @@ vi.mock('#features/terminals', async () => ({
 }));
 
 const { git } = await import('#ipc/git');
-const { confirmDialog } = await import('#kernel/dialogs');
+const { choiceDialog, confirmDialog } = await import('#kernel/dialogs');
 const { pick } = await import('#kernel/pick');
 const term = await import('#ipc/terminal');
 const g = git as unknown as Record<string, ReturnType<typeof vi.fn<(...args: never[]) => Promise<unknown>>>>;
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
+const choiceMock = choiceDialog as unknown as ReturnType<typeof vi.fn>;
 const pickMock = pick as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>>;
 const inputMock = term.input as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>>;
 
@@ -65,6 +66,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   for (const fn of Object.values(g)) fn.mockReset().mockResolvedValue(undefined);
   confirmMock.mockReset().mockResolvedValue(true);
+  choiceMock.mockReset().mockResolvedValue(null);
   pickMock.mockReset();
   inputMock.mockReset().mockResolvedValue(undefined);
   S.tab = 'changes';
@@ -74,6 +76,7 @@ beforeEach(async () => {
   S.lastTarget = null;
   S.toasts = [];
   S.flushing = null;
+  S.open = null;
   S.terminals = [session(1, 'zsh'), session(2, 'claude'), session(3, 'claude', '/Users/me/other')];
   S.status = status();
   g.readBlob!.mockResolvedValue(blob(INDEX));
@@ -469,17 +472,35 @@ describe('sending', () => {
     expect(S.toasts.at(-1)).toMatchObject({ kind: 'warn' });
   });
 
-  it('sends nothing while the open file cannot be saved', async () => {
+  it('asks to save a file with unsaved changes first, and Cancel sends nothing', async () => {
     await comment(1, 1, 'Needs the disk.');
     core.view.dispatch({ changes: { from: 0, insert: 'x' } });
-    clearTimeout(S.saveTimer);
+    await m.sendComments();
+    expect(choiceMock).toHaveBeenCalledWith(expect.stringMatching(/^a\.ts has unsaved changes\n/),
+      'Save & Send', 'Send Anyway');
+    expect(pickMock).not.toHaveBeenCalled();
+    expect(S.comments).toHaveLength(1);
+  });
+
+  it('sends nothing when the save it asked for comes back Stale', async () => {
+    await comment(1, 1, 'Needs the disk.');
+    core.view.dispatch({ changes: { from: 0, insert: 'x' } });
+    choiceMock.mockResolvedValue('ok');
     g.writeFile!.mockRejectedValue({ kind: 'Stale', detail: file('agent\n') });
     await m.sendComments();
     expect(pickMock).not.toHaveBeenCalled();
     expect(S.comments).toHaveLength(1);
     expect(S.toasts.at(-1)).toMatchObject({ kind: 'warn' });
-    S.open!.dirty = false;
-    S.open!.badge = null;
+  });
+
+  it('sends without writing on Send Anyway', async () => {
+    await comment(1, 1, 'As it is.');
+    core.view.dispatch({ changes: { from: 0, insert: 'x' } });
+    choiceMock.mockResolvedValue('alt');
+    pickMock.mockResolvedValue(null);
+    await m.sendComments();
+    expect(pickMock).toHaveBeenCalledOnce();
+    expect(g.writeFile!).not.toHaveBeenCalled();
   });
 
   it('refuses a target that closed while the picker was open', async () => {

@@ -1,6 +1,6 @@
 import type { EditorView } from '@codemirror/view';
 import { acceptText, buildQueue, rejectSpecialCase, rowKey, unstageText } from '#core/model';
-import { flush, guarded, openRow, refresh, selectChunk, view } from '#core/session';
+import { flush, guarded, openRow, refresh, reload, saveFirst, selectChunk, view } from '#core/session';
 import {
   acceptChunk, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   replaceDoc, replaceOriginal,
@@ -16,6 +16,13 @@ export type HunkFile = {
 
 export const removeText = (path: string): string =>
   `Delete ${path}?\nIts content is not in git and cannot be recovered.`;
+
+/** What a whole-file revert of `path`, or of every file, adds to its confirmation: it drops the open buffer too. */
+const unsavedNote = (path?: string): string => {
+  const o = S.open;
+  return o?.dirty && (path === undefined || o.path === path)
+    ? `\nYour unsaved changes to ${o.path} are discarded too.` : '';
+};
 
 /** Stages the hunk under `v`'s cursor. False when git refused it; the editor is then re-diffed against the
  *  index, unless `live()` says another file owns `v` by now. */
@@ -59,14 +66,19 @@ export async function reject(): Promise<void> {
   if (!o || o.view !== 'unstaged' || o.panel || o.conflicted) return;
   const special = rejectSpecialCase(o.baseline, o.originalExists);
   if (special === 'restore') {
+    if (o.dirty) {
+      if (!(await confirmDialog(`Restore ${o.path}?${unsavedNote(o.path)}`)) || S.open !== o) return;
+      await reload();
+    }
     try { await git.revertPath(o.path); } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
   }
   if (special === 'removeConfirm') {
-    if (!(await confirmDialog(removeText(o.path)))) return;
+    if (!(await confirmDialog(removeText(o.path) + unsavedNote(o.path)))) return;
     // a refresh can replace the record while the dialog is open; the blocking confirm() never let that happen
     if (S.open !== o) return;
+    if (o.dirty) await reload();
     try { await git.revertPath(o.path); o.baseline = null; o.dirty = false; } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
@@ -95,15 +107,24 @@ export async function unstageHunk(): Promise<void> {
   await refresh();
 }
 
-export const acceptFile = (path: string): Promise<void | undefined> => guarded('stagePath', () => git.stagePath(path));
+/** Stages the file as it is on disk, so its unsaved changes are saved first. */
+export async function acceptFile(path: string): Promise<void> {
+  if (S.open?.path === path && !(await saveFirst())) return;
+  await guarded(() => git.stagePath(path));
+}
 export const unstageFile = (path: string): Promise<void | undefined> =>
-  guarded('unstagePath', () => git.unstagePath(path));
-export const stageAll = (): Promise<void | undefined> => guarded('stageAll', () => git.stageAll());
-export const unstageAll = (): Promise<void | undefined> => guarded('unstageAll', () => git.unstageAll());
+  guarded(() => git.unstagePath(path));
+export async function stageAll(): Promise<void> {
+  if (!(await saveFirst())) return;
+  await guarded(() => git.stageAll());
+}
+export const unstageAll = (): Promise<void | undefined> => guarded(() => git.unstageAll());
 
 export async function rejectFile(path: string): Promise<void> {
-  if (!(await confirmDialog(`Discard unstaged changes in ${path}?\nAccepted hunks stay staged.`))) return;
-  await guarded('revertPath', () => git.revertPath(path));
+  const note = unsavedNote(path);
+  if (!(await confirmDialog(`Discard unstaged changes in ${path}?\nAccepted hunks stay staged.${note}`))) return;
+  if (note && S.open?.path === path) await reload();
+  await guarded(() => git.revertPath(path));
 }
 
 export function nextHunk(dir: 1 | -1): void {
@@ -135,6 +156,10 @@ export async function discardAll(): Promise<void> {
   try { preview = await git.discardPreview(); } catch (e) { toast(errText(e), 'err'); return; }
   const changed = S.status ? buildQueue(S.status).unstaged.filter((r) => !r.untracked && !r.conflicted).length : 0;
   const list = preview.length ? `\nUntracked entries removed:\n  ${preview.join('\n  ')}` : '';
-  if (!(await confirmDialog(`Discard unstaged changes in ${changed} file${changed === 1 ? '' : 's'}?${list}`))) return;
-  await guarded('discardAll', () => git.discardAll());
+  const note = unsavedNote();
+  if (!(await confirmDialog(`Discard unstaged changes in ${changed} file${changed === 1 ? '' : 's'}?${list}${note}`))) {
+    return;
+  }
+  if (note) await reload();
+  await guarded(() => git.discardAll());
 }

@@ -13,8 +13,22 @@ pub mod watcher;
 
 pub use error::AppError;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Wry};
+
+static UNSAVED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn set_unsaved(unsaved: bool) {
+    UNSAVED.store(unsaved, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn quit(app: AppHandle) {
+    app.exit(0);
+}
 
 #[tauri::command(async)]
 fn git_version() -> Result<String, error::AppError> {
@@ -170,7 +184,9 @@ pub fn run_app() {
                 &MenuItem::with_id(app, "app.settings", "Settings\u{2026}", true, Some("CmdOrCtrl+,"))?,
                 &MenuItem::with_id(app, "app.ai-tools", "Explore AI Tools\u{2026}", true, None::<&str>)?,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, None)?,
+                // not the predefined item: its terminate: reaches only applicationWillTerminate, which tao gives no
+                // way to cancel. Dock > Quit and logout still take that path.
+                &MenuItem::with_id(app, "app.quit", "Quit CodeBär", true, Some("CmdOrCtrl+Q"))?,
             ])?;
             // macOS delivers Cut/Copy/Paste/Select All/Undo to the webview only through these
             // menu items' key equivalents; without an Edit menu the shortcuts are dead in every input
@@ -196,9 +212,23 @@ pub fn run_app() {
             ])?;
             Menu::with_items(app, &[&app_menu, &file, &edit, &window])
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if UNSAVED.load(Ordering::Relaxed) {
+                    api.prevent_close();
+                    let _ = window.emit("quit-requested", ());
+                }
+            }
+        })
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
-            if id == "file.open" {
+            if id == "app.quit" {
+                if UNSAVED.load(Ordering::Relaxed) {
+                    let _ = app.emit("quit-requested", ());
+                } else {
+                    app.exit(0);
+                }
+            } else if id == "file.open" {
                 let _ = app.emit("menu-open-folder", ());
             } else if id == "file.orphans" {
                 let _ = app.emit("menu-orphans", ());
@@ -214,12 +244,12 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, log_info, recent_repos, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {
-            // both variants: closing the last window gives ExitRequested, but Cmd-Q and the
-            // Quit menu item go through applicationWillTerminate, which tauri maps to Exit.
+            // both variants: closing the last window and the Quit menu item give ExitRequested, but Dock > Quit
+            // and logout go through applicationWillTerminate, which tauri maps to Exit.
             // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart.
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 pty::client::shutdown(app);

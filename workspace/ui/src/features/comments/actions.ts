@@ -2,7 +2,7 @@ import { EditorView } from '@codemirror/view';
 import type { StateEffect } from '@codemirror/state';
 import { foldedRanges, unfoldEffect } from '@codemirror/language';
 import { buildQueue, plural } from '#core/model';
-import { flush, openPlain, openRow, view } from '#core/session';
+import { offerSave, openPlain, openRow, view } from '#core/session';
 import type { Open } from '#core/state';
 import { homeFrom, selectTerminal, statusLabel, termLabels, terminalsOf } from '#features/terminals';
 import { errText } from '#ipc/git';
@@ -258,13 +258,11 @@ export async function sendComments(): Promise<void> {
   else if (d) { S.draft = null; placeComments(); notify(); }
   const sent = [...S.comments];
   if (!sent.length) return;
-  // the agent reads the file from disk, which has to hold what the comments were written against
-  if (!(await flush())) {
-    toast(S.open?.badge
-      ? 'This file changed on disk. Reload or Keep mine first.'
-      : 'not saved, see the error above', 'warn');
-    return;
-  }
+  // the agent reads the file from disk, while the comments on the open file point at lines of its buffer
+  const onBuffer = sent.some((c) => c.side === 'work' && c.path === S.open?.path);
+  const ask = (name: string): string =>
+    `${name} has unsaved changes\nThe agent reads the file on disk, where your comments may point at other lines.`;
+  if (onBuffer && !(await offerSave(ask, 'Save & Send', 'Send Anyway'))) return;
   const labels = termLabels(terminalsOf(S.terminals));
   const targets = eligible(terminalsOf(S.terminals), S.root)
     .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));

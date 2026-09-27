@@ -90,6 +90,7 @@ function ConfirmDialog({ req }: { req: DeepReadonly<ConfirmRequest> }) {
   const i = req.message.indexOf('\n');
   const title = i < 0 ? req.message : req.message.slice(0, i);
   const body = i < 0 ? undefined : req.message.slice(i + 1);
-  return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : 'OK'}
-    error={req.error} onResult={(ok) => closeConfirm(req, ok)} />;
+  return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : req.ok ?? 'OK'}
+    altLabel={req.alt} error={req.error} onResult={(ok) => closeConfirm(req, ok)}
+    onAlt={() => closeConfirm(req, 'alt')} />;
 }

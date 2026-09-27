@@ -73,6 +73,8 @@ export function staleText(e: unknown): FileText | null {
 export const git = {
   gitVersion: () => invoke<string>('git_version'),
   initialRepo: () => invoke<string | null>('initial_repo'),
+  setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),
+  quit: () => invoke<void>('quit'),
   recentRepos: () => invoke<Recent[]>('recent_repos'),
   openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
   status: () => invoke<Status>('status'),

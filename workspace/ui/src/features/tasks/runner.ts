@@ -1,3 +1,4 @@
+import { flush } from '#core/session';
 import {
   closeTerminal, connectTerminals, isExited, isTask, selectTerminal, size,
 } from '#features/terminals';
@@ -84,6 +85,8 @@ export function taskClosed(id: number): void {
 }
 
 export async function runTask(task: Task): Promise<void> {
+  // VS Code's task.saveBeforeRun: a save that fails shows why, and the task runs on what the disk holds
+  await flush();
   const hide = task.t === 'Custom' && task.hide_terminal;
   // with no subscription the host would run it and every event about it would go nowhere
   await connectTerminals();

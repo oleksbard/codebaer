@@ -30,6 +30,9 @@
   }
   .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   .right .ico { width: 24px; height: 24px; }
+  .close.unsaved .dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: currentColor; }
+  .close.unsaved:is(:hover, :focus-visible) .dot,
+  .close.unsaved:not(:hover, :focus-visible) .x { display: none; }
   .right .ico[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
   /* the pressed rule outranks .ico:hover, so the toggle needs its own hover state to keep one */
   .right .ico[aria-pressed="true"]:hover { background: var(--accent); color: var(--panel); }
