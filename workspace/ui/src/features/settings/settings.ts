@@ -1,5 +1,6 @@
 import { view } from '#core/session';
 import { setEditorDark } from '#editor/editor-theme';
+import { rethemeAllChanges } from '#features/review';
 import { retheme } from '#features/terminals';
 import { errText, git } from '#ipc/git';
 import { logError } from '#ipc/log';
@@ -30,6 +31,7 @@ function showTheme(): void {
   if (t === getTheme()) return;
   setTheme(t);
   setEditorDark(view, isDark(t));
+  rethemeAllChanges(isDark(t));
   retheme();
 }
 

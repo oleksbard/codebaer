@@ -1,0 +1,98 @@
+.stack {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* the page keeps its own place when a file above the fold changes size (useSections) */
+  overflow-anchor: none;
+  background: var(--bg);
+
+  > .blank { height: 100%; }
+}
+
+.fsec {
+  border-bottom: 1px solid var(--line);
+}
+
+.fhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px 0 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 500;
+
+    .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dir { color: var(--muted); font-weight: 400; }
+  }
+
+  .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .btn { padding: 2px 8px; }
+  .diffstat { flex: none; }
+}
+
+/* the same drawn triangle as the sidebar's section headers */
+.fold {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--r-2);
+  color: var(--muted);
+
+  &::before {
+    content: '';
+    border: 4px solid transparent;
+    border-bottom-width: 0;
+    border-top-color: currentColor;
+    margin-top: 2px;
+  }
+
+  &[aria-expanded="false"]::before { rotate: -90deg; }
+  &:hover { background: var(--line); color: var(--text); }
+  &:disabled { opacity: .35; }
+}
+
+.fsec.done .fhead {
+  color: var(--muted);
+  background: var(--bg);
+
+  .file { font-weight: 400; }
+}
+
+.fbody {
+  /* the gutters' own z-index would otherwise paint over the sticky header of the file */
+  isolation: isolate;
+
+  .cm-editor { font: var(--fs-3)/1.6 var(--mono); }
+
+  /* every file keeps a cursor, so only the one being read marks its line */
+  .cm-editor:not(.cm-focused) .cm-activeLine,
+  .cm-editor:not(.cm-focused) .cm-activeLineGutter { background: none; }
+}
+
+/* a file not read yet holds some height, so the files near the top do not all count as near the screen */
+.fwait {
+  height: 160px;
+}
+
+.fnote {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  color: var(--muted);
+  font-size: var(--fs-2);
+}

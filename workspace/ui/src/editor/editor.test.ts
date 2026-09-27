@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import {
-  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, rejectChunk,
+  acceptChunk, buildState, chunkCount, chunkIndexAtCursor, getOriginalDoc, lineStat, rejectChunk,
   replaceDoc, replaceOriginal,
 } from './editor';
 import { editorHighlight, setEditorDark } from './editor-theme';
@@ -43,6 +43,14 @@ describe('CodeMirror merge contract', () => {
     replaceOriginal(view, 'zzz\n');
     expect(getOriginalDoc(view.state).toString()).toBe('zzz\n');
     expect(chunkCount(view.state)).toBe(1);
+  });
+
+  it('lineStat counts the lines each side of every chunk covers', async () => {
+    expect(lineStat((await mount('unstaged')).state)).toEqual({ added: 2, removed: 2 });
+    expect(lineStat((await mount('unstaged', 'a\nb\nx\ny\nz\nc\nd\n')).state)).toEqual({ added: 3, removed: 0 });
+    expect(lineStat((await mount('unstaged', 'a\nd\n')).state)).toEqual({ added: 0, removed: 2 });
+    expect(lineStat((await mount('unstaged', '', ORIGINAL)).state)).toEqual({ added: 0, removed: 4 });
+    expect(lineStat((await mount('unstaged', ORIGINAL)).state)).toEqual({ added: 0, removed: 0 });
   });
 
   it('onDocChange fires for a real edit but not for a replaceDoc refresh', async () => {

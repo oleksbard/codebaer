@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { rowKey, split, STATUS_LABEL, type Row, type Section } from '#core/model';
-import { openPlain, openRow } from '#core/session';
+import { openPlain } from '#core/session';
 import { copyItem } from '#kernel/clipboard';
 import { keyLabel } from '#kernel/keymap';
 import { refs } from '#kernel/store';
@@ -10,29 +10,39 @@ import { FileIcon } from '#ui/FileIcon';
 import { StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { List } from '#ui/List';
+import { pickRow, toggleAllChanges } from './all-changes';
 import { acceptFile, rejectFile, stageAll, unstageAll, unstageFile } from './hunks';
 
 const PLUS = 'M8 3v10M3 8h10';
+const STACK = 'M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM2.5 6.25h11M2.5 9.75h11';
 const MINUS = 'M3 8h10';
 const DISCARD = 'M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7';
 
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
 
-export function QueueList({ q, selected, open, onToggle }: {
+export function QueueList({ q, selected, open, onToggle, allChanges }: {
   q: { unstaged: Row[]; staged: Row[] };
   selected: string | null;
   open: Record<Section, boolean>;
   onToggle(sec: Section, open: boolean): void;
+  /** The All changes page is in the main pane. */
+  allChanges: boolean;
 }) {
   return (
     <List ref={(el) => { refs.list = el; }}>
       <SectionBlock id="unstaged" label="Changes" rows={q.unstaged} empty="Nothing left to review"
         selected={selected} open={open.unstaged} onToggle={onToggle}
-        all={<IconButton label="Stage all changes" title={`Stage all changes (${keyLabel('review.stageAll')})`}
-          data-all="stage"
-          disabled={!q.unstaged.length}
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>
-          <StrokeIcon d={PLUS} size={14} /></IconButton>} />
+        all={<>
+          <IconButton label="Review all changes" title={`Review all changes (${keyLabel('review.allChanges')})`}
+            data-all="show" aria-pressed={allChanges} disabled={!allChanges && !q.unstaged.length}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void toggleAllChanges(); }}>
+            <StrokeIcon d={STACK} size={14} /></IconButton>
+          <IconButton label="Stage all changes" title={`Stage all changes (${keyLabel('review.stageAll')})`}
+            data-all="stage"
+            disabled={!q.unstaged.length}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>
+            <StrokeIcon d={PLUS} size={14} /></IconButton>
+        </>} />
       <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
         selected={selected} open={open.staged} onToggle={onToggle}
         all={<IconButton label="Unstage all changes" data-all="unstage" disabled={!q.staged.length}
@@ -99,7 +109,7 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
   return (
     <ContextMenu items={menuFor(r)}>
       <div className={`row${selected ? ' sel' : ''}`} data-key={rowKey(r)} data-st={r.letter} role="button"
-        title={r.path} onClick={() => void openRow(r)}>
+        title={r.path} onClick={() => void pickRow(r)}>
         <FileIcon name={name} />
         <span className="path"><span className="name">{name}</span>
           <span className="dir">{dirSlash.slice(0, -1)}</span></span>

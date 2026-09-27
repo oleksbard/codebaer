@@ -37,9 +37,11 @@ test('with no file open the view counts the lines left to review and follows the
   const mock = await open();
   await page.getByRole('button', { name: 'Close file' }).click();
   await mock.idle();
+  await expect(page.getByRole('img', { name: '6 files to review' })).toBeVisible();
   await expect(page.getByRole('img', { name: '12 lines added, 12 removed' })).toBeVisible();
   await mock.agentEdit('src/new.ts', 'one\ntwo\n');
   await mock.idle();
+  await expect(page.getByRole('img', { name: '7 files to review' })).toBeVisible();
   await expect(page.getByRole('img', { name: '14 lines added, 12 removed' })).toBeVisible();
   await expect(page.locator('.diffstat .n.add')).toHaveText('+14');
 });

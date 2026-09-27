@@ -37,7 +37,7 @@ function useTween(to: number): number {
   return shown;
 }
 
-function Count({ value, sign, tone }: { value: number; sign: string; tone: 'add' | 'del' }) {
+function Count({ value, sign = '', tone }: { value: number; sign?: string; tone: 'add' | 'del' | 'files' }) {
   const shown = useTween(value);
   const [last, setLast] = useState(value);
   const [changes, setChanges] = useState(0);
@@ -58,6 +58,15 @@ export function DiffStat({ added, removed }: { added: number; removed: number })
           <i key={`${i}${b}`} className={`blk ${b}`} style={{ '--i': i } as CSSProperties} />
         ))}
       </span>
+    </span>
+  );
+}
+
+export function FileStat({ files, label }: { files: number; label: string }) {
+  return (
+    <span className="filestat" role="img" aria-label={label} title={label}>
+      <Count value={files} tone="files" />
+      <span className="unit">{files === 1 ? 'file' : 'files'}</span>
     </span>
   );
 }

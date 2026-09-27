@@ -100,6 +100,11 @@ describe('keys on macOS', () => {
     expect(calls).toEqual(['review.prevFile']);
   });
 
+  it('Meta+Shift+KeyA -> allChanges', () => {
+    press({ key: 'a', code: 'KeyA', metaKey: true, shiftKey: true });
+    expect(calls).toEqual(['review.allChanges']);
+  });
+
   it('Meta+Shift+KeyE -> filesTab', () => {
     press({ key: 'e', code: 'KeyE', metaKey: true, shiftKey: true });
     expect(calls).toEqual(['files.show']);

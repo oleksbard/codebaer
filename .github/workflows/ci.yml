@@ -11,17 +11,13 @@ concurrency:
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
-  macos:
+  frontend:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - uses: dtolnay/rust-toolchain@stable
-        with: { components: clippy }
-      - uses: Swatinem/rust-cache@v2
-        with: { workspaces: workspace/backend }
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
@@ -39,6 +35,19 @@ jobs:
           path: workspace/ui/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+  app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # the tauri CLI and the frontend build that bundles into the app
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: workspace/backend }
+      - run: pnpm install --frozen-lockfile
       - run: cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path workspace/backend/Cargo.toml
       - run: pnpm tauri build --ci

@@ -16,6 +16,7 @@ export const MAC: readonly Binding<CommandId>[] = [
   { keys: 'Mod+Shift+N', command: 'review.discardFile' },
   { keys: 'Mod+Shift+]', command: 'review.nextFile' },
   { keys: 'Mod+Shift+[', command: 'review.prevFile' },
+  { keys: 'Mod+Shift+A', command: 'review.allChanges' },
   // in the order the chord hint lists them
   { keys: 'Mod+K Mod+Alt+S', command: 'review.accept' },
   { keys: 'Mod+K Mod+R', command: 'review.reject' },

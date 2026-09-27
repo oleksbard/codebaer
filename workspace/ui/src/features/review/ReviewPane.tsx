@@ -10,16 +10,17 @@ import { logError } from '#ipc/log';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
-import { DiffStat } from '#ui/DiffStat';
+import { DiffStat, FileStat } from '#ui/DiffStat';
 import { FileIcon } from '#ui/FileIcon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { Pill } from '#ui/Pill';
 import { accept, acceptFile, nextHunk, reject, rejectFile, unstageFile, unstageHunk } from './hunks';
 
-const PANEL_TEXT: Record<string, string> = {
+export const PANEL_TEXT: Record<string, string> = {
   Binary: 'binary file', NotUtf8: 'not UTF-8', TooLarge: 'over 2 MB', Special: 'not a regular file',
 };
+const NO_LINES: Stat = { added: 0, removed: 0 };
 
 export function ReviewPane() {
   const s = useApp();
@@ -131,22 +132,27 @@ function Banner() {
 }
 
 /** Fetched again for every new status, which is every refresh. */
-function useDiffStat(status: object | null): Stat | null {
+export function useDiffStat(status: object | null): Stat | null {
   const [stat, setStat] = useState<Stat | null>(null);
   useEffect(() => {
     if (!status) return;
     let live = true;
-    git.diffStat().then((next) => { if (live) setStat(next); }, (e: unknown) => logError(e, 'diff_stat'));
+    git.diffStat().then((next) => { if (live) setStat(next); }, (e: unknown) => {
+      logError(e, 'diff_stat');
+      if (live) setStat(NO_LINES);
+    });
     return () => { live = false; };
   }, [status]);
   return stat;
 }
 
-function QueueStat() {
+/** Both pills wait for the line count, so neither moves when the other arrives. */
+function QueueStat({ files }: { files: number }) {
   const s = useApp();
   const stat = useDiffStat(s.status);
   return (
-    <div className="diffstat-slot">
+    <div className="queue-stat">
+      {stat ? <FileStat files={files} label={`${plural(files, 'file')} to review`} /> : null}
       {stat && stat.added + stat.removed > 0 ? <DiffStat added={stat.added} removed={stat.removed} /> : null}
     </div>
   );
@@ -161,12 +167,10 @@ function Blank() {
       <div className="blank">
         <div>
           <img src="/logo.png" alt="" />
-          <h2>{n ? `${plural(n, 'file')} to review` : 'Nothing left to review'}</h2>
-          {n ? <QueueStat /> : null}
-          <p>{n
-            ? <>Pick a file on the left, or press <Kbd>{keyLabel('review.nextHunk')}</Kbd>
-              {' '}to start at the first hunk.</>
-            : <>Write a message and commit with <Kbd>{keyLabel('git.commit')}</Kbd>, or wait for the agent.</>}</p>
+          {n ? <QueueStat files={n} /> : <>
+            <h2>Nothing left to review</h2>
+            <p>Write a message and commit with <Kbd>{keyLabel('git.commit')}</Kbd>, or wait for the agent.</p>
+          </>}
         </div>
       </div>
     );

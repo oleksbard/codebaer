@@ -6,7 +6,7 @@ import { openAiTools } from '#features/ai-tools';
 import { FilesList } from '#features/files';
 import { CommitBox } from '#features/git-ops';
 import { findOrphans } from '#features/orphans';
-import { QueueList } from '#features/review';
+import { allChangesShown, QueueList } from '#features/review';
 import { openSettings } from '#features/settings';
 import { TaskMenu } from '#features/tasks';
 import { TerminalRail } from '#features/terminals';
@@ -99,7 +99,7 @@ export function Sidebar() {
     <aside className="side">
       {s.tab === 'files'
         ? <FilesList files={s.files} ignored={s.ignored} active={s.open?.path ?? null} />
-        : <QueueList q={q} selected={s.selected} open={open}
+        : <QueueList q={q} selected={s.selected} open={open} allChanges={allChangesShown(s)}
           onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
       <CommitBox staged={q.staged.length} hidden={s.tab !== 'changes'} />
     </aside>

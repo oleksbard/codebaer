@@ -35,6 +35,7 @@ describe('the command palette', () => {
       ['Git: Create Branch…', ''], ['Git: Stash', ''], ['Git: Pop Stash', ''],
       ['Git: Stage All Changes', '⌘⌥Y'], ['Git: Unstage All Changes', ''], ['Git: Discard All Changes', ''],
       ['Git: Stage File', '⌘⇧Y'], ['Git: Discard File', '⌘⇧N'], ['Git: Unstage File', ''],
+      ['Show All Changes', '⌘⇧A'],
       ['Comment on Selection', '⌘K ⌘⌥C'], ['Send Pending Comments…', ''], ['Discard Pending Comments', ''],
       ['Open Repository…', ''],
       ['Terminal: New Terminal', '⌘T'], ['Terminal: New zsh', ''], ['Terminal: Run claude', ''],

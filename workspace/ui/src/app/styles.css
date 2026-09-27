@@ -8,6 +8,7 @@
 @import '../features/review/queue.css';
 @import '../features/git-ops/commit.css';
 @import '../features/review/review.css';
+@import '../features/review/all-changes.css';
 @import '../editor/editor.css';
 @import './panes.css';
 @import '../features/comments/comments.css';

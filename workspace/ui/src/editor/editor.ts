@@ -1,4 +1,4 @@
-import { ChangeSet, EditorState, Transaction, type Extension } from '@codemirror/state';
+import { ChangeSet, EditorState, Transaction, type Extension, type Text } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
@@ -123,6 +123,21 @@ export function replaceOriginal(view: EditorView, text: string): void {
 
 export function chunkCount(state: EditorState): number {
   return getChunks(state)?.chunks.length ?? 0;
+}
+
+const lines = (doc: Text, from: number, to: number, end: number): number =>
+  to > from ? doc.lineAt(end).number - doc.lineAt(from).number + 1 : 0;
+
+/** Lines the diff adds and removes, as a diffstat counts them. */
+export function lineStat(state: EditorState): { added: number; removed: number } {
+  const original = getOriginalDoc(state);
+  let added = 0;
+  let removed = 0;
+  for (const c of getChunks(state)?.chunks ?? []) {
+    added += lines(state.doc, c.fromB, c.toB, c.endB);
+    removed += lines(original, c.fromA, c.toA, c.endA);
+  }
+  return { added, removed };
 }
 
 export function chunkIndexAtCursor(state: EditorState): number {

@@ -1,35 +1,50 @@
+import type { EditorView } from '@codemirror/view';
 import { acceptText, buildQueue, rejectSpecialCase, rowKey, unstageText } from '#core/model';
 import { flush, guarded, openRow, refresh, selectChunk, view } from '#core/session';
 import {
   acceptChunk, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   replaceDoc, replaceOriginal,
 } from '#editor/editor';
-import { errKind, errText, git } from '#ipc/git';
+import { errKind, errText, git, type Eol } from '#ipc/git';
 import { confirmDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
+
+/** What staging a hunk needs to know about the file an index-to-working-tree editor shows. */
+export type HunkFile = {
+  path: string; eol: Eol; baseline: string | null; originalOid: string | null; originalExists: boolean;
+};
+
+export const removeText = (path: string): string =>
+  `Delete ${path}?\nIts content is not in git and cannot be recovered.`;
+
+/** Stages the hunk under `v`'s cursor. False when git refused it; the editor is then re-diffed against the
+ *  index, unless `live()` says another file owns `v` by now. */
+export async function stageChunk(v: EditorView, f: HunkFile, live: () => boolean): Promise<boolean> {
+  acceptChunk(v);
+  const text = acceptText(getOriginalDoc(v.state).toString(), f.baseline);
+  try {
+    const r = await git.stageContent(f.path, text, f.eol, f.originalOid);
+    f.originalOid = r.oid;
+    f.originalExists = r.oid !== null;
+    return true;
+  } catch (e) {
+    const idx = await git.readBlob('index', f.path).catch(() => null);
+    if (idx && live()) {
+      replaceOriginal(v, idx.text); f.originalOid = idx.oid; f.originalExists = idx.exists;
+    }
+    if (errKind(e) === 'StaleIndex') toast('index changed under you, your accept was dropped, re-diffed', 'warn');
+    else toast(errText(e), 'err');
+    return false;
+  }
+}
 
 export async function accept(): Promise<void> {
   const o = S.open;
   if (!o || o.view !== 'unstaged' || o.panel || o.conflicted) return;
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
   if (!(await flush())) return;
-  acceptChunk(view);
-  const text = acceptText(getOriginalDoc(view.state).toString(), o.baseline);
-  let ok = true;
-  try {
-    const r = await git.stageContent(o.path, text, o.eol, o.originalOid);
-    o.originalOid = r.oid;
-    o.originalExists = r.oid !== null;
-  } catch (e) {
-    ok = false;
-    const idx = await git.readBlob('index', o.path).catch(() => null);
-    // a file opened while this was in flight owns the view now, and this index is not its own
-    if (idx && S.open === o) {
-      replaceOriginal(view, idx.text); o.originalOid = idx.oid; o.originalExists = idx.exists;
-    }
-    if (errKind(e) === 'StaleIndex') toast('index changed under you, your accept was dropped, re-diffed', 'warn');
-    else toast(errText(e), 'err');
-  }
+  // a file opened while this was in flight owns the view now, and this index is not its own
+  const ok = await stageChunk(view, o, () => S.open === o);
   await refresh();
   // a dropped accept leaves its hunk on screen, and a file opened while this was in flight owns
   // the view now, so neither one may move the cursor
@@ -49,7 +64,7 @@ export async function reject(): Promise<void> {
     return;
   }
   if (special === 'removeConfirm') {
-    if (!(await confirmDialog(`Delete ${o.path}?\nIts content is not in git and cannot be recovered.`))) return;
+    if (!(await confirmDialog(removeText(o.path)))) return;
     // a refresh can replace the record while the dialog is open; the blocking confirm() never let that happen
     if (S.open !== o) return;
     try { await git.revertPath(o.path); o.baseline = null; o.dirty = false; } catch (e) { toast(errText(e), 'err'); }

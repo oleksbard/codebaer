@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { ReviewPane } from '#features/review';
+import { AllChanges, allChangesShown, ReviewPane } from '#features/review';
 import { Terminals } from '#features/terminals';
 import { OverlayHost } from './OverlayHost';
 import { Gutter, Header } from './Shell';
@@ -19,7 +19,7 @@ export function App() {
         <div className="frame">
           <Sidebar />
           <Gutter />
-          {s.tab === 'terminals' ? <Terminals /> : <ReviewPane />}
+          {s.tab === 'terminals' ? <Terminals /> : allChangesShown(s) ? <AllChanges /> : <ReviewPane />}
         </div>
       </div>
       <OverlayHost />

@@ -2,7 +2,7 @@
 
 # CodeBär
 
-A small, fast macOS desktop app for reviewing what an AI agent changed in a local git working tree. Run the agent in the app's built-in terminal or in your own. The app shows the unstaged changes as a queue of hunks. You accept, reject, or edit each hunk, then commit.
+A small, fast macOS desktop app for reviewing what an AI agent changed in a local git working tree. Run the agent in the app's built-in terminal or in your own. The app shows the unstaged changes as a queue of hunks, one file at a time or every file on one page. You accept, reject, or edit each hunk, then commit.
 
 ## Install
 
