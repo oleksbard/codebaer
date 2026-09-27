@@ -81,4 +81,9 @@
   --hue-purple: var(--ansi-magenta);
   --hue-red: var(--ansi-red);
   --hue-yellow: var(--ansi-bright-yellow);
+
+  /* one colour per agent CLI, wherever the app marks one */
+  --agent-claude: var(--hue-orange);
+  --agent-codex: var(--hue-green);
+  --agent-opencode: var(--hue-blue);
 }

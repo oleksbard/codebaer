@@ -1,5 +1,6 @@
 import { defineFeature, openPalette, type CommandIds } from '#kernel/registry';
 import { refs } from '#kernel/store';
+import { aiTools } from '#features/ai-tools';
 import { commandIcons } from '#features/command-icons';
 import { comments } from '#features/comments';
 import { files } from '#features/files';
@@ -24,6 +25,6 @@ const app = defineFeature({
 
 /** Palette order, hook order and repo-change order follow this list. */
 export const FEATURES = [
-  core, gitOps, review, comments, repos, terminals, files, orphans, settings, commandIcons, tasks, app,
+  core, gitOps, review, comments, repos, terminals, files, orphans, settings, aiTools, commandIcons, tasks, app,
 ] as const;
 export type CommandId = CommandIds<typeof FEATURES>;

@@ -54,6 +54,9 @@
   --ansi-bright-magenta: #d3869b;
   --ansi-bright-cyan: #8ec07c;
   --ansi-bright-white: #ebdbb2;
+
+  /* its constant colour is not an orange, which the agent marks rely on */
+  --hue-orange: #fe8019;
 }
 
 [data-theme="gruvbox-light"] {
@@ -111,4 +114,7 @@
   --ansi-bright-magenta: #8f3f71;
   --ansi-bright-cyan: #427b58;
   --ansi-bright-white: #3c3836;
+
+  /* its constant colour is not an orange, which the agent marks rely on */
+  --hue-orange: #af3a03;
 }

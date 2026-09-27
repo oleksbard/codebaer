@@ -108,6 +108,8 @@ export const git = {
     invoke<(string | null)[]>('ai_command_icons', { items, sets }),
   /** Every provider but off whose CLI the backend can find; it asks a login shell, so it can take a second. */
   installedAiProviders: () => invoke<AiProvider[]>('installed_ai_providers'),
+  /** An https page only, in the default browser. */
+  openUrl: (url: string) => invoke<void>('open_url', { url }),
   branches: () => invoke<Branch[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),

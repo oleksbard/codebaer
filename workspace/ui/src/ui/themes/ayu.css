@@ -55,6 +55,9 @@
   --ansi-bright-magenta: #dfbfff;
   --ansi-bright-cyan: #95e6cb;
   --ansi-bright-white: #ffffff;
+
+  /* its constant colour is not an orange, which the agent marks rely on */
+  --hue-orange: #ffad66;
 }
 
 [data-theme="ayu-light"] {
@@ -112,4 +115,7 @@
   --ansi-bright-magenta: #a37acc;
   --ansi-bright-cyan: #4cbf99;
   --ansi-bright-white: #d1d1d1;
+
+  /* its constant colour is not an orange, which the agent marks rely on */
+  --hue-orange: #fa8d3e;
 }

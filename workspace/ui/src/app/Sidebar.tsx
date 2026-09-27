@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { buildQueue, type Section } from '#core/model';
 import type { Tab } from '#core/state';
+import { openAiTools } from '#features/ai-tools';
 import { FilesList } from '#features/files';
 import { CommitBox } from '#features/git-ops';
 import { findOrphans } from '#features/orphans';
@@ -50,6 +51,9 @@ function BrandMenu() {
         <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings()}>
             Settings…<span className="detail"><Kbd>{keyLabel('settings.open')}</Kbd></span>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className="menu-item" onSelect={openAiTools}>
+            Explore AI Tools…
           </DropdownMenu.Item>
           <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
             Terminals and Orphans…

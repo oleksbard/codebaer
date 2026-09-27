@@ -19,9 +19,12 @@ pnpm ui                         # browser mode: the app on a fake backend at loc
 pnpm shot [scenario] [--theme id] [--do press:Meta+T]   # PNG of browser mode, into workspace/ui/test-results/shots/
 cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path workspace/backend/Cargo.toml
+pnpm changelog [--to ref] [--raw]   # release notes since the last release, written by Claude Opus; --raw prints the
+                                    # commits it would send instead
+pnpm release                        # the owner's: drafts main's head with those notes and starts release.yml
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also drafts the release. Run the ones that cover your change before you call it done.
+CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also keeps the packaged app as an artifact, which is what a release ships. Run the ones that cover your change before you call it done.
 
 - Lint: oxlint does the real linting (`workspace/ui/.oxlintrc.json`). It uses type-aware rules for unnecessary assertions and conditions and for floating or misused promises. ESLint runs only for `max-len`, parsed with babel because typescript-eslint does not support TypeScript 7 yet.
 - Frontend tests: co-located `workspace/ui/src/**/*.test.ts(x)`. Vitest runs from the root `vitest.config.ts`, which lists the ui project (configured in `workspace/ui/vite.config.ts`) and `scripts/`. `workspace/ui/src/test-setup.ts` polyfills the DOM APIs that jsdom lacks and CodeMirror, Radix and xterm need. Tests mock the local wrapper modules (`vi.mock('#ipc/git')`, `#ipc/terminal`), not `@tauri-apps/api`. A test that mounts the whole app uses `mountApp()` and the fixtures in `workspace/ui/src/test-app.ts`, and keeps its own `vi.mock` calls, since Vitest hoists them per file. Components are rendered with `react-dom/client` directly, without testing-library.
@@ -35,7 +38,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `calls`, `terminalText`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`).
-- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call.
+- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call.
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -100,6 +103,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          commands (commands.ts), the dialog, the theme picker and the Commands pane
     command-icons/       an icon per command: the Lucide and Simple Icons sets loaded on first use, the AI's picks
                          and their cache (icons.ts), the icon and the picker
+    ai-tools/            the Explore AI Tools dialog: a card per agent CLI (catalog.ts), with its install command
+                         and install guide while the backend cannot find it, marked installed once it can
   app/                   composition only:
     App.tsx, Shell.tsx, Sidebar.tsx   the window, the header and sidebar gutter, the sidebar frame and activity bar
     OverlayHost.tsx      palette, confirm, prompt, then every registered overlay; toasts and the chord hint
@@ -117,6 +122,7 @@ workspace/backend/src/   Rust backend
   error.rs               AppError, serialized as {kind, detail}
   watcher.rs             `notify` watcher on the worktree and .git, debounced, emits `repo-changed`
   ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command icons
+  browser.rs             opens an https page in the default browser
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),
@@ -165,7 +171,7 @@ Adding a feature:
 - The version lives only in `workspace/backend/Cargo.toml`; `tauri.conf.json` has none and falls back to it. Never edit it by hand.
 - A change a user can notice includes a bump in the same change: `pnpm bump minor` for a feature, `pnpm bump patch` for a fix. Docs, tests, CI and refactors get none. Never `major`, that is the owner's call.
 - `scripts/bump.mjs` counts from the last published release, the newest `v*` tag on origin. Repeating a bump within one release cycle changes nothing, and a feature after a fix raises the patch to a minor. It only reads git, fails without changing anything when origin is unreachable, and rewrites `Cargo.toml` and `Cargo.lock`.
-- Never create tags or releases. A push to main with an unreleased version makes CI build the draft release, replacing the previous draft. `.github/workflows/release.yml` publishes it on Mondays and Thursdays (UTC) once it is 12 hours old and still built from main's head, and the owner can publish it earlier from the releases page. Publishing creates the tag. `install.sh` is what the README's install one-liner runs.
+- Never create tags or releases. The owner releases with `pnpm release` (`scripts/release.mjs`): it writes the notes for main's head on origin with Claude Opus through the local `claude` CLI, replaces any draft with a draft of that commit carrying them, and starts `.github/workflows/release.yml`. That workflow waits for main's CI on the commit, attaches the app CI built and smoke-tested there (kept for 30 days), and publishes the draft, which creates the tag. Commits pushed after that are not in the release. `install.sh` is what the README's install one-liner runs.
 - Builds are macOS on Apple Silicon only. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`.
 
 ## Boundaries

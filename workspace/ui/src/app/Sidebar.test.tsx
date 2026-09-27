@@ -19,6 +19,9 @@ vi.mock('#features/orphans', async () => ({
 vi.mock('#features/settings', async () => ({
   ...(await vi.importActual<object>('#features/settings')), openSettings: vi.fn(),
 }));
+vi.mock('#features/ai-tools', async () => ({
+  ...(await vi.importActual<object>('#features/ai-tools')), openAiTools: vi.fn(),
+}));
 
 const c = await import('./actions');
 const { S, notify } = await import('#kernel/store');
@@ -26,6 +29,7 @@ const { ActivityBar, Sidebar } = await import('./Sidebar');
 const h = {
   ...c, ...(await import('#core/session')), findOrphans: (await import('#features/orphans')).findOrphans,
   openSettings: (await import('#features/settings')).openSettings,
+  openAiTools: (await import('#features/ai-tools')).openAiTools,
   copyPath: (await import('#kernel/clipboard')).copyPath,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
@@ -72,7 +76,7 @@ async function render(unstaged: Row[], staged: Row[] = [], selected: string | nu
 }
 
 describe('brand menu', () => {
-  it('opens Settings from its first item', async () => {
+  it('opens Settings and the AI tools from its items', async () => {
     const host = document.body.appendChild(document.createElement('div'));
     const bar = createRoot(host);
     flushSync(() => bar.render(<ActivityBar />));
@@ -80,9 +84,11 @@ describe('brand menu', () => {
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await tick();
     const items = [...document.querySelectorAll<HTMLElement>('.menu-item')];
-    expect(items.map((i) => i.textContent)).toEqual(['Settings…⌘,', 'Terminals and Orphans…']);
+    expect(items.map((i) => i.textContent)).toEqual(['Settings…⌘,', 'Explore AI Tools…', 'Terminals and Orphans…']);
     items[0]!.click();
     expect(h.openSettings).toHaveBeenCalledTimes(1);
+    items[1]!.click();
+    expect(h.openAiTools).toHaveBeenCalledTimes(1);
     bar.unmount();
   });
 });

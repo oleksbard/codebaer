@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod browser;
 pub mod error;
 pub mod eol;
 pub mod git;
@@ -167,6 +168,7 @@ pub fn run_app() {
                 &PredefinedMenuItem::about(app, None, None)?,
                 &PredefinedMenuItem::separator(app)?,
                 &MenuItem::with_id(app, "app.settings", "Settings\u{2026}", true, Some("CmdOrCtrl+,"))?,
+                &MenuItem::with_id(app, "app.ai-tools", "Explore AI Tools\u{2026}", true, None::<&str>)?,
                 &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::quit(app, None)?,
             ])?;
@@ -202,6 +204,8 @@ pub fn run_app() {
                 let _ = app.emit("menu-orphans", ());
             } else if id == "app.settings" {
                 let _ = app.emit("menu-settings", ());
+            } else if id == "app.ai-tools" {
+                let _ = app.emit("menu-ai-tools", ());
             } else if id == "recent.clear" {
                 recents::clear(app);
                 refresh_recent_menu(app);
@@ -210,7 +214,7 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, log_info, recent_repos, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
+        .invoke_handler(tauri::generate_handler![git_version, initial_repo, log_error, log_info, recent_repos, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {

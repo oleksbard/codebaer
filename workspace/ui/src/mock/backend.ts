@@ -12,7 +12,7 @@ import { createRepo, type Snapshot } from './repo';
 import type { Scenario } from './scenarios';
 
 export type Call = { cmd: string; args: Record<string, unknown> };
-export type MenuItem = 'open-folder' | 'open-recent' | 'orphans' | 'settings';
+export type MenuItem = 'open-folder' | 'open-recent' | 'orphans' | 'settings' | 'ai-tools';
 
 /** `window.__mock`, for Playwright and for poking at the page from devtools. */
 export type MockApi = {
@@ -53,7 +53,7 @@ const QUIET_MS = 50;
 const WATCHER_MS = 60;
 const MENU_EVENTS: Record<MenuItem, string> = {
   'open-folder': 'menu-open-folder', 'open-recent': 'menu-open-recent',
-  orphans: 'menu-orphans', settings: 'menu-settings',
+  orphans: 'menu-orphans', settings: 'menu-settings', 'ai-tools': 'menu-ai-tools',
 };
 
 /** Browser mode's stand-in for the AI's icon pick: a word of the command that names an icon. */
@@ -250,6 +250,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     // the backend finds the CLIs the way it finds the terminal menu's commands
     installed_ai_providers: (): AiProvider[] => AI_PROVIDERS.filter((p) => sc.menu.commands.includes(p)),
+    open_url: () => {},
     package_scripts: (): Scripts | null => scripts(),
     task_run: ({ task }: { task: Task }): number => pty.runTask(task),
     term_menu: (): Menu => sc.menu,

@@ -1,48 +1,109 @@
 name: release
+# Started by `pnpm release`, which drafts the release with its notes at one commit of main. This waits for main's CI
+# on that commit, attaches the app CI built and smoke-tested there, and publishes the draft.
 on:
-  # every hour of those days, so a draft still too young at one run goes out at a later one
-  schedule: [{ cron: '17 * * * 1,4' }]
   workflow_dispatch:
+    inputs:
+      tag: { description: 'The draft release to publish, such as v0.2.0', required: true }
 permissions:
   contents: write
+  actions: read
+# pnpm release replaces the draft, so an older run has nothing left to publish
+concurrency: { group: release, cancel-in-progress: true }
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # ci.yml's release job replaces the draft under the same group
-    concurrency: { group: release-drafts, cancel-in-progress: false }
+    timeout-minutes: 75
     defaults:
       run: { shell: bash }
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
     steps:
-      - name: Publish the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SOAK_HOURS: 12
+      - name: Find the draft
+        id: draft
         run: |
-          head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
-          # ci.yml keeps at most one draft, and drafts only a build that passed scripts/smoke.sh. Its assets are
-          # uploaded when it is drafted, which makes their time the build's age.
-          drafts=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft)
-            | [.id, .tag_name, .target_commitish, ([.assets[].created_at] | min // "")] | @tsv')
-          if [ -z "$drafts" ]; then
-            echo "::notice::no draft release to publish"
-            exit 0
-          fi
-          IFS=$'\t' read -r id tag target built <<< "${drafts%%$'\n'*}"
-          # main's CI is running or failed, and publishing the older build would leave its later commits unreleased
-          # under a version that is already taken
-          if [ "$target" != "$head" ]; then
-            echo "::notice::$tag was built from $target, not from main's head $head"
-            exit 0
-          fi
-          if [ -z "$built" ]; then
-            echo "::error::$tag has no assets"
+          if ! grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<< "$TAG"; then
+            echo "::error::$TAG is not a vX.Y.Z tag"
             exit 1
           fi
-          age=$(( ($(date +%s) - $(date -d "$built" +%s)) / 3600 ))
-          if [ "$age" -lt "$SOAK_HOURS" ]; then
-            echo "::notice::$tag is ${age}h old and goes out once it is ${SOAK_HOURS}h old"
-            exit 0
+          # the release-by-tag endpoint does not return drafts
+          found=$(gh api --paginate "repos/$GH_REPO/releases" \
+            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | [.id, .target_commitish] | @tsv")
+          if [ -z "$found" ]; then
+            echo "::error::no draft release for $TAG; pnpm release creates it"
+            exit 1
           fi
-          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false -f make_latest=true > /dev/null
-          echo "::notice::published $tag"
+          if [ "$(wc -l <<< "$found")" -gt 1 ]; then
+            echo "::error::more than one draft for $TAG; delete the extra ones or run pnpm release again"
+            exit 1
+          fi
+          IFS=$'\t' read -r id target <<< "$found"
+          { echo "id=$id"; echo "target=$target"; } >> "$GITHUB_OUTPUT"
+      - name: Wait for main's CI on the draft's commit
+        id: ci
+        env:
+          TARGET: ${{ steps.draft.outputs.target }}
+        run: |
+          latest='.[0] | "\(.databaseId) \(.status) \(.conclusion)"'
+          for i in $(seq 120); do
+            read -r run status conclusion < <(gh run list --workflow ci.yml --branch main --commit "$TARGET" \
+              --limit 1 --json databaseId,status,conclusion --jq "$latest") || true
+            if [ "${status:-}" = completed ]; then
+              if [ "$conclusion" != success ]; then
+                echo "::error::main's CI on $TARGET ended with $conclusion. If that was a flake or a cancel, run" \
+                  "gh run rerun $run, then gh workflow run release.yml -f tag=$TAG; otherwise fix main and run" \
+                  "pnpm release again"
+                exit 1
+              fi
+              echo "run=$run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # a push starts its run within seconds, so none after 5 minutes means none is coming
+            if [ "${run:-null}" = null ] && [ "$i" -ge 10 ]; then
+              echo "::error::main's CI never ran on $TARGET; run gh workflow run ci.yml --ref main, then" \
+                "gh workflow run release.yml -f tag=$TAG"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::main's CI on $TARGET did not finish within an hour"
+          exit 1
+      - name: Attach the build
+        env:
+          ID: ${{ steps.draft.outputs.id }}
+          RUN: ${{ steps.ci.outputs.run }}
+        run: |
+          # gh release upload resolves the tag to a published release first, then to a draft, so the tag must name
+          # this draft alone. pnpm release may have replaced it while CI ran.
+          if gh api "repos/$GH_REPO/releases/tags/$TAG" --silent 2> /dev/null; then
+            echo "::error::$TAG is already published"
+            exit 1
+          fi
+          ids=$(gh api --paginate "repos/$GH_REPO/releases" \
+            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          if [ "$ids" != "$ID" ]; then
+            echo "::error::the draft for $TAG changed while CI ran; the run pnpm release started publishes it"
+            exit 1
+          fi
+          if ! gh run download "$RUN" --name macos-arm64 --dir release; then
+            echo "::error::the build of CI run $RUN is gone; run gh workflow run ci.yml --ref main, then" \
+              "gh workflow run release.yml -f tag=$TAG"
+            exit 1
+          fi
+          (cd release && sha256sum -- * > SHA256SUMS.txt)
+          gh release upload "$TAG" release/* --clobber
+      - name: Publish the release
+        env:
+          ID: ${{ steps.draft.outputs.id }}
+        run: |
+          assets=$(gh api "repos/$GH_REPO/releases/$ID" --jq '.assets[].name')
+          for name in codebaer-macos-arm64.tar.gz codebaer-macos-arm64.dmg SHA256SUMS.txt; do
+            if ! grep -qxF "$name" <<< "$assets"; then
+              echo "::error::the draft for $TAG has no $name"
+              exit 1
+            fi
+          done
+          gh api -X PATCH "repos/$GH_REPO/releases/$ID" -F draft=false -f make_latest=true > /dev/null
+          echo "::notice::published $TAG"

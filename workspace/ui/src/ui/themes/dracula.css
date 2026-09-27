@@ -54,4 +54,7 @@
   --ansi-bright-magenta: #ff92df;
   --ansi-bright-cyan: #a4ffff;
   --ansi-bright-white: #ffffff;
+
+  /* its constant colour is not an orange, which the agent marks rely on */
+  --hue-orange: #ffb86c;
 }

@@ -67,9 +67,9 @@
   }
 }
 
-:is(.rail-b, .term-menu) .agent.claude { color: var(--hue-orange); }
-:is(.rail-b, .term-menu) .agent.codex { color: var(--hue-green); }
-:is(.rail-b, .term-menu) .agent.opencode { color: var(--hue-blue); }
+:is(.rail-b, .term-menu) .agent.claude { color: var(--agent-claude); }
+:is(.rail-b, .term-menu) .agent.codex { color: var(--agent-codex); }
+:is(.rail-b, .term-menu) .agent.opencode { color: var(--agent-opencode); }
 
 .blank .dim { color: var(--faint); font-family: var(--mono); }
 

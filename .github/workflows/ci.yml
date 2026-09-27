@@ -5,9 +5,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# Main never cancels a running release job, so two never race on one draft; a newer push replaces a queued run.
+# Every main commit gets its own group, since release.yml publishes the app built for the commit it drafted and a
+# newer push would otherwise cancel that build while it is queued.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   macos:
@@ -65,64 +66,5 @@ jobs:
           name: macos-arm64
           path: ${{ runner.temp }}/release/
           if-no-files-found: error
-          retention-days: 7
-
-  release:
-    needs: macos
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    # release.yml publishes the draft under the same group, so it never publishes one this job is deleting
-    concurrency: { group: release-drafts, cancel-in-progress: false }
-    permissions:
-      contents: write
-    defaults:
-      run: { shell: bash }
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/download-artifact@v4
-        with: { name: macos-arm64, path: release }
-      - name: Draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          # A re-run of an older run would otherwise move the draft back to its commit. The live head comes
-          # from the API because actions/checkout points origin/main at this run's commit.
-          head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
-          if [ "$GITHUB_SHA" != "$head" ]; then
-            echo "::notice::main has moved on from this commit, a newer run drafts the release"
-            exit 0
-          fi
-          version=$(grep -m 1 '^version = "' workspace/backend/Cargo.toml | cut -d '"' -f 2 || true)
-          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"; then
-            echo "::error::no plain x.y.z package version in workspace/backend/Cargo.toml"
-            exit 1
-          fi
-          tag="v$version"
-          # Publishing a draft creates its tag, so the newest tag is the newest published release.
-          latest=$(git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sed 's/^v//' |
-            sort -V | tail -n 1)
-          if [ -n "$latest" ] && [ "$(printf '%s\n' "$latest" "$version" | sort -V | tail -n 1)" != "$version" ]; then
-            echo "::error::version $version in Cargo.toml is lower than the latest release v$latest"
-            exit 1
-          fi
-
-          # Only this job makes drafts. Deleting them by id, never by tag, leaves no stale or duplicate draft
-          # and never resolves to a published release that shares the tag.
-          drafts=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft) | .id')
-          for id in $drafts; do
-            gh api -X DELETE "repos/$GH_REPO/releases/$id" > /dev/null
-          done
-
-          if [ "$latest" = "$version" ]; then
-            since=$(git rev-list --count "$tag..HEAD")
-            echo "::notice::$tag is released; the $since commits since then ship with the next version bump"
-            exit 0
-          fi
-          (cd release && sha256sum -- * > SHA256SUMS.txt)
-          range=HEAD
-          if [ -n "$latest" ]; then range="v$latest..HEAD"; fi
-          git log --no-merges --format='- %s' "$range" > "$RUNNER_TEMP/notes.md"
-          gh release create "$tag" release/* --draft --target "$GITHUB_SHA" \
-            --title "CodeBär $version" --notes-file "$RUNNER_TEMP/notes.md"
+          # how long after its push a commit can still be released
+          retention-days: 30

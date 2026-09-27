@@ -1,0 +1,194 @@
+/* top-anchored like Settings, so a change of height moves only the bottom edge */
+.ai-tools {
+  width: min(1040px, calc(100vw - 32px));
+  margin-top: max(32px, 10vh);
+  max-height: calc(100vh - max(32px, 10vh) - 32px);
+  display: flex;
+  flex-direction: column;
+
+  .dialog-x { top: 22px; right: 16px; }
+}
+
+.ai-tools-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 20px 56px 0 24px;
+
+  .dialog-title { margin: 0; font-size: var(--fs-5); }
+
+  p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--fs-3);
+  }
+}
+
+.ai-tools-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 16px 24px 24px;
+}
+
+.ai-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-tool {
+  --tool: var(--muted);
+
+  &[data-tool="claude"] { --tool: var(--agent-claude); }
+  &[data-tool="codex"] { --tool: var(--agent-codex); }
+  &[data-tool="opencode"] { --tool: var(--agent-opencode); }
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-5);
+  transition: border-color .15s;
+
+  /* not on hover: the card itself does nothing when clicked */
+  &:focus-within { border-color: color-mix(in oklch, var(--tool) 45%, var(--line)); }
+}
+
+/* nothing to do on an installed tool's card, so it drops its fill */
+.ai-tool.installed { background: none; }
+
+.ai-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ai-tool-logo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-5);
+  background: color-mix(in oklch, var(--tool) 16%, transparent);
+
+  svg { width: 22px; height: 22px; color: var(--tool); }
+}
+
+/* OpenCode's glyph is a solid square, which fills its box far more than the others fill theirs */
+.ai-tool[data-tool="opencode"] .ai-tool-logo svg { width: 18px; height: 18px; }
+
+.ai-tool-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  h3 { margin: 0; font-size: var(--fs-4); font-weight: 600; }
+}
+
+.ai-tool-meta {
+  color: var(--muted);
+  font-size: var(--fs-2);
+}
+
+/* grows, so the commands of cards with shorter blurbs still line up */
+.ai-tool-blurb {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-3);
+  line-height: 1.5;
+}
+
+/* the prompt sign is not part of the text, so selecting the command by hand copies it without one; a wrapped
+   line hangs under the command rather than under the sign */
+.ai-tool-command {
+  display: block;
+  padding: 8px 10px 8px calc(10px + 2ch);
+  text-indent: -2ch;
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  font: var(--fs-2)/1.6 var(--mono);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+
+  &::before { content: "$ "; color: var(--faint); }
+}
+
+.ai-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  .ai-tool-copy svg { color: var(--muted); }
+  .ai-tool-get { margin-left: auto; }
+}
+
+.ai-tool-installed {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--r-pill);
+  background: color-mix(in oklch, var(--add) 12%, transparent);
+  color: var(--text);
+  font-size: var(--fs-2);
+
+  svg { color: var(--add); }
+}
+
+.ai-tool.placeholder {
+  .ai-tool-logo, .bar { background: var(--panel2); }
+
+  .bar {
+    display: block;
+    height: 10px;
+    border-radius: var(--r-2);
+  }
+
+  .ai-tool-title { flex: 1; gap: 8px; }
+  .ai-tool-title .bar { width: 60%; }
+  /* the heights a card's three lines of blurb and its button take, so nothing jumps when the cards arrive */
+  .ai-tool-blurb { display: flex; flex-direction: column; gap: 9px; min-height: 3lh; padding-top: 4px; }
+  .bar.short { width: 40%; }
+  .command { height: 58px; border-radius: var(--r-3); }
+  .action { width: 50%; height: 29px; border-radius: var(--r-3); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ai-tool.placeholder { animation: ai-tools-pulse 1.1s ease-in-out infinite alternate; }
+}
+
+@keyframes ai-tools-pulse {
+  from { opacity: 1; }
+  to { opacity: .55; }
+}
+
+.ai-tools-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, transparent);
+  border-radius: var(--r-3);
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  color: var(--text);
+  font-size: var(--fs-3);
+
+  .btn { margin-left: auto; }
+}

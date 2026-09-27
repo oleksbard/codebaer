@@ -41,6 +41,7 @@ describe('the command palette', () => {
       ['Terminal: Find…', ''], ['Terminal: Find Next', ''], ['Terminal: Find Previous', ''],
       ['Terminal: Clear Buffer', ''], ['Terminal: Larger Text', ''], ['Terminal: Smaller Text', ''],
       ['Terminal: Kill Session', ''], ['Terminal: Close Session', ''],
+      ['Explore AI Tools…', ''],
     ]);
   });
 

@@ -294,6 +294,9 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     };
   },
 
+  // Codex and OpenCode missing, for the AI tools dialog
+  'claude-only': () => ({ ...review(), menu: { ...MENU, commands: ['claude', 'node', 'python3', 'bun'] } }),
+
   'no-repo': () => ({ ...review(), initial: null, pick: null, sessions: [] }),
 
   'no-git': () => ({ ...review(), gitMissing: true }),

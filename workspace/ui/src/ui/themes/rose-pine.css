@@ -54,6 +54,9 @@
   --ansi-bright-magenta: #c4a7e7;
   --ansi-bright-cyan: #ebbcba;
   --ansi-bright-white: #e0def4;
+
+  /* pine and foam, its green and blue, are both teal, which would give Codex and OpenCode one colour */
+  --agent-opencode: #c4a7e7;
 }
 
 [data-theme="rose-pine-dawn"] {
@@ -111,4 +114,7 @@
   --ansi-bright-magenta: #907aa9;
   --ansi-bright-cyan: #d7827e;
   --ansi-bright-white: #575279;
+
+  /* pine and foam, its green and blue, are both teal, which would give Codex and OpenCode one colour */
+  --agent-opencode: #907aa9;
 }
