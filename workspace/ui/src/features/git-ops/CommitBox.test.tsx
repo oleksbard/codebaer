@@ -113,6 +113,21 @@ describe('AI commit message button', () => {
     expect(side.querySelector<HTMLTextAreaElement>('#commit-message')!.value).toBe('Fix the thing');
   });
 
+  it('locks the box while the AI writes and marks only a message that lands', async () => {
+    await render([], [row('a.ts', 'M', 'staged')]);
+    const box = () => side.querySelector<HTMLTextAreaElement>('#commit-message')!;
+    S.aiBusy = true; notify(); await tick();
+    expect(box().readOnly).toBe(true);
+    expect(box().className).toBe('writing');
+    expect(box().placeholder).toBe('Writing a commit message…');
+    S.aiBusy = false; notify(); await tick();
+    expect(box().readOnly).toBe(false);
+    expect(box().className).toBe('');
+    S.aiBusy = true; notify(); await tick();
+    S.commitMessage = 'Fix the thing'; S.aiBusy = false; notify(); await tick();
+    expect(box().className).toBe('land1');
+  });
+
   it('stays disabled with the reason on hover while the AI provider is off', async () => {
     S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
     await render([], [row('a.ts', 'M', 'staged')]);

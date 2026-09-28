@@ -15,6 +15,21 @@
     color: var(--text);
     font: var(--fs-2)/1.4 var(--ui);
     padding: 7px 9px;
+
+    /* the second layer is the border: a band of accent that runs along it while the AI writes */
+    &.writing {
+      border-color: transparent;
+      color: var(--muted);
+      background:
+        linear-gradient(var(--bg), var(--bg)) padding-box,
+        linear-gradient(90deg, var(--line) 42%, var(--accent) 50%, var(--line) 58%) border-box;
+      background-size: 100% 100%, 300% 100%;
+      animation: commit-sweep 1.4s linear infinite;
+    }
+
+    /* two names for one animation, so a second message restarts it */
+    &.land0 { animation: commit-land-0 0.9s ease-out; }
+    &.land1 { animation: commit-land-1 0.9s ease-out; }
   }
 
   .branch {
@@ -63,5 +78,51 @@
   .hint { color: var(--faint); font-size: var(--fs-1); }
   .r { display: flex; align-items: center; gap: 6px; }
   .ai-wrap { display: flex; }
+
+  .ai-wrap .ico.busy svg {
+    animation: none;
+    overflow: visible;
+    filter: drop-shadow(0 0 3px color-mix(in oklch, var(--accent) 60%, transparent));
+
+    path {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: ai-twinkle 1.2s ease-in-out infinite;
+    }
+
+    path + path { animation-delay: -0.6s; }
+  }
   .ico { width: 26px; height: 26px; }
+}
+
+@keyframes commit-sweep {
+  from { background-position: 0 0, 100% 0; }
+  to { background-position: 0 0, 0 0; }
+}
+
+@keyframes commit-land-0 {
+  from {
+    color: transparent;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+}
+
+@keyframes commit-land-1 {
+  from {
+    color: transparent;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+}
+
+@keyframes ai-twinkle {
+  50% { transform: scale(0.55) rotate(45deg); opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commit {
+    textarea.writing { animation: none; background: var(--bg); border-color: var(--accent); }
+    textarea.land0, textarea.land1, .ai-wrap .ico.busy svg path { animation: none; }
+  }
 }

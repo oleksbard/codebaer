@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { keyLabel, matches } from '#kernel/keymap';
 import { refs, useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
@@ -77,11 +77,26 @@ function BranchBar() {
 
 const AI_OFF = 'Turn on an AI provider in Settings to write commit messages';
 
+/** Counts the messages the AI has landed. React batches the new message with the end of the busy state,
+ *  so a landing is a message that differs from the one there when the AI started. */
+function useLanded(message: string, writing: boolean): number {
+  const [before, setBefore] = useState<string | null>(null);
+  const [landed, setLanded] = useState(0);
+  if (writing && before === null) setBefore(message);
+  if (!writing && before !== null) {
+    setBefore(null);
+    if (message !== before) setLanded(landed + 1);
+  }
+  return landed;
+}
+
 export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
   const s = useApp();
   const ref = useRef<HTMLTextAreaElement>(null);
   const message = s.commitMessage;
   const aiOn = s.settings['general.headless-ai-provider'] !== 'off';
+  const landed = useLanded(message, s.aiBusy);
+  const cls = [s.aiBusy ? 'writing' : '', landed ? `land${landed % 2}` : ''].filter(Boolean).join(' ');
   useEffect(() => {
     const el = ref.current;
     if (!el || hidden) return;
@@ -91,7 +106,10 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
   return (
     <div className="commit" hidden={hidden}>
       <BranchBar />
-      <textarea id="commit-message" rows={1} placeholder="Commit message" aria-label="Commit message" value={message}
+      {/* read-only while the AI writes, because its message replaces whatever is typed meanwhile */}
+      <textarea id="commit-message" rows={1} aria-label="Commit message" value={message}
+        className={cls || undefined} readOnly={s.aiBusy} aria-busy={s.aiBusy}
+        placeholder={s.aiBusy ? 'Writing a commit message…' : 'Commit message'}
         ref={(el) => { ref.current = el; refs.commit = el; }}
         onChange={(e) => setCommitMessage(e.target.value)}
         onKeyDown={(e) => { if (matches(e, 'git.commit')) { e.preventDefault(); void commit(); } }} />
