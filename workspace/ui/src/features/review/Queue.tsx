@@ -11,7 +11,7 @@ import { StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { List } from '#ui/List';
 import { pickRow, toggleAllChanges } from './all-changes';
-import { acceptFile, rejectFile, stageAll, unstageAll, unstageFile } from './hunks';
+import { acceptFile, discardAll, rejectFile, stageAll, unstageAll, unstageFile } from './hunks';
 
 const PLUS = 'M8 3v10M3 8h10';
 const STACK = 'M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM2.5 6.25h11M2.5 9.75h11';
@@ -42,6 +42,10 @@ export function QueueList({ q, selected, open, onToggle, allChanges }: {
             disabled={!q.unstaged.length}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>
             <StrokeIcon d={PLUS} size={14} /></IconButton>
+          <IconButton label="Discard all changes" data-all="discard"
+            disabled={!q.unstaged.length || q.unstaged.some((r) => r.conflicted)}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void discardAll(); }}>
+            <StrokeIcon d={DISCARD} size={14} /></IconButton>
         </>} />
       <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
         selected={selected} open={open.staged} onToggle={onToggle}

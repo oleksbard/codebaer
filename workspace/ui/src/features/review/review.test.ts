@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openRow, refresh, view } from '#core/session';
 import { getOriginalDoc } from '#editor/editor';
-import type { BlameLine, Blob } from '#ipc/git';
+import type { BlameLine, Blob, Status } from '#ipc/git';
 import { confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
@@ -121,14 +121,38 @@ describe('whole-file actions on a file with unsaved changes', () => {
   });
 
   it('Discard all keeps them when the answer is no', async () => {
-    g.discardPreview!.mockResolvedValue([]);
-
     await discardAll();
 
     expect(confirmMock.mock.calls[0]![0]).toContain('Your unsaved changes to a.txt are discarded too.');
     expect(g.discardAll!).not.toHaveBeenCalled();
     expect(view.state.doc.toString()).toBe('mine\n');
     expect(S.open!.dirty).toBe(true);
+  });
+});
+
+describe('discard all', () => {
+  const files = (...entries: Status['files']) => ({ ...status('a.txt'), files: entries });
+
+  it('counts untracked files with the rest and warns that they are gone for good, without listing them', async () => {
+    S.status = files(...status('a.txt').files, ...status('b.txt').files, ...status('new.txt', '.', '.', true).files);
+    confirmMock.mockResolvedValue(true);
+
+    await discardAll();
+
+    expect(confirmMock).toHaveBeenCalledWith('Discard unstaged changes in 3 files?\nAccepted hunks stay staged.'
+      + '\n1 untracked file is deleted and cannot be recovered.');
+    expect(g.discardAll!).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing about untracked files when there are none, and does nothing when nothing is left', async () => {
+    await discardAll();
+    expect(confirmMock).toHaveBeenCalledWith('Discard unstaged changes in 1 file?\nAccepted hunks stay staged.');
+    expect(g.discardAll!).not.toHaveBeenCalled();
+
+    confirmMock.mockClear();
+    S.status = files();
+    await discardAll();
+    expect(confirmMock).not.toHaveBeenCalled();
   });
 });
 

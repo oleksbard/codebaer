@@ -37,11 +37,32 @@ test('with no file open the view counts the lines left to review and follows the
   const mock = await open();
   await page.getByRole('button', { name: 'Close file' }).click();
   await mock.idle();
-  await expect(page.getByRole('img', { name: '6 files to review' })).toBeVisible();
-  await expect(page.getByRole('img', { name: '12 lines added, 12 removed' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '6 files to review, 12 lines added, 12 removed' })).toBeVisible();
   await mock.agentEdit('src/new.ts', 'one\ntwo\n');
   await mock.idle();
-  await expect(page.getByRole('img', { name: '7 files to review' })).toBeVisible();
-  await expect(page.getByRole('img', { name: '14 lines added, 12 removed' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '7 files to review, 14 lines added, 12 removed' })).toBeVisible();
   await expect(page.locator('.diffstat .n.add')).toHaveText('+14');
+});
+
+test('the Discard all button asks first and then discards every unstaged change', async ({ page, open }) => {
+  const mock = await open();
+  const before = await mock.state();
+  const discard = page.locator('[data-all="discard"]');
+  const dialog = page.getByRole('alertdialog');
+
+  await discard.click();
+  await expect(dialog.getByText('Discard unstaged changes in 6 files?')).toBeVisible();
+  await expect(dialog.getByText('1 untracked file is deleted and cannot be recovered.')).toBeVisible();
+  await expect(dialog.getByText('src/utils/money.ts')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await mock.idle();
+  expect(await mock.state()).toEqual(before);
+
+  await discard.click();
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await mock.idle();
+  await expect(page.getByText('Nothing left to review')).toBeVisible();
+  await expect(discard).toBeDisabled();
+  await expect(row(page, 'staged', 'src/checkout.ts')).toBeVisible();
+  for (const f of Object.values((await mock.state()).files)) expect(f.work).toBe(f.index);
 });

@@ -152,14 +152,14 @@ export function nextFile(dir: 1 | -1): void {
 
 export async function discardAll(): Promise<void> {
   if (S.status?.files.some((f) => f.conflicted)) { toast('Resolve conflicts first', 'warn'); return; }
-  let preview: string[] = [];
-  try { preview = await git.discardPreview(); } catch (e) { toast(errText(e), 'err'); return; }
-  const changed = S.status ? buildQueue(S.status).unstaged.filter((r) => !r.untracked && !r.conflicted).length : 0;
-  const list = preview.length ? `\nUntracked entries removed:\n  ${preview.join('\n  ')}` : '';
+  const rows = S.status ? buildQueue(S.status).unstaged : [];
+  if (!rows.length) { toast('Nothing left to review', 'info'); return; }
+  const untracked = rows.filter((r) => r.untracked).length;
+  const which = untracked === 1 ? '1 untracked file is' : `${untracked} untracked files are`;
+  const lost = untracked === 0 ? '' : `\n${which} deleted and cannot be recovered.`;
   const note = unsavedNote();
-  if (!(await confirmDialog(`Discard unstaged changes in ${changed} file${changed === 1 ? '' : 's'}?${list}${note}`))) {
-    return;
-  }
+  const title = `Discard unstaged changes in ${rows.length} file${rows.length === 1 ? '' : 's'}?`;
+  if (!(await confirmDialog(`${title}\nAccepted hunks stay staged.${lost}${note}`))) return;
   if (note) await reload();
   await guarded(() => git.discardAll());
 }

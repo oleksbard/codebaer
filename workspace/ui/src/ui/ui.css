@@ -359,7 +359,7 @@ kbd {
   svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 }
 
-.diffstat, .filestat {
+.diffstat {
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -375,14 +375,12 @@ kbd {
   .bump { animation: diffstat-bump 0.6s ease-out; }
 }
 
-.filestat {
-  gap: 7px;
-
+.diffstat {
+  .files { display: inline-flex; gap: 7px; }
   .n.files { color: var(--text); font-weight: 700; }
   .unit { color: var(--muted); }
-}
+  .sep { width: 1px; height: 1em; background: var(--line); }
 
-.diffstat {
   .n.add { color: var(--add); }
   .n.del { color: var(--del); }
 
@@ -413,5 +411,5 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diffstat, .filestat, .diffstat .bump, .filestat .bump, .diffstat .blk { animation: none; }
+  .diffstat, .diffstat .bump, .diffstat .blk { animation: none; }
 }

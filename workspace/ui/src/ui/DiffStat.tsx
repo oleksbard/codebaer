@@ -46,27 +46,30 @@ function Count({ value, sign = '', tone }: { value: number; sign?: string; tone:
   return <span key={changes} className={`n ${tone}${changes ? ' bump' : ''}`}>{sign}{shown.toLocaleString()}</span>;
 }
 
-export function DiffStat({ added, removed }: { added: number; removed: number }) {
-  const label = `${added.toLocaleString()} lines added, ${removed.toLocaleString()} removed`;
+/** With `files`, the file count leads the pill, and the line half drops out when no line changed. */
+export function DiffStat({ added, removed, files }: {
+  added: number; removed: number; files?: { n: number; label: string };
+}) {
+  const lines = !files || added + removed > 0;
+  const counts = `${added.toLocaleString()} lines added, ${removed.toLocaleString()} removed`;
+  const label = [files?.label, lines ? counts : null].filter(Boolean).join(', ');
   return (
     <span className="diffstat" role="img" aria-label={label} title={label}>
-      <Count value={added} sign="+" tone="add" />
-      <Count value={removed} sign="−" tone="del" />
-      <span className="blocks">
-        {diffBlocks(added, removed).map((b, i) => (
-          // keyed by colour too, so only a square that changes colour pops
-          <i key={`${i}${b}`} className={`blk ${b}`} style={{ '--i': i } as CSSProperties} />
-        ))}
-      </span>
-    </span>
-  );
-}
-
-export function FileStat({ files, label }: { files: number; label: string }) {
-  return (
-    <span className="filestat" role="img" aria-label={label} title={label}>
-      <Count value={files} tone="files" />
-      <span className="unit">{files === 1 ? 'file' : 'files'}</span>
+      {files ? <span className="files">
+        <Count value={files.n} tone="files" />
+        <span className="unit">{files.n === 1 ? 'file' : 'files'}</span>
+      </span> : null}
+      {files && lines ? <i className="sep" /> : null}
+      {lines ? <>
+        <Count value={added} sign="+" tone="add" />
+        <Count value={removed} sign="−" tone="del" />
+        <span className="blocks">
+          {diffBlocks(added, removed).map((b, i) => (
+            // keyed by colour too, so only a square that changes colour pops
+            <i key={`${i}${b}`} className={`blk ${b}`} style={{ '--i': i } as CSSProperties} />
+          ))}
+        </span>
+      </> : null}
     </span>
   );
 }

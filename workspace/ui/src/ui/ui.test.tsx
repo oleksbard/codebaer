@@ -50,6 +50,18 @@ describe('primitives', () => {
       ['blk add', 'blk add', 'blk add', 'blk add', 'blk del']);
   });
 
+  it('DiffStat leads with the file count and drops the line half when no line changed', () => {
+    const both = mount(<DiffStat added={3} removed={0} files={{ n: 1, label: '1 file to review' }} />)
+      .querySelector('.diffstat')!;
+    expect(both.getAttribute('aria-label')).toBe('1 file to review, 3 lines added, 0 removed');
+    expect(both.querySelector('.files .unit')!.textContent).toBe('file');
+    expect(both.querySelector('.sep')).not.toBeNull();
+    const only = mount(<DiffStat added={0} removed={0} files={{ n: 2, label: '2 files to review' }} />)
+      .querySelector('.diffstat')!;
+    expect(only.getAttribute('aria-label')).toBe('2 files to review');
+    expect(only.querySelector('.sep, .blk, .n.add')).toBeNull();
+  });
+
   it('Button variants map to classes and forward native props', () => {
     const h = mount(<><Button>a</Button><Button variant="primary" disabled>b</Button>
       <Button variant="ghost">c</Button></>);

@@ -10,7 +10,7 @@ import { logError } from '#ipc/log';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
-import { DiffStat, FileStat } from '#ui/DiffStat';
+import { DiffStat } from '#ui/DiffStat';
 import { FileIcon } from '#ui/FileIcon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
@@ -150,14 +150,14 @@ export function useDiffStat(status: object | null): Stat | null {
   return stat;
 }
 
-/** Both pills wait for the line count, so neither moves when the other arrives. */
+/** Waits for the line count, so the pill does not grow when it arrives. */
 function QueueStat({ files }: { files: number }) {
   const s = useApp();
   const stat = useDiffStat(s.status);
   return (
     <div className="queue-stat">
-      {stat ? <FileStat files={files} label={`${plural(files, 'file')} to review`} /> : null}
-      {stat && stat.added + stat.removed > 0 ? <DiffStat added={stat.added} removed={stat.removed} /> : null}
+      {stat ? <DiffStat added={stat.added} removed={stat.removed}
+        files={{ n: files, label: `${plural(files, 'file')} to review` }} /> : null}
     </div>
   );
 }

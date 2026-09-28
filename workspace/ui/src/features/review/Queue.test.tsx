@@ -9,6 +9,7 @@ vi.mock('#core/session', () => ({ openRow: vi.fn(), openPlain: vi.fn() }));
 vi.mock('./hunks', async () => ({
   ...(await vi.importActual<object>('./hunks')),
   acceptFile: vi.fn(), rejectFile: vi.fn(), unstageFile: vi.fn(), stageAll: vi.fn(), unstageAll: vi.fn(),
+  discardAll: vi.fn(),
 }));
 vi.mock('#kernel/clipboard', () => {
   const copyPath = vi.fn();
@@ -23,7 +24,7 @@ const session = await import('#core/session');
 const hunks = await import('./hunks');
 const h = {
   openRow: session.openRow, openPlain: session.openPlain, acceptFile: hunks.acceptFile, rejectFile: hunks.rejectFile,
-  unstageFile: hunks.unstageFile, stageAll: hunks.stageAll, unstageAll: hunks.unstageAll,
+  unstageFile: hunks.unstageFile, stageAll: hunks.stageAll, unstageAll: hunks.unstageAll, discardAll: hunks.discardAll,
   copyPath: (await import('#kernel/clipboard')).copyPath,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
@@ -167,6 +168,20 @@ describe('sections', () => {
     btn.dispatchEvent(ev);
     expect(h.stageAll).toHaveBeenCalledTimes(1);
     expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('the discard-all button runs its handler, and is disabled with nothing to review or a conflict', async () => {
+    await render([row('a', 'M')]);
+    const btn = () => side.querySelector<HTMLButtonElement>('[data-all="discard"]')!;
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    btn().dispatchEvent(ev);
+    expect(h.discardAll).toHaveBeenCalledTimes(1);
+    expect(ev.defaultPrevented).toBe(true);
+
+    await render([], [row('b', 'M', 'staged')]);
+    expect(btn().disabled).toBe(true);
+    await render([row('a', 'M'), row('c', '!', 'unstaged', { conflicted: true })]);
+    expect(btn().disabled).toBe(true);
   });
 
   it('arrow keys skip rows inside a collapsed section', async () => {
