@@ -81,6 +81,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let commands: CustomCommand[] = [...sc.commands];
   let hiddenScripts: HiddenScripts = {};
   let icons: Record<string, string> = {};
+  const favorites = new Set(sc.favorites);
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
   let unsaved = false;
@@ -172,6 +173,11 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     }
   };
 
+  /** `recent_rows`: favorites first, each group in the recents' order. */
+  const recents = (): Recent[] => [...sc.recents]
+    .sort((a, b) => Number(favorites.has(b)) - Number(favorites.has(a)))
+    .map((path) => ({ path, name: basename(path), label: label(path), favorite: favorites.has(path) }));
+
   const pty = createPty({
     root: sc.root, menu: sc.menu, sessions: sc.sessions, orphans: sc.orphans,
     status: () => repo.status(), scripts, commands: () => commands, later,
@@ -189,7 +195,12 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     quit: () => { exited = true; },
     log_error: ({ message }: { message: string }) => console.error(`[backend] ${message}`),
     log_info: ({ message }: { message: string }) => console.info(`[backend] ${message}`),
-    recent_repos: (): Recent[] => sc.recents.map((path) => ({ path, name: basename(path), label: label(path) })),
+    recent_repos: (): Recent[] => recents(),
+    favorite_repo: ({ path, favorite }: { path: string; favorite: boolean }): Recent[] => {
+      if (favorite && sc.recents.includes(path)) favorites.add(path);
+      else favorites.delete(path);
+      return recents();
+    },
     open_repo: ({ path }: { path: string }): Opened => {
       if (path.replace(/\/+$/, '') !== sc.root) throw { kind: 'NotARepo' } satisfies AppError;
       return { root: sc.root, label: label(sc.root), title: title() };

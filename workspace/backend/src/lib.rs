@@ -78,15 +78,17 @@ pub struct Recent {
     path: String,
     name: String,
     label: String,
+    favorite: bool,
 }
 
 impl Recent {
-    fn new(path: String) -> Self {
+    fn new(entry: recents::Entry) -> Self {
+        let recents::Entry { path, favorite } = entry;
         let dir = std::path::Path::new(&path);
         let name = git::repo_title(dir)
             .unwrap_or_else(|| dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
         let label = recents::label(&path);
-        Recent { path, name, label }
+        Recent { path, name, label, favorite }
     }
 
     /// A menu-bar item carries one string, so the header's two columns join into it.
@@ -101,13 +103,20 @@ fn recent_rows(app: &AppHandle) -> Vec<Recent> {
     let open = app.state::<git::AppState>().root().ok();
     recents::load(app)
         .into_iter()
-        .filter(|p| open.as_deref() != Some(std::path::Path::new(p)))
+        .filter(|e| open.as_deref() != Some(std::path::Path::new(&e.path)))
         .map(Recent::new)
         .collect()
 }
 
 #[tauri::command(async)]
 fn recent_repos(app: AppHandle) -> Vec<Recent> {
+    recent_rows(&app)
+}
+
+#[tauri::command(async)]
+fn favorite_repo(app: AppHandle, path: String, favorite: bool) -> Vec<Recent> {
+    recents::set_favorite(&app, &path, favorite);
+    refresh_recent_menu(&app);
     recent_rows(&app)
 }
 
@@ -122,7 +131,10 @@ fn fill_recent(app: &AppHandle, menu: &Submenu<Wry>) -> tauri::Result<()> {
     }
     let rows = recent_rows(app);
     menu.set_enabled(!rows.is_empty())?;
-    for r in &rows {
+    for (i, r) in rows.iter().enumerate() {
+        if i > 0 && rows[i - 1].favorite != r.favorite {
+            menu.append(&PredefinedMenuItem::separator(app)?)?;
+        }
         let id = format!("recent:{}", r.path);
         menu.append(&MenuItem::with_id(app, id, r.menu_label(), true, None::<&str>)?)?;
     }
@@ -263,7 +275,7 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
+        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, favorite_repo, git::open_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_pop, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_command_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {

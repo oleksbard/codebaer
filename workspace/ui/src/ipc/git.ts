@@ -8,7 +8,7 @@ export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
 export type Opened = { root: string; label: string; title: string | null };
-export type Recent = { path: string; name: string; label: string };
+export type Recent = { path: string; name: string; label: string; favorite: boolean };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
 export type Listing = { files: string[]; ignored: string[] };
 export type BlameLine = { oid: string; author: string; time: number; summary: string };
@@ -78,6 +78,7 @@ export const git = {
   setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),
   quit: () => invoke<void>('quit'),
   recentRepos: () => invoke<Recent[]>('recent_repos'),
+  favoriteRepo: (path: string, favorite: boolean) => invoke<Recent[]>('favorite_repo', { path, favorite }),
   openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
   status: () => invoke<Status>('status'),
   diffStat: () => invoke<DiffStat>('diff_stat'),

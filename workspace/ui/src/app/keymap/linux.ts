@@ -45,10 +45,11 @@ export const LINUX: readonly Binding<CommandId>[] = [
   // GNOME Terminal's new tab
   { keys: 'Mod+Shift+T', command: 'terminals.new', in: 'terminal' },
   { keys: 'Mod+2', command: 'terminals.focus' },
-  // the commit box, the comment box and the terminal handle these
+  // the commit box, the comment box, the repo switcher and the terminal handle these
   { keys: 'Mod+Enter', command: 'git.commit', local: true },
   { keys: 'Mod+Enter', command: 'comments.save', local: true },
   { keys: 'Mod+Shift+Enter', command: 'comments.send', local: true },
+  { keys: 'Mod+D', command: 'repos.favorite', local: true },
   { keys: 'Mod+Shift+C', command: 'terminals.copy', local: true },
   { keys: 'Mod+Shift+V', command: 'terminals.paste', local: true },
 ];

@@ -12,6 +12,7 @@ export type Scenario = {
   gitMissing: boolean;
   repo: RepoSeed;
   recents: string[];
+  favorites: string[];
   commands: CustomCommand[];
   ai: AiProvider;
   menu: Menu;
@@ -195,6 +196,7 @@ function review(): Scenario {
     gitMissing: false,
     repo: REPO,
     recents: [ROOT, '/Users/dev/projects/website', '/Users/dev/oss/tiny-router'],
+    favorites: ['/Users/dev/oss/tiny-router'],
     commands: [
       { name: 'Type check', command: 'pnpm exec tsc --noEmit', repo: null, hide_terminal: false, icon: null },
       { name: 'Format', command: 'pnpm format', repo: ROOT, hide_terminal: true, icon: null },

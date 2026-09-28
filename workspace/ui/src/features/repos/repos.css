@@ -37,6 +37,34 @@
 
 .repo-menu { min-width: 300px; }
 
+.repo-item { gap: 12px; }
+
+.repo-star {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  margin: -3px -6px -3px auto;
+  padding: 3px;
+  border-radius: var(--r-2);
+  color: var(--faint);
+  visibility: hidden;
+
+  svg { display: block; }
+  path { fill: none; }
+
+  &:hover { color: var(--text); }
+
+  &[aria-pressed="true"] {
+    visibility: visible;
+    color: var(--accent);
+
+    path { fill: currentColor; }
+  }
+}
+
+.menu-item[data-highlighted] .repo-star { visibility: visible; }
+
 /* every row of the switcher menu */
 .repo-label {
   display: flex;
