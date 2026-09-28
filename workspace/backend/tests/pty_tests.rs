@@ -361,6 +361,43 @@ fn closing_a_live_session_does_not_strand_its_process_tree() {
 }
 
 #[test]
+fn closing_a_session_types_nothing_into_it() {
+    // the writer used to type a newline and EOF as the record dropped, and a shell that read
+    // them before the hangup arrived exited without hanging up its jobs
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("shell.pid");
+    let typed = dir.path().join("typed");
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_sh(&dir.path().to_string_lossy());
+    // ignoring the signals keeps the shell at its read until the host's SIGKILL
+    let line = format!(
+        "trap '' HUP TERM; echo $$ > {}; echo ar''med; read l && echo got > {}\n",
+        pidfile.display(),
+        typed.display()
+    );
+    c.input(id, line.as_bytes());
+    assert!(c.wait_for("armed", Duration::from_secs(5)));
+    let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+
+    c.send(&ClientMsg::Close { id });
+    let closed = |c: &Client| c.msgs.iter().any(|m| matches!(m, ServerMsg::Closed { id: got } if *got == id));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && !closed(&c) {
+        c.pump(Duration::from_millis(100));
+    }
+    assert!(closed(&c), "no Closed: {:?}", c.msgs);
+    c.pump(Duration::from_millis(500));
+    assert!(!typed.exists(), "Close typed a line into the shell");
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && alive(pid) {
+        c.pump(Duration::from_millis(100));
+    }
+    assert!(!alive(pid), "pid {pid} outlived Close");
+}
+
+#[test]
 fn a_session_that_writes_as_it_closes_is_still_reaped() {
     // exit blocks until a tty's queued output drains, which nothing does while the host keeps
     // the master open without reading it; macOS lists such a process as `?E` with its name in

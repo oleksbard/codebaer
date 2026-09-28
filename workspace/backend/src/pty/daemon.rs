@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::{Read, Write};
 use std::net::Shutdown;
+use std::os::fd::BorrowedFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
@@ -39,7 +41,10 @@ struct Session {
     ring: Ring,
     scanner: Scanner,
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    /// A dup of the master, not portable-pty's writer: that one types a newline and EOF into the
+    /// shell when it is dropped, and a shell that reads EOF exits without hanging up its jobs, so
+    /// dropping a live record could beat the SIGHUP from `kill` and strand them.
+    writer: File,
     killer: Box<dyn ChildKiller + Send + Sync>,
     /// Signalled instead of the child pid: killing the shell alone would leave whatever it
     /// launched running with no terminal and no parent.
@@ -434,7 +439,9 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
     // everything it goes on to launch.
     let pgid = child.process_id().unwrap_or(0) as i32;
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    let fd = pair.master.as_raw_fd().ok_or("the pty has no fd")?;
+    // pair.master owns fd and is still open here
+    let writer = File::from(unsafe { BorrowedFd::borrow_raw(fd) }.try_clone_to_owned().map_err(|e| e.to_string())?);
 
     let info = Info {
         id,
