@@ -1,4 +1,5 @@
-import { vi } from 'vitest';
+import { afterAll, vi } from 'vitest';
+import type { Root } from 'react-dom/client';
 import { openRow, view } from '#core/session';
 import { git, type Blob, type FileText, type Status } from '#ipc/git';
 import { S } from '#kernel/store';
@@ -15,12 +16,24 @@ export const status = (path: string, x = '.', y = 'M', untracked = false, confli
   files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }],
 });
 
+let root: Root | undefined;
+
 /** Mounts the real app, which main.tsx does on import. */
 export async function mountApp(): Promise<void> {
   document.body.innerHTML = '<div id="app"></div>';
-  await import('./main');
+  ({ root } = await import('./main'));
   await tick();
 }
+
+// Vitest deletes jsdom's globals when it stops the worker, and a render landing in that turn (a toast timing out,
+// the refresh a guarded action leaves running) leaves React a passive-effect task that reads `window` and fails the
+// run. Unmounted, the app renders nothing more; the second tick lets React run the task the unmount queued.
+afterAll(async () => {
+  root?.unmount();
+  root = undefined;
+  await tick();
+  await tick();
+});
 
 /** Opens `path` in the Unstaged view through the real open path. */
 export async function openUnstaged(path: string, index: Blob, disk: FileText): Promise<void> {

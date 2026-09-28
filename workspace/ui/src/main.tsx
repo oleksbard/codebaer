@@ -10,7 +10,8 @@ import { initTheme } from './ui/theme';
 installErrorLog();
 document.documentElement.dataset.platform = platform();
 initTheme();
-createRoot(document.getElementById('app')!).render(<App />);
+export const root = createRoot(document.getElementById('app')!);
+root.render(<App />);
 
 // vitest imports this module for its side effects and drives the app itself
 if (!import.meta.env.VITEST) void start();
