@@ -37,15 +37,15 @@ export function QueueList({ q, selected, open, onToggle, allChanges }: {
             data-all="show" aria-pressed={allChanges} disabled={!allChanges && !q.unstaged.length}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void toggleAllChanges(); }}>
             <StrokeIcon d={STACK} size={14} /></IconButton>
+          <IconButton label="Discard all changes" data-all="discard"
+            disabled={!q.unstaged.length || q.unstaged.some((r) => r.conflicted)}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void discardAll(); }}>
+            <StrokeIcon d={DISCARD} size={14} /></IconButton>
           <IconButton label="Stage all changes" title={`Stage all changes (${keyLabel('review.stageAll')})`}
             data-all="stage"
             disabled={!q.unstaged.length}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void stageAll(); }}>
             <StrokeIcon d={PLUS} size={14} /></IconButton>
-          <IconButton label="Discard all changes" data-all="discard"
-            disabled={!q.unstaged.length || q.unstaged.some((r) => r.conflicted)}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void discardAll(); }}>
-            <StrokeIcon d={DISCARD} size={14} /></IconButton>
         </>} />
       <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
         selected={selected} open={open.staged} onToggle={onToggle}
@@ -104,11 +104,11 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
       ? <IconButton label="Mark resolved" data-act="stage" onClick={stop(() => acceptFile(r.path))}>
         <StrokeIcon d={PLUS} size={14} /></IconButton>
       : <>
+          <IconButton label={`Discard changes (${keyLabel('review.discardFile')})`} data-act="revert"
+            onClick={stop(() => rejectFile(r.path))}><StrokeIcon d={DISCARD} size={14} /></IconButton>
           <IconButton label={`Stage file (${keyLabel('review.stageFile')})`} data-act="stage"
             onClick={stop(() => acceptFile(r.path))}>
             <StrokeIcon d={PLUS} size={14} /></IconButton>
-          <IconButton label={`Discard changes (${keyLabel('review.discardFile')})`} data-act="revert"
-            onClick={stop(() => rejectFile(r.path))}><StrokeIcon d={DISCARD} size={14} /></IconButton>
         </>;
   return (
     <ContextMenu items={menuFor(r)}>

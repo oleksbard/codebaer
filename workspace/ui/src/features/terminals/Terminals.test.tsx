@@ -41,8 +41,10 @@ it('marks only the session that left the repo, and says so in its label', () => 
   flushSync(() => root.render(<TerminalRail />));
 
   expect(button(1).querySelector('.away')).toBeNull();
+  expect(button(1).classList.contains('outside')).toBe(false);
   expect(button(1).getAttribute('aria-label')).not.toContain('outside');
   expect(button(2).querySelector('.away')).not.toBeNull();
+  expect(button(2).classList.contains('outside')).toBe(true);
   expect(button(2).getAttribute('aria-label')).toBe('zsh:2 · ~/other · outside the repo');
 });
 

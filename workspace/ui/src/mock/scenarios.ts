@@ -282,6 +282,10 @@ export const SCENARIOS: Record<string, () => Scenario> = {
           pid: 50_004, title: 'zsh', tier: 'marks', state: { t: 'Running', command: 'pnpm dev', since_ms: ago(620) },
           transcript: '$ pnpm dev\n\n  VITE v8.3.0  ready in 212 ms\n\n  ➜  Local:   http://localhost:5173/\n',
         },
+        {
+          pid: 50_005, title: 'claude', tier: 'process', state: { t: 'Idle' }, cwd: '/Users/dev/projects/blog',
+          transcript: AGENT_TRANSCRIPT,
+        },
       ],
       orphans: {
         sock: NO_ORPHANS.sock,

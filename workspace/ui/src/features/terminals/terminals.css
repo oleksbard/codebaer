@@ -101,7 +101,19 @@
 
   .term-dot { position: absolute; right: 5px; bottom: 5px; }
   /* the one corner the bell and the state dot leave free */
-  .away { position: absolute; top: 4px; left: 4px; color: var(--warn); }
+  .away { position: absolute; top: 4px; left: 4px; }
+
+  /* the state dot and the bell keep their colour, since they still say what the session is doing */
+  &.outside {
+    > .cap { color: var(--faint); font-style: italic; }
+    .away { color: var(--faint); }
+    .agent, .num { opacity: 0.45; filter: grayscale(1); }
+  }
+
+  &.outside:is(:hover, .on) {
+    > .cap, .away { color: var(--muted); }
+    .agent, .num { opacity: 0.8; }
+  }
 
   /* a session producing output is thinking; one at its prompt is silent */
   &.busy .agent:not(.claude),

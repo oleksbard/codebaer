@@ -186,7 +186,8 @@ export function TerminalRail() {
           >
             <button
               type="button"
-              className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`}
+              className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`
+                + `${away ? ' outside' : ''}`}
               aria-current={s.id === active || undefined}
               aria-label={label}
               title={label}
