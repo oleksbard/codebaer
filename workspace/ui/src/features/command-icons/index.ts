@@ -1,6 +1,7 @@
 import { defineFeature } from '#kernel/registry';
 
-// the command menu and the Commands pane ask for the icons they show; nothing here has a key or a palette entry
+// the command menu and the Commands pane ask for the icons they show, and the repo switcher asks through
+// iconAsker; nothing here has a key or a palette entry
 export const commandIcons = defineFeature({
   id: 'command-icons',
   aiUses: [{
@@ -8,6 +9,6 @@ export const commandIcons = defineFeature({
   }],
 });
 
-export { CommandIcon, SetIcon } from './CommandIcon';
-export { ensureIcons } from './icons';
+export { CommandIcon, GlyphSvg, SetIcon } from './CommandIcon';
+export { ensureIcons, glyph, iconAsker, type Glyph } from './icons';
 export { IconPicker } from './IconPicker';

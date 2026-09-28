@@ -101,11 +101,12 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          its live terminal (runner.ts hooks the terminals' taskEvents seam)
     git-ops/             commit, AI message, push/pull/fetch, stash, branches (git-ops.ts), the commit box
     files/               the Files tab: listing, ignored directories read on demand, quick open (files.ts), the tree
-    repos/               the repo switcher in the header, recent repos and their avatars
+    repos/               the repo switcher in the header, recent repos and their avatars, with the AI's icon for
+                         each (icons.ts), the open repo's preferences dialog, the screen shown with no repo open
     settings/            owns the settings file: the options catalog, loading and saving (settings.ts), the saved
                          commands (commands.ts), the dialog, the theme picker and the Commands pane
     command-icons/       an icon per command: the Lucide and Simple Icons sets loaded on first use, the AI's picks
-                         and their cache (icons.ts), the icon and the picker
+                         and their cache, the asker the repo icons share (icons.ts), the icon and the picker
     ai-tools/            the Explore AI Tools dialog: a card per agent CLI (catalog.ts), with its install command
                          and install guide while the backend cannot find it, marked installed once it can
   app/                   composition only:
@@ -128,7 +129,7 @@ workspace/backend/src/   Rust backend
   sys/                   what macOS and Linux answer differently, one file each behind the same names: a process's
                          folder, a socket's peer, the process listing, the terminal host's folder, default shell,
                          locale and PATH dirs, opening a URL
-  ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command icons
+  ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command and repo icons
   browser.rs             opens an https page in the default browser
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),

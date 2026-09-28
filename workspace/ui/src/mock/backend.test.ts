@@ -124,6 +124,26 @@ test('ai_command_icons answers with ids from the sets it is sent, and refuses wh
   await expect(invoke('ai_command_icons', { items, sets })).rejects.toMatchObject({ kind: 'Ai' });
 });
 
+test('ai_repo_icons answers from the repo names, and refuses while the AI is off', async () => {
+  boot();
+  const sets = [{ prefix: 'lucide', title: 'Lucide', names: ['shopping-cart', 'route'] }];
+  const items = [{ path: '/r/acme-shop', name: 'acme-shop' }, { path: '/r/website', name: 'website' }];
+  expect(await invoke('ai_repo_icons', { items, sets })).toEqual(['lucide:shopping-cart', null]);
+  const now = await invoke<Settings>('settings_get');
+  await invoke('settings_set', { settings: { ...now, 'general.headless-ai-provider': 'off' } });
+  await expect(invoke('ai_repo_icons', { items, sets })).rejects.toMatchObject({ kind: 'Ai' });
+});
+
+test('close_repo leaves the repo commands failing as NotARepo until the repo opens again', async () => {
+  boot();
+  await invoke('close_repo');
+  await expect(invoke('status')).rejects.toMatchObject({ kind: 'NotARepo' });
+  await expect(invoke('stage_all')).rejects.toMatchObject({ kind: 'NotARepo' });
+  expect(await invoke('recent_repos')).not.toEqual([]);
+  await invoke('open_repo', { path: SCENARIOS.review!().root });
+  await expect(invoke('status')).resolves.toMatchObject({ files: expect.any(Array) });
+});
+
 test('idle waits for a task to finish', async () => {
   const b = boot();
   await invoke('term_subscribe', { out: new Channel(), ev: new Channel() });

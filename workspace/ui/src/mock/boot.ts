@@ -30,7 +30,10 @@ mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknow
 globalThis.__mock = backend.api;
 
 // a remembered repo would open instead of what the scenario's initial_repo says
-try { localStorage.removeItem('codebaer.lastRepo'); } catch { /* storage blocked: nothing to forget */ }
+try {
+  localStorage.removeItem('codebaer.lastRepo');
+  localStorage.removeItem('codebaer.lastRepoClosed');
+} catch { /* storage blocked: nothing to forget */ }
 
 // the accelerators the macOS menu owns, which a browser tab has no menu bar for; Linux has no menu, and the app's
 // own keymap binds them there

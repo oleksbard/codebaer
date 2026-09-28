@@ -79,11 +79,95 @@ function readPicks(): Promise<void> {
   return picksRead;
 }
 
-/** Keys asked about in this launch: an ask that failed, or got no icon back, waits for the next launch. */
-const asked = new Set<string>();
-let queue: IconItem[] = [];
-let asking = false;
-let warned = false;
+export type IconAsk<T> = {
+  key(item: T): string;
+  /** An item that has an icon already is not asked about. */
+  has(item: T): boolean;
+  ask(items: T[], sets: IconSet[]): Promise<(string | null)[]>;
+  keep(picks: [T, string][]): Promise<void> | void;
+  /** Names the ask in the log. */
+  what: string;
+  /** Leads the toast for the first failure in a launch; null where the item draws well enough without an icon. */
+  warn: string | null;
+};
+
+/**
+ * The function that asks about the items with no icon yet. One ask at a time, and items that come in meanwhile go in
+ * the next. A key is asked about once per launch: an ask that failed, or got no icon back, waits for the next launch.
+ * No epoch: a pick is keyed by the item's own text, so one that lands late is still right.
+ */
+export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[]) => Promise<void> {
+  const asked = new Set<string>();
+  let queue: T[] = [];
+  let asking = false;
+  let warned = false;
+  const fresh = (it: T) => !asked.has(k.key(it)) && !k.has(it);
+
+  async function ask(items: T[]): Promise<void> {
+    let got: (string | null)[];
+    try {
+      got = await k.ask(items, offered);
+    } catch (e) {
+      logError(e, k.what);
+      if (k.warn !== null && !warned) toast(`${k.warn}: ${errText(e)}`, 'warn');
+      warned = true;
+      return;
+    }
+    const picks = items.flatMap((it, i): [T, string][] => {
+      const id = got[i];
+      return id ? [[it, id]] : [];
+    });
+    if (picks.length) await k.keep(picks);
+  }
+
+  async function drain(): Promise<void> {
+    asking = true;
+    try {
+      while (queue.length) {
+        const items = queue;
+        queue = [];
+        await ask(items);
+      }
+    } finally {
+      asking = false;
+    }
+  }
+
+  return async (items) => {
+    // checked before the sets load, since loading them is the only real cost
+    if (S.settings['general.headless-ai-provider'] === 'off' || !items.some(fresh)) return;
+    try {
+      await loadIconSets();
+    } catch (e) {
+      logError(e, 'load icon sets');
+      return;
+    }
+    for (const it of items) {
+      if (!fresh(it)) continue;
+      asked.add(k.key(it));
+      queue.push(it);
+    }
+    if (!asking) await drain();
+  };
+}
+
+const askCommands = iconAsker<IconItem>({
+  key: (it) => iconKey(it.name, it.command),
+  has: (it) => Object.hasOwn(S.commandIcons, iconKey(it.name, it.command)),
+  ask: (items, sets) => git.aiCommandIcons(items.map(({ name, command }) => ({ name, command })), sets),
+  keep: async (picks) => {
+    const got = Object.fromEntries(picks.map(([it, id]) => [iconKey(it.name, it.command), id]));
+    S.commandIcons = { ...S.commandIcons, ...got };
+    notify();
+    try {
+      await git.saveCommandIcons(got);
+    } catch (e) {
+      logError(e, 'save command icons');
+    }
+  },
+  what: 'pick command icons',
+  warn: 'Command icons not picked',
+});
 
 export async function ensureIcons(items: readonly IconItem[]): Promise<void> {
   try {
@@ -92,52 +176,5 @@ export async function ensureIcons(items: readonly IconItem[]): Promise<void> {
     logError(e, 'load icon sets');
     return;
   }
-  if (S.settings['general.headless-ai-provider'] === 'off') return;
-  for (const { name, command } of items) {
-    const key = iconKey(name, command);
-    if (Object.hasOwn(S.commandIcons, key) || asked.has(key)) continue;
-    asked.add(key);
-    queue.push({ name, command });
-  }
-  if (!asking) await drain();
-}
-
-/** One ask at a time; items queued meanwhile go in the next. No epoch: a pick is keyed by the command's own text,
- *  so one that lands late is still right. */
-async function drain(): Promise<void> {
-  asking = true;
-  try {
-    while (queue.length) {
-      const items = queue;
-      queue = [];
-      await ask(items);
-    }
-  } finally {
-    asking = false;
-  }
-}
-
-async function ask(items: IconItem[]): Promise<void> {
-  let got: (string | null)[];
-  try {
-    got = await git.aiCommandIcons(items, offered);
-  } catch (e) {
-    logError(e, 'pick command icons');
-    if (!warned) toast(`Command icons not picked: ${errText(e)}`, 'warn');
-    warned = true;
-    return;
-  }
-  const picks: Record<string, string> = {};
-  items.forEach((it, i) => {
-    const id = got[i];
-    if (id) picks[iconKey(it.name, it.command)] = id;
-  });
-  if (!Object.keys(picks).length) return;
-  S.commandIcons = { ...S.commandIcons, ...picks };
-  notify();
-  try {
-    await git.saveCommandIcons(picks);
-  } catch (e) {
-    logError(e, 'save command icons');
-  }
+  await askCommands(items);
 }

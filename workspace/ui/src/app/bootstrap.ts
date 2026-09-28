@@ -3,7 +3,7 @@ import { logError } from '#ipc/log';
 import { installKeys } from '#kernel/keymap';
 import { listenAll, register, run } from '#kernel/registry';
 import { notify, S, subscribe } from '#kernel/store';
-import { openRepo, pickRepo, view } from '#core/session';
+import { lastRepo, openRepo, pickRepo, reopenAtLaunch, view } from '#core/session';
 import { startAutoFetch } from '#features/git-ops';
 import { connectTerminals } from '#features/terminals';
 import { loadSettings } from '#features/settings';
@@ -34,7 +34,13 @@ export async function start(): Promise<void> {
   view.dom.addEventListener('keyup', notify);
   view.dom.addEventListener('mouseup', notify);
   await listenAll();
-  const initial = (await git.initialRepo()) ?? localStorage.getItem('codebaer.lastRepo');
-  if (initial) await openRepo(initial);
-  else await pickRepo();
+  try {
+    const initial = (await git.initialRepo()) ?? reopenAtLaunch();
+    if (initial) await openRepo(initial);
+    // only a first launch asks at once; after a close, the no-repo screen offers the repo again
+    else if (lastRepo() === null) await pickRepo();
+  } finally {
+    S.starting = false;
+    notify();
+  }
 }

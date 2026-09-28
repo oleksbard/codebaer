@@ -35,6 +35,8 @@ export type Scripts = { runner: string; scripts: Script[] };
 export type IconItem = { name: string; command: string };
 /** The names to choose from; `ai_command_icons` answers with `<prefix>:<name>`. */
 export type IconSet = { prefix: string; title: string; names: string[] };
+/** `name` is the one the switcher shows; the backend adds the folder name and a line from the README. */
+export type RepoItem = { path: string; name: string };
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
 
 export type AppError =
@@ -77,9 +79,12 @@ export const git = {
   initialRepo: () => invoke<string | null>('initial_repo'),
   setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),
   quit: () => invoke<void>('quit'),
+  /** The open repo included. */
   recentRepos: () => invoke<Recent[]>('recent_repos'),
   favoriteRepo: (path: string, favorite: boolean) => invoke<Recent[]>('favorite_repo', { path, favorite }),
   openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
+  /** Stops the watcher; every repo command then fails with NotARepo until the next open. */
+  closeRepo: () => invoke<void>('close_repo'),
   status: () => invoke<Status>('status'),
   diffStat: () => invoke<DiffStat>('diff_stat'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
@@ -111,6 +116,8 @@ export const git = {
   /** One id per item, in order; null where the AI named no icon from the sets. */
   aiCommandIcons: (items: IconItem[], sets: IconSet[]) =>
     invoke<(string | null)[]>('ai_command_icons', { items, sets }),
+  /** Like `aiCommandIcons`, for the repos in the switcher. */
+  aiRepoIcons: (items: RepoItem[], sets: IconSet[]) => invoke<(string | null)[]>('ai_repo_icons', { items, sets }),
   /** Every provider but off whose CLI the backend can find; it asks a login shell, so it can take a second. */
   installedAiProviders: () => invoke<AiProvider[]>('installed_ai_providers'),
   /** An https page only, in the default browser. */

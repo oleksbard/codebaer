@@ -14,6 +14,7 @@ use tauri::{AppHandle, State};
 
 const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 sentences with the reason or the key consequence. Write the body as one paragraph on a single line, however long it gets; never break a sentence across lines. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
 const ICON_SYSTEM: &str = "You pick one icon for each command in a developer tool's command menu. Each command has a name and the shell line it runs. Pick the icon a developer recognises fastest as that command's purpose. For an action such as test, build, lint, format or deploy, pick an icon for the action, not the logo of the tool that runs it. Pick a brand logo only when the command is about that product itself, such as opening Chrome or starting Docker. Answer with ids from the given lists, exactly as written. Give two commands the same icon only when they do the same thing.";
+const REPO_ICON_SYSTEM: &str = "You pick one icon for each software project in a developer tool's project switcher, where the icon stands in for the project's name. Each project has the name the switcher shows, its folder name and, when it has one, a line from its README or manifest. Pick the icon a developer recognises fastest as that project: what the product is or what it does, not the language or the tools it is built with. Pick a brand logo only when the project is about that product itself, such as a VS Code extension or a Docker setup. Answer with ids from the given lists, exactly as written. Give two projects the same icon only when they are the same kind of thing.";
 const ICON_SCHEMA: &str = r#"{"type":"object","properties":{"icons":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"},"icon":{"type":"string"}},"required":["n","icon"],"additionalProperties":false}}},"required":["icons"],"additionalProperties":false}"#;
 /// Codex and OpenCode cannot turn their tools off; they also run read-only, in an empty folder.
 const NO_TOOLS: &str = "Do not run commands, read files or change anything: everything you need is in this message.";
@@ -296,11 +297,10 @@ pub struct IconSet {
     pub names: Vec<String>,
 }
 
-fn icon_prompt(items: &[IconItem], sets: &[IconSet]) -> String {
-    let mut s = String::from("Commands, one JSON object per line; answer each by its n:\n");
-    for (n, it) in items.iter().enumerate() {
-        let command: String = it.command.chars().take(MAX_LINE).collect();
-        s += &serde_json::json!({ "n": n, "name": it.name, "command": command }).to_string();
+fn icon_prompt(heading: &str, rows: &[Value], sets: &[IconSet]) -> String {
+    let mut s = format!("{heading}, one JSON object per line; answer each by its n:\n");
+    for row in rows {
+        s += &row.to_string();
         s.push('\n');
     }
     for set in sets {
@@ -329,24 +329,47 @@ fn icon_answer(reply: &Value, count: usize, sets: &[IconSet], name: &str) -> Res
     Ok(out)
 }
 
-pub fn command_icons_impl(provider: AiProvider, items: &[IconItem], sets: &[IconSet]) -> Result<Vec<Option<String>>, AppError> {
+/// What one kind of icon ask says around its rows.
+struct IconAsk {
+    system: &'static str,
+    heading: &'static str,
+    instruction: &'static str,
+}
+
+const COMMANDS: IconAsk = IconAsk { system: ICON_SYSTEM, heading: "Commands", instruction: "Pick an icon for every command." };
+const REPOS: IconAsk = IconAsk { system: REPO_ICON_SYSTEM, heading: "Projects", instruction: "Pick an icon for every project." };
+
+/// Each row carries its own `n`, which the answer refers to.
+fn pick_icons(provider: AiProvider, kind: &IconAsk, rows: &[Value], sets: &[IconSet]) -> Result<Vec<Option<String>>, AppError> {
     let Some(c) = cli(provider) else {
-        return Err(AppError::Ai("AI command icons are off. Turn them on in Settings.".into()));
+        return Err(AppError::Ai("AI icons are off. Turn them on in Settings.".into()));
     };
-    if items.is_empty() {
+    if rows.is_empty() {
         return Ok(Vec::new());
     }
-    let input = icon_prompt(items, sets);
+    let input = icon_prompt(kind.heading, rows, sets);
     let a = Ask {
-        system: ICON_SYSTEM,
-        instruction: "Pick an icon for every command.",
+        system: kind.system,
+        instruction: kind.instruction,
         input: &input,
         claude_model: "sonnet",
         schema: Some(ICON_SCHEMA),
     };
     let out = ask(provider, &a)?;
     let reply = json_object(&out).ok_or_else(|| AppError::Ai(format!("{}'s answer is not JSON", c.bin)))?;
-    icon_answer(&reply, items.len(), sets, c.bin)
+    icon_answer(&reply, rows.len(), sets, c.bin)
+}
+
+fn command_rows(items: &[IconItem]) -> Vec<Value> {
+    let row = |(n, it): (usize, &IconItem)| {
+        let command: String = it.command.chars().take(MAX_LINE).collect();
+        serde_json::json!({ "n": n, "name": it.name, "command": command })
+    };
+    items.iter().enumerate().map(row).collect()
+}
+
+pub fn command_icons_impl(provider: AiProvider, items: &[IconItem], sets: &[IconSet]) -> Result<Vec<Option<String>>, AppError> {
+    pick_icons(provider, &COMMANDS, &command_rows(items), sets)
 }
 
 #[tauri::command]
@@ -354,6 +377,37 @@ pub async fn ai_command_icons(app: AppHandle, items: Vec<IconItem>, sets: Vec<Ic
     tauri::async_runtime::spawn_blocking(move || command_icons_impl(settings::load(&app).headless_ai_provider, &items, &sets))
         .await
         .map_err(|e| AppError::Ai(e.to_string()))?
+}
+
+/// `name` is the one the switcher shows.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RepoItem {
+    pub path: String,
+    pub name: String,
+}
+
+/// Only a repo in `opened` has its README read, so the webview cannot have any folder's text sent to the AI.
+fn repo_rows(items: &[RepoItem], opened: &HashSet<String>) -> Vec<Value> {
+    let row = |(n, it): (usize, &RepoItem)| {
+        let dir = Path::new(&it.path);
+        let folder = dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let mut row = serde_json::json!({ "n": n, "name": it.name, "folder": folder });
+        if let Some(about) = opened.contains(&it.path).then(|| git::repo_about(dir)).flatten() {
+            row["about"] = about.into();
+        }
+        row
+    };
+    items.iter().enumerate().map(row).collect()
+}
+
+#[tauri::command]
+pub async fn ai_repo_icons(app: AppHandle, items: Vec<RepoItem>, sets: Vec<IconSet>) -> Result<Vec<Option<String>>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let opened = crate::recents::load(&app).into_iter().map(|e| e.path).collect();
+        pick_icons(settings::load(&app).headless_ai_provider, &REPOS, &repo_rows(&items, &opened), &sets)
+    })
+    .await
+    .map_err(|e| AppError::Ai(e.to_string()))?
 }
 
 #[cfg(test)]
@@ -376,11 +430,27 @@ mod tests {
     #[test]
     fn the_prompt_numbers_the_commands_and_lists_every_set_with_its_prefix() {
         let long = "x".repeat(MAX_LINE + 50);
-        let p = icon_prompt(&[item("build", "vite build"), item("", &long)], &sets());
+        let p = icon_prompt("Commands", &command_rows(&[item("build", "vite build"), item("", &long)]), &sets());
+        assert!(p.starts_with("Commands, one JSON object per line; answer each by its n:\n"), "{p}");
         assert!(p.contains(r#"{"command":"vite build","n":0,"name":"build"}"#), "{p}");
         assert!(p.contains(&format!(r#"{{"command":"{}","n":1,"name":""}}"#, "x".repeat(MAX_LINE))), "{p}");
         assert!(p.contains("\nLucide, answer as lucide:<name>:\nhammer\nplay\n"), "{p}");
         assert!(p.contains("\nSimple Icons, answer as simple-icons:<name>:\ngooglechrome\n"), "{p}");
+    }
+
+    #[test]
+    fn a_repo_row_has_its_folder_and_its_readme_line_only_once_it_was_opened() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("reviewbaer");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("README.md"), "# CodeB\u{e4}r\n\nReviews what an agent changed.\n").unwrap();
+        let path = root.to_string_lossy().into_owned();
+        let items = [RepoItem { path: path.clone(), name: "CodeB\u{e4}r".into() }];
+        let opened = HashSet::from([path]);
+        let want = serde_json::json!({ "n": 0, "name": "CodeB\u{e4}r", "folder": "reviewbaer", "about": "Reviews what an agent changed." });
+        assert_eq!(repo_rows(&items, &opened), vec![want]);
+        let unknown = serde_json::json!({ "n": 0, "name": "CodeB\u{e4}r", "folder": "reviewbaer" });
+        assert_eq!(repo_rows(&items, &HashSet::new()), vec![unknown]);
     }
 
     #[test]

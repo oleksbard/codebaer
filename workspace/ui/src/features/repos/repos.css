@@ -13,7 +13,8 @@
   color: var(--text);
 
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  svg { flex: none; color: var(--muted); }
+  .name.none { color: var(--muted); font-weight: 500; }
+  > svg { flex: none; color: var(--muted); }
 
   &:hover, &[data-state="open"] { background: var(--panel2); }
 }
@@ -21,6 +22,7 @@
 /* --hue is set inline per repo. The letters stay close to --text because some light themes' hues
    are too pale to read as small text. */
 .repo-avatar {
+  position: relative;
   flex: none;
   display: inline-grid;
   place-items: center;
@@ -33,37 +35,35 @@
   background: color-mix(in oklch, var(--hue) 26%, transparent);
   font: 700 10px/1 var(--ui);
   letter-spacing: -0.01em;
+
+  svg { width: 12px; height: 12px; }
+}
+
+/* ringed in the menu's own background, so it reads apart from the avatar under it */
+.repo-avatar .repo-fav {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.repo-avatar.large {
+  min-width: 32px;
+  height: 32px;
+  border-radius: var(--r-3);
+  font-size: 13px;
+
+  svg { width: 20px; height: 20px; }
+  .repo-fav { top: -5px; right: -5px; width: 14px; height: 14px; }
 }
 
 .repo-menu { min-width: 300px; }
-
-.repo-item { gap: 12px; }
-
-.repo-star {
-  flex: none;
-  align-self: center;
-  display: grid;
-  place-items: center;
-  margin: -3px -6px -3px auto;
-  padding: 3px;
-  border-radius: var(--r-2);
-  color: var(--faint);
-  visibility: hidden;
-
-  svg { display: block; }
-  path { fill: none; }
-
-  &:hover { color: var(--text); }
-
-  &[aria-pressed="true"] {
-    visibility: visible;
-    color: var(--accent);
-
-    path { fill: currentColor; }
-  }
-}
-
-.menu-item[data-highlighted] .repo-star { visibility: visible; }
 
 /* every row of the switcher menu */
 .repo-label {
@@ -95,4 +95,129 @@
     font: var(--fs-2) var(--mono);
     color: var(--muted);
   }
+}
+
+/* top-anchored like Settings, so the icon panel opening moves only the bottom edge */
+.repo-prefs {
+  width: min(480px, calc(100vw - 32px));
+  margin-top: max(32px, 10vh);
+  padding: 18px 20px 16px;
+
+  .dialog-x { top: 14px; right: 14px; }
+  .dialog-actions { margin-top: 18px; }
+}
+
+.repo-prefs-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-right: 28px;
+}
+
+.repo-prefs-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  .dialog-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--fs-2) var(--mono);
+    color: var(--muted);
+  }
+}
+
+.repo-prefs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.repo-prefs-check {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fs-2);
+  }
+}
+
+.repo-prefs-hint {
+  margin-left: 24px;
+  color: var(--faint);
+  font-size: var(--fs-1);
+}
+
+.repo-prefs-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  > span {
+    flex: none;
+    padding-top: 6px;
+    color: var(--muted);
+    font-size: var(--fs-2);
+  }
+}
+
+/* the review pane's blank, bear and all, leading to a folder or back to the repo open last */
+.no-repo-pick {
+  margin-top: 18px;
+  padding: 7px 14px;
+  font-size: var(--fs-3);
+}
+
+.no-repo-last {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(380px, 100%);
+  margin: 32px auto 0;
+  text-align: left;
+
+  > span {
+    color: var(--faint);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+}
+
+.no-repo-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+
+  &:hover { border-color: var(--faint); background: var(--panel2); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  > svg { flex: none; margin-left: auto; color: var(--muted); }
+}
+
+.no-repo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  .name, .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name { font-weight: 600; font-size: var(--fs-3); }
+  .path { font: var(--fs-2) var(--mono); color: var(--muted); }
 }

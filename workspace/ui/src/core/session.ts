@@ -24,8 +24,12 @@ const openEpoch = epoch();
 export async function refresh(): Promise<void> {
   if (S.refreshing) { S.refreshAgain = true; return; }
   S.refreshing = true;
+  const root = S.root;
   try {
-    S.status = await git.status();
+    const status = await git.status();
+    // read for a repo closed or switched from meanwhile
+    if (S.root !== root) return;
+    S.status = status;
     for (const f of features()) await f.onRefresh?.();
     await refreshOpen();
     // refreshOpen's replaceDoc/replaceOriginal map every fold away, and this is the path an agent
@@ -35,6 +39,8 @@ export async function refresh(): Promise<void> {
     onCursor.run();
     notify();
   } catch (e) {
+    // with no repo open, NotARepo is the expected answer, to an action that ran on past a close
+    if (S.root !== root || (S.root === null && errKind(e) === 'NotARepo')) return;
     if (errKind(e) === 'NotARepo') { toast('That folder is not a git repository', 'err'); await pickRepo(); }
     else toast(errText(e), 'err');
   } finally {
@@ -510,6 +516,14 @@ export function keepMine(): void {
 }
 
 // ---------- startup and repo switching ----------
+const LAST_REPO = 'codebaer.lastRepo';
+/** Set by a close, so the next launch starts with no repo instead of reopening the last one. */
+const LAST_CLOSED = 'codebaer.lastRepoClosed';
+
+/** The repo opened last, closed since or not. */
+export const lastRepo = (): string | null => localStorage.getItem(LAST_REPO);
+export const reopenAtLaunch = (): string | null => (localStorage.getItem(LAST_CLOSED) ? null : lastRepo());
+
 export async function openRepo(path: string): Promise<void> {
   for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return;
   if (!(await settle())) return;
@@ -518,7 +532,9 @@ export async function openRepo(path: string): Promise<void> {
     S.root = opened.root;
     S.rootLabel = opened.label;
     S.title = opened.title;
-    localStorage.setItem('codebaer.lastRepo', path);
+    // the root, which the recents list it by
+    localStorage.setItem(LAST_REPO, opened.root);
+    localStorage.removeItem(LAST_CLOSED);
     S.open = null;
     S.selected = null;
     S.filesOpen.clear();
@@ -536,6 +552,29 @@ export async function openRepo(path: string): Promise<void> {
     toast(errText(e), 'err');
     await pickRepo();
   }
+}
+
+/** Leaves the window with no repository, as a cancelled folder picker does, after the same asks as a switch. */
+export async function closeRepo(): Promise<void> {
+  if (S.root === null) return;
+  for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return;
+  if (!(await settle())) return;
+  try {
+    await git.closeRepo();
+  } catch (e) {
+    toast(errText(e), 'err');
+    return;
+  }
+  S.root = null;
+  S.rootLabel = null;
+  S.title = null;
+  S.status = null;
+  localStorage.setItem(LAST_CLOSED, 'true');
+  S.open = null;
+  S.selected = null;
+  S.filesOpen.clear();
+  for (const f of features()) f.onRepoChange?.reset();
+  notify();
 }
 
 export async function pickRepo(): Promise<void> {

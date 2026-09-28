@@ -384,29 +384,95 @@ fn head_of(path: &Path, cap: u64) -> Option<String> {
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
-fn readme_title(root: &Path) -> Option<String> {
+fn readme(root: &Path) -> Option<String> {
     let readme = std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()).find(|p| {
         p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("readme.md"))
     })?;
-    let text = head_of(&readme, TITLE_BYTES)?;
-    text.lines()
+    head_of(&readme, TITLE_BYTES)
+}
+
+fn readme_title(root: &Path) -> Option<String> {
+    readme(root)?
+        .lines()
         .find_map(|l| l.strip_prefix("# "))
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .map(str::to_string)
 }
 
-fn package_name(root: &Path) -> Option<String> {
+fn package_field(root: &Path, field: &str) -> Option<String> {
     let text = head_of(&root.join("package.json"), TITLE_BYTES)?;
     let json: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let name = json.get("name")?.as_str()?.trim();
-    (!name.is_empty()).then(|| name.to_string())
+    let value = json.get(field)?.as_str()?.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 /// A human name for the repo, for the header. The remote's basename is deliberately not consulted:
 /// it is the folder name in everything but `git clone <url> <other-dir>`, and it costs a subprocess.
 pub(crate) fn repo_title(root: &Path) -> Option<String> {
-    readme_title(root).or_else(|| package_name(root))
+    readme_title(root).or_else(|| package_field(root, "name"))
+}
+
+/// Enough of a description to tell what a project is.
+const ABOUT_CHARS: usize = 300;
+
+/// The first paragraph of prose, past the headings, badges, pictures, HTML, tables and code.
+fn readme_summary(text: &str) -> Option<String> {
+    let skip = |l: &str| l.is_empty() || ["#", "<", "![", "[![", "|", "---", "==="].iter().any(|p| l.starts_with(p));
+    let mut para: Vec<&str> = Vec::new();
+    let mut fenced = false;
+    for l in text.lines().map(str::trim) {
+        let fence = l.starts_with("```") || l.starts_with("~~~");
+        fenced ^= fence;
+        if fence || fenced || skip(l) {
+            if !para.is_empty() {
+                break;
+            }
+            continue;
+        }
+        para.push(l);
+    }
+    (!para.is_empty()).then(|| para.join(" "))
+}
+
+/// A crate's own `description = "..."`, read line by line: pulling in a TOML parser for one field is not worth it.
+fn cargo_description(root: &Path) -> Option<String> {
+    let text = head_of(&root.join("Cargo.toml"), TITLE_BYTES)?;
+    let mut section = "";
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            section = line;
+        } else if matches!(section, "[package]" | "[workspace.package]") {
+            let Some(value) = line.strip_prefix("description").map(str::trim_start).and_then(|l| l.strip_prefix('=')) else {
+                continue;
+            };
+            let value = value.trim();
+            let value = if let Some(literal) = value.strip_prefix('\'') {
+                literal.split_once('\'')?.0
+            } else {
+                let value = value.strip_prefix('"')?;
+                let mut escaped = false;
+                let (end, _) = value.char_indices().find(|&(_, c)| {
+                    let closes = c == '"' && !escaped;
+                    escaped = c == '\\' && !escaped;
+                    closes
+                })?;
+                &value[..end]
+            };
+            let value = value.trim();
+            return (!value.is_empty()).then(|| value.to_string());
+        }
+    }
+    None
+}
+
+/// What the repo is, in its own words, for the AI that picks its icon.
+pub(crate) fn repo_about(root: &Path) -> Option<String> {
+    let about = readme(root)
+        .and_then(|t| readme_summary(&t))
+        .or_else(|| package_field(root, "description"))
+        .or_else(|| cargo_description(root))?;
+    Some(about.chars().take(ABOUT_CHARS).collect())
 }
 
 #[tauri::command(async)]
@@ -426,6 +492,16 @@ pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) ->
     crate::recents::push(&app, &opened.root);
     crate::refresh_recent_menu(&app);
     Ok(opened)
+}
+
+/// Every repo command answers NotARepo after this, until the next `open_repo`.
+#[tauri::command(async)]
+pub fn close_repo(state: State<AppState>, app: tauri::AppHandle) {
+    // the watcher first, so no change of the old repo is reported once it is gone
+    *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    // the File menu's recents leave out the open repo, and there is none now
+    crate::refresh_recent_menu(&app);
 }
 
 #[tauri::command(async)]
@@ -1212,6 +1288,32 @@ mod tests {
 
         std::fs::write(root.join("ReadMe.md"), "<p>badge</p>\n\n#  CodeB\u{e4}r \n\n# Later\n").unwrap();
         assert_eq!(repo_title(root).as_deref(), Some("CodeB\u{e4}r"));
+    }
+
+    #[test]
+    fn repo_about_is_the_readme_s_first_prose_then_a_manifest_description() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        assert_eq!(repo_about(root), None);
+
+        std::fs::write(root.join("Cargo.toml"), "[package]\ndescription = \"\"\"\nMany lines\n\"\"\"\n").unwrap();
+        assert_eq!(repo_about(root), None);
+        std::fs::write(root.join("Cargo.toml"), "[workspace.package]\ndescription = 'A \\\"raw\\\" one'\n").unwrap();
+        assert_eq!(repo_about(root).as_deref(), Some(r#"A \"raw\" one"#));
+        std::fs::write(root.join("Cargo.toml"), "[dependencies]\ndescription = \"no\"\n[package]\nname = \"x\"\ndescription = \"A \\\"quoted\\\" crate\" # the \"why\"\n").unwrap();
+        assert_eq!(repo_about(root).as_deref(), Some(r#"A \"quoted\" crate"#));
+
+        std::fs::write(root.join("package.json"), r#"{"description": " Shop front "}"#).unwrap();
+        assert_eq!(repo_about(root).as_deref(), Some("Shop front"));
+
+        std::fs::write(root.join("README.md"), "# Title\n\n[![ci](b.svg)](ci)\n<p align=center>\n\n```sh\nnpm i\n```\n\nFirst  line\nsecond line\n\nLater\n").unwrap();
+        assert_eq!(repo_about(root).as_deref(), Some("First  line second line"));
+
+        std::fs::write(root.join("README.md"), format!("# Title\n\n{}\n", "\u{e4}".repeat(ABOUT_CHARS + 5))).unwrap();
+        assert_eq!(repo_about(root).map(|a| a.chars().count()), Some(ABOUT_CHARS));
+
+        std::fs::write(root.join("README.md"), "# Only a title\n").unwrap();
+        assert_eq!(repo_about(root).as_deref(), Some("Shop front"));
     }
 
     #[test]

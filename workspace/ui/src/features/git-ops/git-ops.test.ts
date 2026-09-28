@@ -5,6 +5,7 @@ import { S } from '#kernel/store';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
 import { commit, network, stashPush } from './git-ops';
+import { gitOps } from './index';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -158,5 +159,19 @@ describe('the branch row', () => {
     notify();
     await tick();
     expect(document.querySelector('.commit .branch .spinner')).toBeNull();
+  });
+});
+
+describe('the stash commands', () => {
+  const shown = () =>
+    gitOps.commands.filter((c) => c.id.startsWith('git.stash') && (!('when' in c) || c.when())).length;
+
+  it('are offered only on a repo with a commit, and not with no repo open', () => {
+    S.status = status('a.txt');
+    expect(shown()).toBe(2);
+    S.status = { ...status('a.txt'), head: null };
+    expect(shown()).toBe(0);
+    S.status = null;
+    expect(shown()).toBe(0);
   });
 });

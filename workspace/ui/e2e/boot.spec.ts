@@ -18,4 +18,8 @@ test('a cancelled folder picker leaves an empty window', async ({ page, open }) 
   expect(await mock.calls()).toContain('plugin:dialog|open');
   expect(await mock.calls()).not.toContain('open_repo');
   await expect(page.locator('.row')).toHaveCount(0);
+  // a first launch has no repo to offer again, only a folder to pick
+  await expect(page.getByRole('heading', { name: 'No repository open' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Open Folder/ })).toBeVisible();
+  await expect(page.locator('.no-repo-card')).toHaveCount(0);
 });

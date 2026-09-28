@@ -40,7 +40,6 @@ export const MAC: readonly Binding<CommandId>[] = [
   { keys: 'Mod+Enter', command: 'git.commit', local: true },
   { keys: 'Mod+Enter', command: 'comments.save', local: true },
   { keys: 'Mod+Shift+Enter', command: 'comments.send', local: true },
-  { keys: 'Mod+D', command: 'repos.favorite', local: true },
   { keys: 'Mod+,', command: 'settings.open', local: true },
   { keys: 'Mod+O', command: 'repos.pick', local: true },
   { keys: 'Mod+Q', command: 'app.quit', local: true },

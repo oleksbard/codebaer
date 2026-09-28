@@ -49,7 +49,6 @@ export const LINUX: readonly Binding<CommandId>[] = [
   { keys: 'Mod+Enter', command: 'git.commit', local: true },
   { keys: 'Mod+Enter', command: 'comments.save', local: true },
   { keys: 'Mod+Shift+Enter', command: 'comments.send', local: true },
-  { keys: 'Mod+D', command: 'repos.favorite', local: true },
   { keys: 'Mod+Shift+C', command: 'terminals.copy', local: true },
   { keys: 'Mod+Shift+V', command: 'terminals.paste', local: true },
 ];

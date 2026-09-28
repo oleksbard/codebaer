@@ -11,7 +11,8 @@ export const core = defineFeature({
     { id: 'core.escape', run: () => { if (S.open?.badge) { S.open.badge = null; notify(); } } },
   ],
   events: {
-    'repo-changed': { run: () => void refresh() },
+    // one sent just before a close would fail as NotARepo, and that failure opens the folder picker
+    'repo-changed': { run: () => { if (S.root !== null) void refresh(); } },
     // not idleOnly: a dialog left open must not keep the app from quitting
     'quit-requested': { run: () => void quit() },
     'open-repo': { run: (path) => void openRepo(String(path)) },

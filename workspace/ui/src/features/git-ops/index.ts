@@ -3,7 +3,7 @@ import { S } from '#kernel/store';
 import { onStatus } from './auto-fetch';
 import { checkout, commit, createBranch, focusCommit, network, stashPop, stashPush } from './git-ops';
 
-const hasHead = (): boolean => S.status?.head !== null;
+const hasHead = (): boolean => (S.status?.head ?? null) !== null;
 
 export const gitOps = defineFeature({
   id: 'git-ops',

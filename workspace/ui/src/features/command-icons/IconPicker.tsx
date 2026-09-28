@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { logError } from '#ipc/log';
 import { useApp } from '#kernel/store';
-import { CommandIcon, GlyphSvg } from './CommandIcon';
+import { GlyphSvg } from './CommandIcon';
 import { glyph, loadIconSets, searchIcons } from './icons';
 
 const SHOWN = 160;
 
-export function IconPicker({ value, name, command, labelledBy, onChange }: {
+/** `preview` draws what the item shows with `value`; `autoTitle` says what Automatic does. */
+export function IconPicker({ value, preview, autoTitle, labelledBy, onChange }: {
   value: string | null;
-  name: string;
-  command: string;
+  preview: ReactNode;
+  autoTitle: string;
   labelledBy: string;
   onChange(icon: string | null): void;
 }) {
@@ -29,7 +30,7 @@ export function IconPicker({ value, name, command, labelledBy, onChange }: {
     <div className="icon-pick">
       <button type="button" className="icon-pick-b" aria-expanded={open} aria-labelledby={labelledBy}
         onClick={() => setOpen((o) => !o)}>
-        <CommandIcon name={name} command={command} icon={value} />
+        {preview}
         <span>{value === null ? 'Automatic' : value.slice(value.indexOf(':') + 1)}</span>
       </button>
       {open && (
@@ -40,7 +41,7 @@ export function IconPicker({ value, name, command, labelledBy, onChange }: {
               autoComplete="off" spellCheck={false} autoFocus value={query}
               onChange={(e) => setQuery(e.target.value)} />
             <button type="button" className="icon-auto" aria-pressed={value === null} onClick={() => pick(null)}
-              title="The AI picks one from the name and the command">
+              title={autoTitle}>
               Automatic
             </button>
           </div>

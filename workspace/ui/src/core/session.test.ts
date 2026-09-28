@@ -1,6 +1,9 @@
 import { undo } from '@codemirror/commands';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeFile, flush, openPlain, openRepo, openRow, quit, refresh, view, viewChanges } from '#core/session';
+import {
+  closeFile, closeRepo, flush, lastRepo, openPlain, openRepo, openRow, quit, refresh, reopenAtLaunch, view, viewChanges,
+} from '#core/session';
+import { core } from '#core/feature';
 import type { FileText } from '#ipc/git';
 import { choiceDialog, confirmDialog } from '#kernel/dialogs';
 import { checkCwd } from '#ipc/terminal';
@@ -351,5 +354,57 @@ describe('switching repos', () => {
     expect(S.root).toBe('/Users/me/repos/other');
     expect(S.rootLabel).toBe('~/repos/other');
     expect(check).toHaveBeenCalledOnce();
+  });
+});
+
+describe('closing the repo', () => {
+  beforeEach(() => {
+    S.root = '/Users/me/repos/this'; S.rootLabel = '~/repos/this'; S.title = 'this';
+    localStorage.setItem('codebaer.lastRepo', '/Users/me/repos/this');
+    localStorage.removeItem('codebaer.lastRepoClosed');
+  });
+
+  it('leaves no repo open, keeps it from the next launch, and ignores a change the watcher sent before', async () => {
+    S.filesOpen.add('src');
+    await closeRepo();
+    expect(g.closeRepo!).toHaveBeenCalledOnce();
+    expect([S.root, S.rootLabel, S.title, S.status, S.open]).toEqual([null, null, null, null, null]);
+    expect(lastRepo()).toBe('/Users/me/repos/this');
+    expect(reopenAtLaunch()).toBeNull();
+    expect(S.filesOpen.size).toBe(0);
+    core.events['repo-changed'].run();
+    await tick();
+    expect(g.status!).not.toHaveBeenCalled();
+  });
+
+  it('drops a status read before the close, and takes NotARepo from an action that outlived it quietly', async () => {
+    let answer: (st: unknown) => void = () => {};
+    g.status!.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+    const late = refresh();
+    await closeRepo();
+    answer(status('a.txt'));
+    await late;
+    expect(S.status).toBeNull();
+    g.status!.mockRejectedValueOnce({ kind: 'NotARepo' });
+    S.toasts = [];
+    await refresh();
+    expect(S.toasts).toEqual([]);
+    expect(S.root).toBeNull();
+  });
+
+  it('asks about unsaved changes first, and Cancel keeps the repo open', async () => {
+    await openUnstaged('a.txt', blob('base\n'), file('disk\n'));
+    type('mine\n');
+    await closeRepo();
+    expect(choiceMock).toHaveBeenCalledOnce();
+    expect(g.closeRepo!).not.toHaveBeenCalled();
+    expect(S.root).toBe('/Users/me/repos/this');
+  });
+
+  it('keeps the repo when the backend fails to close it', async () => {
+    g.closeRepo!.mockRejectedValue({ kind: 'Io', detail: 'boom' });
+    await closeRepo();
+    expect(S.root).toBe('/Users/me/repos/this');
+    expect(reopenAtLaunch()).toBe('/Users/me/repos/this');
   });
 });

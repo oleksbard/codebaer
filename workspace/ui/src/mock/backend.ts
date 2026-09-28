@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Recent,
-  Rev, Scripts, StageResult, Status } from '#ipc/git';
+  RepoItem, Rev, Scripts, StageResult, Status } from '#ipc/git';
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
@@ -59,12 +59,27 @@ const MENU_EVENTS: Record<MenuItem, string> = {
   orphans: 'menu-orphans', settings: 'menu-settings', 'ai-tools': 'menu-ai-tools',
 };
 
-/** Browser mode's stand-in for the AI's icon pick: a word of the command that names an icon. */
+/** Browser mode's stand-in for the AI's icon pick: a word of the command or the repo name that names an icon. */
 const ICON_WORDS: Record<string, string> = {
   build: 'lucide:hammer', dev: 'lucide:play', lint: 'lucide:brush-cleaning', test: 'lucide:flask-conical',
   vitest: 'lucide:flask-conical', format: 'lucide:wand-sparkles', tsc: 'lucide:file-check',
   chrome: 'simple-icons:googlechrome',
 };
+const REPO_WORDS: Record<string, string> = { shop: 'lucide:shopping-cart', router: 'lucide:route' };
+const AI_ICONS_OFF: AppError = { kind: 'Ai', detail: 'AI icons are off. Turn them on in Settings.' };
+/** What `AppState::root` fails for after `close_repo`, until the next `open_repo`. */
+const NEEDS_REPO = new Set([
+  'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'blame', 'stage_content', 'stage_path',
+  'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit', 'branches',
+  'switch_branch', 'create_branch', 'stash_push', 'stash_pop', 'list_files', 'list_dir', 'push', 'pull', 'fetch',
+  'fetch_background', 'ai_commit_message', 'package_scripts', 'task_run',
+]);
+
+function wordIcon(words: Record<string, string>, text: string, sets: IconSet[]): string | null {
+  const known = new Set(sets.flatMap((s) => s.names.map((n) => `${s.prefix}:${n}`)));
+  return text.toLowerCase().split(/[^a-z0-9]+/).map((w) => words[w]).find((id) => id !== undefined && known.has(id))
+    ?? null;
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const basename = (p: string): string => p.split('/').at(-1) ?? p;
@@ -82,6 +97,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let hiddenScripts: HiddenScripts = {};
   let icons: Record<string, string> = {};
   const favorites = new Set(sc.favorites);
+  let closed = false;
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
   let unsaved = false;
@@ -173,10 +189,16 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     }
   };
 
-  /** `recent_rows`: favorites first, each group in the recents' order. */
+  /** `recent_repos`: the open repo included, favorites first, each group in the recents' order. */
   const recents = (): Recent[] => [...sc.recents]
     .sort((a, b) => Number(favorites.has(b)) - Number(favorites.has(a)))
-    .map((path) => ({ path, name: basename(path), label: label(path), favorite: favorites.has(path) }));
+    // `Recent::new` names a repo as `open_repo` titles it; only the scenario's own repo has files to read
+    .map((path) => ({
+      path,
+      name: (path === sc.root ? title() : null) ?? basename(path),
+      label: label(path),
+      favorite: favorites.has(path),
+    }));
 
   const pty = createPty({
     root: sc.root, menu: sc.menu, sessions: sc.sessions, orphans: sc.orphans,
@@ -203,8 +225,10 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     open_repo: ({ path }: { path: string }): Opened => {
       if (path.replace(/\/+$/, '') !== sc.root) throw { kind: 'NotARepo' } satisfies AppError;
+      closed = false;
       return { root: sc.root, label: label(sc.root), title: title() };
     },
+    close_repo: () => { closed = true; },
     status: (): Status => repo.status(),
     diff_stat: (): DiffStat => repo.diffStat(),
     read_file: ({ path }: { path: string }): FileText => repo.readFile(path),
@@ -259,13 +283,14 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     command_icons_get: (): Record<string, string> => ({ ...icons }),
     command_icons_set: ({ picks }: { picks: Record<string, string> }) => { icons = { ...icons, ...picks }; },
     ai_command_icons: async ({ items, sets }: { items: IconItem[]; sets: IconSet[] }): Promise<(string | null)[]> => {
-      if (settings['general.headless-ai-provider'] === 'off') {
-        throw { kind: 'Ai', detail: 'AI command icons are off. Turn them on in Settings.' } satisfies AppError;
-      }
+      if (settings['general.headless-ai-provider'] === 'off') throw AI_ICONS_OFF;
       await sleep(opts.slow);
-      const known = new Set(sets.flatMap((s) => s.names.map((n) => `${s.prefix}:${n}`)));
-      return items.map((it) => `${it.name} ${it.command}`.toLowerCase().split(/[^a-z0-9]+/)
-        .map((w) => ICON_WORDS[w]).find((id) => id !== undefined && known.has(id)) ?? null);
+      return items.map((it) => wordIcon(ICON_WORDS, `${it.name} ${it.command}`, sets));
+    },
+    ai_repo_icons: async ({ items, sets }: { items: RepoItem[]; sets: IconSet[] }): Promise<(string | null)[]> => {
+      if (settings['general.headless-ai-provider'] === 'off') throw AI_ICONS_OFF;
+      await sleep(opts.slow);
+      return items.map((it) => wordIcon(REPO_WORDS, it.name, sets));
     },
     // the backend finds the CLIs the way it finds the terminal menu's commands
     installed_ai_providers: (): AiProvider[] => AI_PROVIDERS.filter((p) => sc.menu.commands.includes(p)),
@@ -300,6 +325,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
         failures.delete(cmd);
         throw injected;
       }
+      if (closed && NEEDS_REPO.has(cmd)) throw { kind: 'NotARepo' } satisfies AppError;
       const h = handlers[cmd];
       if (!h) {
         console.error(`[mock] no handler for ${cmd}`);

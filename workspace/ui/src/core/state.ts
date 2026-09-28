@@ -35,6 +35,8 @@ declare module '#kernel/store' {
     changesOnly: boolean;
     /** Directory paths expanded in the Files tree; outlives the tab switch that unmounts the tree. */
     filesOpen: Set<string>;
+    /** Until the launch has opened its repo or found none to open, so the no-repo screen does not flash first. */
+    starting: boolean;
   }
 }
 
@@ -43,4 +45,5 @@ export const coreState = () => ({
   refreshing: false, refreshAgain: false, flushing: null, fatal: null, busy: false,
   changesOnly: localStorage.getItem('codebaer.changesOnly') === 'true',
   filesOpen: new Set<string>(),
+  starting: true,
 });

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { NoRepo } from '#features/repos';
 import { AllChanges, allChangesShown, ReviewPane } from '#features/review';
 import { Terminals } from '#features/terminals';
 import { OverlayHost } from './OverlayHost';
@@ -19,7 +20,9 @@ export function App() {
         <div className="frame">
           <Sidebar />
           <Gutter />
-          {s.tab === 'terminals' ? <Terminals /> : allChangesShown(s) ? <AllChanges /> : <ReviewPane />}
+          {s.tab === 'terminals' ? <Terminals />
+            : s.root === null && !s.starting ? <NoRepo />
+              : allChangesShown(s) ? <AllChanges /> : <ReviewPane />}
         </div>
       </div>
       <OverlayHost />

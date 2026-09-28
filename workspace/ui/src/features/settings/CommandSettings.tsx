@@ -75,8 +75,9 @@ function CommandForm({ initial, onSave, onCancel }: {
       </label>
       <div className="cmd-field">
         <span id="cmd-icon">Icon</span>
-        <IconPicker value={icon} name={name.trim()} command={command.trim()} labelledBy="cmd-icon"
-          onChange={setIcon} />
+        <IconPicker value={icon} labelledBy="cmd-icon" onChange={setIcon}
+          preview={<CommandIcon name={name.trim()} command={command.trim()} icon={icon} />}
+          autoTitle="The AI picks one from the name and the command" />
       </div>
       <div className="cmd-field">
         <span id="cmd-scope">Show in</span>

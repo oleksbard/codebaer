@@ -1,4 +1,8 @@
+import type { Glyph } from '#features/command-icons';
+
 const KEY = 'codebaer.avatars';
+/** Kept apart from the avatars, which forget a repo that leaves the recents: the user chose these. */
+const PICKS = 'codebaer.repo-icons';
 const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
 const VOWELS = new Set(['A', 'E', 'I', 'O', 'U']);
 const graphemes = new Intl.Segmenter();
@@ -8,7 +12,13 @@ export const HUES = ['blue', 'green', 'orange', 'pink', 'purple', 'red', 'yellow
 export type Hue = (typeof HUES)[number];
 
 type Repo = { path: string; name: string };
-type Stored = Record<string, { code: string; name: string }>;
+/** The icon's own SVG rather than its id, so the header draws it without loading the 5 MB of icon sets. */
+type Entry = { code: string; name: string; icon?: Glyph };
+type Stored = Record<string, Entry>;
+/** The user's icon, else the AI's; the code stands in while a repo has neither. */
+export type Avatar = { code: string; icon: Glyph | null };
+/** The user's own pick, with its id for the picker. */
+export type Picked = Glyph & { id: string };
 
 export function words(name: string): string[] {
   return name
@@ -54,33 +64,69 @@ export function* candidates(name: string): Generator<string> {
   }
 }
 
-function load(): Stored {
+function read(key: string): Record<string, unknown> {
   let raw: unknown;
   try {
-    raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    raw = JSON.parse(localStorage.getItem(key) ?? '{}');
   } catch {
     return {};
   }
-  if (!raw || typeof raw !== 'object') return {};
+  return raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+}
+
+function write(key: string, v: object): void {
+  const json = JSON.stringify(v);
+  if (localStorage.getItem(key) !== json) localStorage.setItem(key, json);
+}
+
+function glyphOf(v: unknown): Glyph | null {
+  const g = v as Partial<Glyph> | null | undefined;
+  if (typeof g?.body !== 'string' || typeof g.width !== 'number' || typeof g.height !== 'number') return null;
+  return { body: g.body, width: g.width, height: g.height };
+}
+
+function load(): Stored {
   const out: Stored = {};
-  for (const [path, v] of Object.entries(raw as Record<string, unknown>)) {
-    const e = v as { code?: unknown; name?: unknown } | null;
+  for (const [path, v] of Object.entries(read(KEY))) {
+    const e = v as { code?: unknown; name?: unknown; icon?: unknown } | null;
     if (typeof e?.code !== 'string' || typeof e.name !== 'string' || chars(e.code).length !== 2) continue;
-    out[path] = { code: e.code, name: e.name };
+    const entry: Entry = { code: e.code, name: e.name };
+    const icon = glyphOf(e.icon);
+    if (icon) entry.icon = icon;
+    out[path] = entry;
   }
   return out;
 }
 
 function save(s: Stored): void {
-  const json = JSON.stringify(s);
-  if (localStorage.getItem(KEY) !== json) localStorage.setItem(KEY, json);
+  write(KEY, s);
+}
+
+function loadPicks(): Record<string, Picked> {
+  const out: Record<string, Picked> = {};
+  for (const [path, v] of Object.entries(read(PICKS))) {
+    const g = glyphOf(v);
+    const id = (v as { id?: unknown } | null)?.id;
+    if (g && typeof id === 'string') out[path] = { id, ...g };
+  }
+  return out;
+}
+
+export function pickedIcon(path: string): Picked | null {
+  return loadPicks()[path] ?? null;
+}
+
+/** Null hands the repo back to the AI's icon. */
+export function keepPickedIcon(path: string, pick: Picked | null): void {
+  const rest = Object.fromEntries(Object.entries(loadPicks()).filter(([p]) => p !== path));
+  write(PICKS, pick ? { ...rest, [path]: pick } : rest);
 }
 
 /**
  * A code per repo, unique among the repos listed and every other repo remembered. A repo keeps its
- * code across calls, whatever the order, until its name changes or `forgetAvatars` drops it.
+ * code and its icon across calls, whatever the order, until its name changes or `forgetAvatars` drops it.
  */
-export function avatars(repos: Repo[]): Map<string, string> {
+export function avatars(repos: Repo[]): Map<string, Avatar> {
   const stored = load();
   const list = repos.filter((r, i) => repos.findIndex((x) => x.path === r.path) === i);
   const listed = new Set(list.map((r) => r.path));
@@ -99,12 +145,32 @@ export function avatars(repos: Repo[]): Map<string, string> {
       if (taken.has(c)) continue;
       got.set(r.path, c);
       taken.add(c);
-      stored[r.path] = { code: c, name: r.name };
+      // one that gave up its code to another repo keeps its icon; a new name waits for a new one
+      const icon = stored[r.path]?.name === r.name ? stored[r.path]?.icon : undefined;
+      stored[r.path] = icon ? { code: c, name: r.name, icon } : { code: c, name: r.name };
       break;
     }
   }
   save(stored);
-  return new Map(list.map((r) => [r.path, got.get(r.path)!]));
+  const picks = loadPicks();
+  return new Map(list.map((r) => {
+    const pick = picks[r.path];
+    return [r.path, { code: got.get(r.path)!, icon: pick ? glyphOf(pick) : stored[r.path]?.icon ?? null }];
+  }));
+}
+
+export function hasAvatarIcon(r: Repo): boolean {
+  const e = load()[r.path];
+  return e?.name === r.name && e.icon !== undefined;
+}
+
+/** Only onto the name it was picked for: a repo renamed while the AI thought waits for a pick of its own. */
+export function setAvatarIcon(r: Repo, icon: Glyph): void {
+  const stored = load();
+  const e = stored[r.path];
+  if (e?.name !== r.name) return;
+  stored[r.path] = { ...e, icon };
+  save(stored);
 }
 
 /** Drops every remembered repo not in `keep`, so a repo that left the recents stops holding its code. */
