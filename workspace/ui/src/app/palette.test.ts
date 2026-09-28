@@ -42,7 +42,8 @@ describe('the command palette', () => {
       ['Terminal: Find…', ''], ['Terminal: Find Next', ''], ['Terminal: Find Previous', ''],
       ['Terminal: Clear Buffer', ''], ['Terminal: Larger Text', ''], ['Terminal: Smaller Text', ''],
       ['Terminal: Kill Session', ''], ['Terminal: Close Session', ''],
-      ['Explore AI Tools…', ''],
+      ['Go to File…', '⌘P'], ['Terminals and Orphans…', ''], ['Settings…', ''],
+      ['Explore AI Tools…', ''], ['About CodeBär', ''], ['Quit CodeBär', ''],
     ]);
   });
 

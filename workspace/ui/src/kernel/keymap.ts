@@ -35,7 +35,9 @@ function stroke(text: string): Stroke {
   // letters, digits and punctuation by their physical key, so a layout or Option does not change them;
   // F-keys, Enter and Escape by name
   const code = /^[A-Z]$/.test(key) ? `Key${key}` : /^\d$/.test(key) ? `Digit${key}` : CODES[key] ?? null;
-  const label = `${meta ? '⌘' : ''}${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${NAMES[key] ?? key}`;
+  const label = mac
+    ? `${meta ? '⌘' : ''}${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${NAMES[key] ?? key}`
+    : [ctrl && 'Ctrl', shift && 'Shift', alt && 'Alt', meta && 'Meta', key].filter(Boolean).join('+');
   return { meta, ctrl, alt, shift, code, key, label };
 }
 

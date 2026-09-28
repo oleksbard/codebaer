@@ -1,6 +1,7 @@
 // Screenshots browser mode: starts Vite on a free port, opens mock.html, waits for the fake backend to go
 // idle, and saves a PNG.
-//   pnpm shot [scenario] [--theme id] [--out file] [--browser chromium] [--do press:Meta+Shift+T --do click:text=Pull]
+//   pnpm shot [scenario] [--theme id] [--platform linux] [--out file] [--browser chromium]
+//             [--do press:Meta+Shift+T --do click:text=Pull]
 // Each --do step runs in order and waits for the backend to go idle again.
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -12,6 +13,7 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     theme: { type: 'string' },
+    platform: { type: 'string' },
     out: { type: 'string' },
     browser: { type: 'string', default: 'webkit' },
     size: { type: 'string', default: '1280x820' },
@@ -19,7 +21,8 @@ const { values, positionals } = parseArgs({
   },
 });
 const scenario = positionals[0] ?? 'review';
-const out = values.out ?? `test-results/shots/${scenario}${values.theme ? `-${values.theme}` : ''}.png`;
+const tag = [values.theme, values.platform].filter(Boolean).map((t) => `-${t}`).join('');
+const out = values.out ?? `test-results/shots/${scenario}${tag}.png`;
 const [width, height] = values.size.split('x').map(Number);
 
 const server = await createServer({ server: { port: 0, strictPort: false }, logLevel: 'error', clearScreen: false });
@@ -35,7 +38,10 @@ try {
     // CodeMirror loads a language and xterm paints on the next frames, neither of which the backend sees
     await page.waitForTimeout(250);
   };
-  const query = new URLSearchParams({ scenario, slow: '0', ...(values.theme ? { theme: values.theme } : {}) });
+  const query = new URLSearchParams({
+    scenario, slow: '0', ...(values.theme ? { theme: values.theme } : {}),
+    ...(values.platform ? { platform: values.platform } : {}),
+  });
   await page.goto(`${server.resolvedUrls.local[0]}mock.html?${query}`);
   await page.waitForSelector('html[data-mock-idle]', { state: 'attached' });
   await settle();

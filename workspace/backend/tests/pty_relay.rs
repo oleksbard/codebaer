@@ -308,12 +308,10 @@ fn a_host_counts_as_in_use_only_while_a_client_is_attached() {
     let sock = dir.path().join(format!("ptyd-{}.sock", proto::PROTO));
     assert!(std::process::Command::new(BIN).arg("--pty-host").arg(&sock).status().unwrap().success());
     let s = until(Duration::from_secs(5), || UnixStream::connect(&sock).ok()).expect("the host never bound");
-    let mut pid: libc::pid_t = 0;
-    let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
-    unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_LOCAL, libc::LOCAL_PEERPID, (&raw mut pid).cast(), &mut len) };
-    assert!(pid > 0);
+    let pid = codebaer_lib::sys::peer_pid(s.as_raw_fd()).expect("no peer pid");
     let _reap = Reap(pid);
-    assert!(until(Duration::from_secs(2), || orphans::has_client(pid).then_some(())).is_some());
+    let path = sock.to_string_lossy();
+    assert!(until(Duration::from_secs(2), || orphans::has_client(pid, &path).then_some(())).is_some());
     drop(s);
-    assert!(until(Duration::from_secs(2), || (!orphans::has_client(pid)).then_some(())).is_some());
+    assert!(until(Duration::from_secs(2), || (!orphans::has_client(pid, &path)).then_some(())).is_some());
 }

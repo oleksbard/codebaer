@@ -45,13 +45,13 @@ fn cli(p: AiProvider) -> Option<Cli> {
     Some(Cli { bin, product })
 }
 
-/// An app started by LaunchServices does not get the shell's PATH, so the usual install dirs are checked too.
+/// An app not started from a shell does not get the shell's PATH, so the usual install dirs are checked too.
 fn search_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
     path.into_iter()
         .chain([".local/bin", ".claude/local", ".opencode/bin", ".bun/bin", ".npm-global/bin"].map(|d| home.join(d)))
-        .chain(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from))
+        .chain(crate::sys::BIN_DIRS.iter().map(PathBuf::from))
         .collect()
 }
 

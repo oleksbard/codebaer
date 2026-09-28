@@ -1,0 +1,11 @@
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %f
+StartupWMClass={{exec}}
+Icon={{icon}}
+Name=CodeBär
+Terminal=false
+Type=Application

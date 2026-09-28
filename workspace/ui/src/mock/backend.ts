@@ -179,6 +179,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
 
   /** One entry per command in `generate_handler![]` in lib.rs, plus the plugin calls the page makes. */
   const handlers: Record<string, (args: never) => unknown> = {
+    app_version: (): string => '0.0.0-mock',
     git_version: (): string => {
       if (sc.gitMissing) throw { kind: 'Io', detail: 'git: No such file or directory (os error 2)' } satisfies AppError;
       return 'git version 2.50.1';

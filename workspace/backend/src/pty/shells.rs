@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Shells worth offering. `sh` and `csh` are left out deliberately: on macOS they are bash in
 /// POSIX mode and a link to tcsh, so listing them would be two names for a shell already shown.
@@ -111,13 +111,18 @@ pub fn login_args(path: &str) -> Vec<String> {
     }
 }
 
-pub fn detect(pw_shell: &str, etc_shells: &str, dirs: &[&Path], exists: &dyn Fn(&Path) -> bool) -> Vec<Shell> {
+/// `resolve` gives an installed shell's real path, which is what two names for one shell share: a usr-merged
+/// distro lists both /bin/bash and /usr/bin/bash.
+pub fn detect(pw_shell: &str, etc_shells: &str, dirs: &[&Path], resolve: &dyn Fn(&Path) -> Option<PathBuf>) -> Vec<Shell> {
     let mut out: Vec<Shell> = Vec::new();
+    let mut real: Vec<PathBuf> = Vec::new();
     let mut add = |path: &str| {
         let name = basename(path);
-        if !CANDIDATES.contains(&name) || out.iter().any(|s| s.path == path) || !exists(Path::new(path)) {
+        if !CANDIDATES.contains(&name) || out.iter().any(|s| s.path == path) {
             return;
         }
+        let Some(r) = resolve(Path::new(path)).filter(|r| !real.contains(r)) else { return };
+        real.push(r);
         out.push(Shell { path: path.to_string(), name: name.to_string() });
     };
     // the user's own login shell leads the menu whether or not chsh ever registered it
@@ -163,11 +168,10 @@ pub fn injection(path: &str, dir: &Path, orig_zdotdir: Option<&str>) -> Option<I
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    fn present(paths: &[&str]) -> impl Fn(&Path) -> bool {
+    fn present(paths: &[&str]) -> impl Fn(&Path) -> Option<PathBuf> {
         let set: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-        move |p: &Path| set.iter().any(|q| q == p)
+        move |p: &Path| set.iter().find(|q| *q == p).cloned()
     }
 
     #[test]
@@ -211,6 +215,17 @@ mod tests {
     fn lists_a_shell_once_when_both_sources_name_it() {
         let got = detect("/bin/zsh", "/bin/zsh\n", &[Path::new("/bin")], &present(&["/bin/zsh"]));
         assert_eq!(got.len(), 1);
+    }
+
+    #[test]
+    fn lists_a_shell_once_under_the_first_of_its_names() {
+        let merged = |p: &Path| {
+            let s = p.to_str()?;
+            Some(PathBuf::from(format!("/usr{}", s.strip_prefix("/usr").unwrap_or(s))))
+        };
+        let got = detect("/bin/bash", "/bin/sh\n/bin/bash\n/usr/bin/bash\n/bin/dash\n/usr/bin/dash\n", &[], &merged);
+        let paths: Vec<&str> = got.iter().map(|s| s.path.as_str()).collect();
+        assert_eq!(paths, ["/bin/bash", "/bin/dash"]);
     }
 
     #[test]

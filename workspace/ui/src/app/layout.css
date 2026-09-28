@@ -98,9 +98,11 @@
   grid-template-columns: minmax(0,1fr) minmax(0,560px) minmax(0,1fr);
   column-gap: 12px;
   align-items: center;
-  /* clears the macOS window buttons, which sit over this row; mirrored so the field stays centred */
-  padding: 0 84px;
+  padding: 0 12px;
 }
+
+/* clears the window buttons, which sit over this row; mirrored so the field stays centred */
+[data-platform="macos"] .head { padding: 0 84px; }
 
 .palette-field {
   grid-column: 2;

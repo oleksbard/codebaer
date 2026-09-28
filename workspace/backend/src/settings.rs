@@ -466,6 +466,8 @@ mod tests {
         assert!(matches!(res, Err(AppError::Io(ref m)) if m.contains(&*f.to_string_lossy())), "{res:?}");
     }
 
+    // Linux's immutable flag, chattr +i, needs root
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_failed_rename_removes_the_tmp_file() {
         let (_d, f) = file("{}");

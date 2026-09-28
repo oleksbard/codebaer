@@ -3,7 +3,7 @@ import { expect, test } from './fixtures';
 test('switching to a branch shows the commits it can pull, and pulls none of them', async ({ page, open }) => {
   const mock = await open();
   await mock.remotePush('origin/main', 3);
-  await page.keyboard.press('Meta+Shift+P');
+  await page.keyboard.press('ControlOrMeta+Shift+P');
   await page.keyboard.type('Checkout to');
   await page.keyboard.press('Enter');
   await page.locator('.pal li').filter({ hasText: /^main\s+local$/ }).click();
