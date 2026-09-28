@@ -52,6 +52,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev build-essential file libxdo-dev \
             libssl-dev libayatana-appindicator3-dev librsvg2-dev zsh
+      # the image leaves a folder on zsh's fpath that compaudit calls insecure, so the compinit in Debian's
+      # /etc/zsh/zshrc stops to ask whether to use it, and that question eats the first key a zsh test types
+      - run: |
+          for d in $(zsh -c 'autoload -Uz compaudit; compaudit' 2>/dev/null); do
+            echo "securing $d"; sudo chown root "$d"; sudo chmod go-w "$d"
+          done
       - run: cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path workspace/backend/Cargo.toml
   package:
@@ -66,9 +72,12 @@ jobs:
           apt-get install -y --no-install-recommends git curl ca-certificates xz-utils build-essential file \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      # before pnpm, unlike the other jobs: pnpm's install script runs `node`, which this image lacks. The store cache
+      # moves to the pnpm step, since setup-node's cache needs pnpm installed first
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v4
+        with: { cache: true }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: workspace/backend, key: ubuntu-22.04 }
