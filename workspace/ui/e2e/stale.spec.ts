@@ -17,7 +17,7 @@ test('an agent edit under a dirty buffer is flagged, not overwritten', async ({ 
 test('an index that moved under an accept drops the accept and says so', async ({ page, open }) => {
   const mock = await open();
   await mock.fail('stage_content', { kind: 'StaleIndex' });
-  await page.keyboard.press('Meta+Y');
+  await page.keyboard.press('ControlOrMeta+Y');
   await mock.idle();
   await expect(page.getByText('index changed under you')).toBeVisible();
   await expect(page.getByText('hunk 1 of 3')).toBeVisible();

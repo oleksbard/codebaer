@@ -41,7 +41,7 @@ export type AppError =
   | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
   | { kind: 'Stale'; detail: FileText }
   | { kind: 'Timeout' | 'Cancelled' | 'NotARepo' | 'StaleIndex' | 'NotUtf8' | 'Binary' | 'TooLarge'
-    | 'Special' | 'Conflicted' };
+    | 'Special' | 'Conflicted' | 'WatchLimit' };
 
 export function errKind(e: unknown): string {
   return typeof e === 'object' && e !== null && 'kind' in e ? String(e.kind) : 'Unknown';
@@ -56,6 +56,7 @@ const KIND_TEXT: Record<string, string> = {
   TooLarge: 'this file is over 2 MB',
   Special: 'this path is not a regular file',
   Conflicted: 'this path is unmerged; resolve the markers and stage it',
+  WatchLimit: 'too many folders to watch: raise the fs.inotify.max_user_watches sysctl, then open the repo again',
 };
 
 export function errText(e: unknown): string {
@@ -71,6 +72,7 @@ export function staleText(e: unknown): FileText | null {
 }
 
 export const git = {
+  appVersion: () => invoke<string>('app_version'),
   gitVersion: () => invoke<string>('git_version'),
   initialRepo: () => invoke<string | null>('initial_repo'),
   setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),

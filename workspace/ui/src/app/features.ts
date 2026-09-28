@@ -11,8 +11,9 @@ import { review } from '#features/review';
 import { settings } from '#features/settings';
 import { tasks } from '#features/tasks';
 import { terminals } from '#features/terminals';
-import { toggleSidebar } from './actions';
+import { about, toggleSidebar } from './actions';
 import { core } from '#core/feature';
+import { quit } from '#core/session';
 
 const app = defineFeature({
   id: 'app',
@@ -20,6 +21,8 @@ const app = defineFeature({
     { id: 'app.palette', run: openPalette },
     { id: 'app.toggleSidebar', run: toggleSidebar },
     { id: 'app.focusList', run: () => refs.list?.focus() },
+    { id: 'app.about', label: 'About CodeBär', run: () => void about() },
+    { id: 'app.quit', label: 'Quit CodeBär', run: () => void quit() },
   ],
 });
 

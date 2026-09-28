@@ -9,10 +9,19 @@ if [ -z "${CI:-}" ]; then
   exit 1
 fi
 
-apps=(workspace/backend/target/release/bundle/macos/*.app)
-exe="$PWD/${apps[0]}/Contents/MacOS/codebaer"
-logs="$HOME/Library/Logs/com.codebaer.app"
-out="${RUNNER_TEMP:?}/smoke"
+os=$(uname -s)
+if [ "$os" = Darwin ]; then
+  apps=(workspace/backend/target/release/bundle/macos/*.app)
+  exe="$PWD/${apps[0]}/Contents/MacOS/codebaer"
+  logs="$HOME/Library/Logs/com.codebaer.app"
+else
+  # the installed .deb, so the smoke covers what the package put in place; it needs a display, which CI gives it
+  # with xvfb-run
+  exe=/usr/bin/codebaer
+  logs="${XDG_DATA_HOME:-$HOME/.local/share}/com.codebaer.app/logs"
+fi
+# SMOKE_TAG keeps a second run on the same machine, such as under Wayland, from overwriting the first one's files
+out="${RUNNER_TEMP:?}/smoke${SMOKE_TAG:+-$SMOKE_TAG}"
 mkdir -p "$out"
 
 fail() {
@@ -23,7 +32,8 @@ fail() {
 
 [ -x "$exe" ] || fail "no app bundle at $exe"
 
-repo=$(mktemp -d)
+# resolved, as the app logs it: macOS's temp folder is under a symlink
+repo=$(cd "$(mktemp -d)" && pwd -P)
 git -C "$repo" init -q
 echo one > "$repo/a.txt"
 git -C "$repo" add a.txt
@@ -39,14 +49,15 @@ finish() {
 }
 trap finish EXIT
 
-ready='webview: opened .+, 1 changed file'
+# this run's repo, since an earlier run on the same machine logged the same line for its own
+ready="webview: opened $repo, 1 changed file"
 for _ in $(seq 60); do
-  if grep -qE -- "$ready" "$logs"/*.log 2>/dev/null || ! kill -0 "$app" 2>/dev/null; then break; fi
+  if grep -qF -- "$ready" "$logs"/*.log 2>/dev/null || ! kill -0 "$app" 2>/dev/null; then break; fi
   sleep 1
 done
-grep -qE -- "$ready" "$logs"/*.log 2>/dev/null || fail "the app did not log that it opened the repo within 60s"
+grep -qF -- "$ready" "$logs"/*.log 2>/dev/null || fail "the app did not log that it opened the repo within 60s"
 sleep 2
-screencapture -x "$out/window.png" || true
+if [ "$os" = Darwin ]; then screencapture -x "$out/window.png" || true; fi
 kill -0 "$app" 2>/dev/null || fail "the app exited after opening the repo"
 if grep -q ' ERROR ' "$logs"/*.log; then fail "the app logged errors"; fi
 echo "smoke: the app opened the scratch repo and logged no errors"

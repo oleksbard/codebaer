@@ -6,7 +6,7 @@ import { SettingsDialog } from './SettingsDialog';
 export const settings = defineFeature({
   id: 'settings',
   // no argument: openSettings takes a section, and the default is the one both of these open
-  commands: [{ id: 'settings.open', run: () => openSettings() }],
+  commands: [{ id: 'settings.open', label: 'Settings…', run: () => openSettings() }],
   events: { 'menu-settings': { run: () => void openSettings(), idleOnly: true } },
   overlays: [{ id: 'settings', isOpen: () => S.settingsOpen, component: SettingsDialog }],
 });

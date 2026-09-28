@@ -73,10 +73,22 @@ fn the_host_reparents_itself_out_of_the_process_that_started_it() {
     let _s = wait_for_socket(&host.sock);
     let pids = pgrep(&host.sock);
     assert_eq!(pids.len(), 1, "expected exactly one host, found {pids:?}");
-    let ppid = ppid_of(pids[0]);
-    // 1 is launchd. Anything else means a walk of this test binary's child tree would find
-    // the host, which is precisely what a rebuild does to the app.
-    assert_eq!(ppid, 1, "host {} still has parent {ppid}", pids[0]);
+    // a walk of this test binary's child tree must not find the host, which is precisely what a
+    // rebuild does to the app. The host lands on launchd, or on Linux on init or a subreaper such
+    // as systemd --user.
+    #[cfg(target_os = "macos")]
+    assert_eq!(ppid_of(pids[0]), 1, "host {} is not on launchd", pids[0]);
+    let me = std::process::id() as i32;
+    let mut at = pids[0];
+    for _ in 0..64 {
+        let up = ppid_of(at);
+        assert!(up >= 0, "no parent for {at}");
+        assert_ne!(up, me, "host {} is still below this process", pids[0]);
+        if up <= 1 {
+            break;
+        }
+        at = up;
+    }
 }
 
 #[test]

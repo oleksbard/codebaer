@@ -7,6 +7,8 @@ import {
 } from './sessions';
 import * as term from './xterm';
 
+const shown = (): boolean => S.tab === 'terminals' && S.activeTerm !== null;
+
 export const terminals = defineFeature({
   id: 'terminals',
   commands: [
@@ -37,6 +39,9 @@ export const terminals = defineFeature({
       run: () => onTerminal((id) => term.find(id, S.termFind, true)),
     },
     { id: 'terminals.clear', label: 'Terminal: Clear Buffer', run: () => onTerminal(term.clear) },
+    // only a terminal on screen can take the focus the webview's copy and paste go to
+    { id: 'terminals.copy', label: 'Terminal: Copy', when: shown, run: () => onTerminal(term.copy) },
+    { id: 'terminals.paste', label: 'Terminal: Paste', when: shown, run: () => onTerminal(term.paste) },
     { id: 'terminals.larger', label: 'Terminal: Larger Text', run: () => term.setFontSize(term.fontSize() + 1) },
     { id: 'terminals.smaller', label: 'Terminal: Smaller Text', run: () => term.setFontSize(term.fontSize() - 1) },
     { id: 'terminals.kill', label: 'Terminal: Kill Session', run: () => onTerminal(killTerminal) },

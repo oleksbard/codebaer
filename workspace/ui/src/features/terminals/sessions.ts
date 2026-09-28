@@ -10,6 +10,10 @@ import * as term from './xterm';
 /** Set once the spawn we are waiting for is known, so an unprompted session, one restored on
  *  reconnect say, does not steal the view. */
 let awaitingSpawn = 0;
+/** Spawns the host announced before their spawn call returned, by `req`: its answer can beat the invoke's. Kept
+ *  only while a call is out, so a restore's or a superseded spawn's entry does not stay. */
+const early = new Map<number, number>();
+let spawning = 0;
 let connecting: Promise<void> | null = null;
 
 type TaskEvents = {
@@ -42,6 +46,8 @@ export function onTermEvent(m: ServerMsg): void {
           awaitingSpawn = 0;
         } else if (isTask(m.info)) {
           taskEvents.spawned(m.req, m.info);
+        } else if (spawning > 0) {
+          early.set(m.req, m.info.id);
         }
         break;
       case 'Status':
@@ -93,7 +99,7 @@ function flag(id: number): void {
 }
 
 /** Kept as the in-flight attempt rather than a flag: the menu runs a login shell, and a failed
- *  connect that left the flag set would leave every ⌘T with no shell to spawn and nothing said. */
+ *  connect that left the flag set would leave every New Terminal with no shell to spawn and nothing said. */
 export async function connectTerminals(): Promise<void> {
   connecting ??= (async () => {
     await term.subscribe(onTermEvent);
@@ -120,10 +126,20 @@ export async function newTerminal(kind?: SpawnKind): Promise<void> {
   await showTerminals();
   const pick = kind ?? (S.termMenu ? ({ t: 'Shell', path: S.termMenu.default } as const) : null);
   if (!pick) return;
+  spawning += 1;
   try {
-    awaitingSpawn = await pty.spawn(pick, ...term.size());
+    const req = await pty.spawn(pick, ...term.size());
+    const id = early.get(req);
+    if (id === undefined) awaitingSpawn = req;
+    else if (S.terminals.some((t) => t.id === id)) {
+      S.activeTerm = id;
+      notify();
+    }
   } catch (e) {
     toast(errText(e), 'err');
+  } finally {
+    spawning -= 1;
+    if (spawning === 0) early.clear();
   }
 }
 

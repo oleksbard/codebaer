@@ -4,9 +4,11 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { start } from './app/bootstrap';
 import { installErrorLog } from '#ipc/log';
+import { platform } from '#kernel/platform';
 import { initTheme } from './ui/theme';
 
 installErrorLog();
+document.documentElement.dataset.platform = platform();
 initTheme();
 createRoot(document.getElementById('app')!).render(<App />);
 

@@ -5,6 +5,10 @@ import { createBackend, type MenuItem } from './backend';
 import { SCENARIOS } from './scenarios';
 
 const params = new URLSearchParams(location.search);
+// before the app loads: the app, CodeMirror and xterm all read it once
+const PLATFORMS: Record<string, string> = { linux: 'Linux x86_64', macos: 'MacIntel' };
+const wanted = PLATFORMS[params.get('platform') ?? ''];
+if (wanted) Object.defineProperty(navigator, 'platform', { value: wanted, configurable: true });
 const name = params.get('scenario') ?? 'review';
 const scenario = SCENARIOS[name];
 if (!scenario) {
@@ -28,11 +32,13 @@ globalThis.__mock = backend.api;
 // a remembered repo would open instead of what the scenario's initial_repo says
 try { localStorage.removeItem('codebaer.lastRepo'); } catch { /* storage blocked: nothing to forget */ }
 
-// the accelerators the native menu owns, which a browser tab has no menu bar for
+// the accelerators the macOS menu owns, which a browser tab has no menu bar for; Linux has no menu, and the app's
+// own keymap binds them there
 const ACCELERATORS: Record<string, MenuItem> = { Comma: 'settings', KeyO: 'open-folder' };
+const menuBar = !/Linux|Win/.test(navigator.platform);
 globalThis.addEventListener('keydown', (e) => {
   const item = ACCELERATORS[e.code];
-  if (!item || !e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return;
+  if (!menuBar || !item || !e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return;
   e.preventDefault();
   void backend.api.menu(item);
 });

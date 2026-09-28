@@ -48,7 +48,10 @@ impl PtyState {
 }
 
 pub(super) fn sock_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, AppError> {
-    let dir = app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?;
+    let dir = match crate::sys::runtime_dir() {
+        Some(run) => run.join(&app.config().identifier),
+        None => app.path().app_config_dir().map_err(|e| AppError::Io(e.to_string()))?,
+    };
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("ptyd-{}.sock", proto::PROTO)))
 }
@@ -79,8 +82,7 @@ fn build_menu() -> Menu {
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
         .collect();
-    // a Finder launch gets /usr/bin:/bin:/usr/sbin:/sbin and neither homebrew prefix
-    for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/bin", "/usr/bin"] {
+    for extra in crate::sys::BIN_DIRS.iter().chain(&["/bin", "/usr/bin"]) {
         let p = PathBuf::from(extra);
         if !dirs.contains(&p) {
             dirs.push(p);
@@ -88,7 +90,7 @@ fn build_menu() -> Menu {
     }
     let refs: Vec<&std::path::Path> = dirs.iter().map(PathBuf::as_path).collect();
     Menu {
-        shells: shells::detect(&login, &etc, &refs, &executable),
+        shells: shells::detect(&login, &etc, &refs, &|p| std::fs::canonicalize(p).ok().filter(|c| executable(c))),
         default: login.clone(),
         commands: probe_commands(&login),
     }
@@ -138,7 +140,7 @@ fn ensure<R: Runtime>(app: &AppHandle<R>) -> Result<(), AppError> {
     let stream = match UnixStream::connect(&sock) {
         Ok(s) => s,
         Err(_) => {
-            let exe = std::env::current_exe()?;
+            let exe = crate::sys::current_exe()?;
             let mut cmd = std::process::Command::new(exe);
             cmd.arg("--pty-host").arg(&sock);
             // the host outlives the app that started it, and its warnings are the record of why
@@ -307,13 +309,7 @@ pub(super) fn host_pid<R: Runtime>(app: &AppHandle<R>) -> Option<i32> {
     use std::os::fd::AsRawFd;
     let state = app.state::<PtyState>();
     let c = state.0.lock().unwrap();
-    let fd = c.write.as_ref()?.as_raw_fd();
-    let mut pid: libc::pid_t = 0;
-    let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
-    let got = unsafe {
-        libc::getsockopt(fd, libc::SOL_LOCAL, libc::LOCAL_PEERPID, (&raw mut pid).cast(), &mut len)
-    };
-    (got == 0 && pid > 0).then_some(pid)
+    crate::sys::peer_pid(c.write.as_ref()?.as_raw_fd())
 }
 
 /// For a view that lost track of a session: the Hello reply is the host's whole list. Only the

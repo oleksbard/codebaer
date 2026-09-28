@@ -73,7 +73,8 @@ export async function buildState(
     }),
     language,
     ...extensions,
-    keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap, { key: 'Ctrl-g', run: gotoLine }]),
+    // ahead of searchKeymap, whose Mod-g is findNext and so Ctrl-g off macOS
+    keymap.of([{ key: 'Ctrl-g', run: gotoLine }, ...defaultKeymap, ...searchKeymap, ...foldKeymap]),
     EditorView.editable.of(kind !== 'staged'),
     EditorView.updateListener.of((u) => {
       // a refresh's replaceDoc annotates addToHistory:false; only real edits can leave the file unsaved

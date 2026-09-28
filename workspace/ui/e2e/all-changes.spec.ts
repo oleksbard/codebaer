@@ -21,13 +21,13 @@ test('the All changes page stacks every file and stages a hunk from it', async (
 
 test('the hunk keys walk the page, and closing it opens the file they reached', async ({ page, open }) => {
   const mock = await open();
-  await page.keyboard.press('Meta+Shift+A');
+  await page.keyboard.press('ControlOrMeta+Shift+A');
   await mock.idle();
   await page.keyboard.press('F7');
   await page.keyboard.press('F7');
   await page.keyboard.press('F7');
   await page.keyboard.press('F7');
-  await page.keyboard.press('Meta+Y');
+  await page.keyboard.press('ControlOrMeta+Y');
   await mock.idle();
 
   const checkout = (await mock.state()).files['src/checkout.ts']!;

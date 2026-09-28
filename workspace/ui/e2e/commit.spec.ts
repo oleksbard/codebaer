@@ -2,7 +2,7 @@ import { expect, row, test } from './fixtures';
 
 test('the AI message fills the box, and committing clears what was staged', async ({ page, open }) => {
   const mock = await open();
-  await page.keyboard.press('Meta+Shift+Y');
+  await page.keyboard.press('ControlOrMeta+Shift+Y');
   await mock.idle();
   await page.getByRole('button', { name: 'Write the commit message with Claude' }).click();
   await mock.idle();

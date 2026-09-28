@@ -5,7 +5,7 @@ import { OrphansOverlay } from './OrphansDialog';
 
 export const orphans = defineFeature({
   id: 'orphans',
-  commands: [{ id: 'orphans.find', run: findOrphans }],
+  commands: [{ id: 'orphans.find', label: 'Terminals and Orphans…', run: findOrphans }],
   events: { 'menu-orphans': { run: () => void findOrphans(), idleOnly: true } },
   overlays: [{ id: 'orphans', isOpen: () => S.orphans !== null, component: OrphansOverlay }],
 });

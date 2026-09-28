@@ -17,6 +17,8 @@ pub enum AppError {
     Special,
     Conflicted,
     Ai(String),
+    /// inotify's per-user watch limit, which a big repo can reach on Linux.
+    WatchLimit,
 }
 
 impl From<std::io::Error> for AppError {

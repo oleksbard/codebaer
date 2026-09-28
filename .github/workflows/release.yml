@@ -1,6 +1,7 @@
 name: release
 # Started by `pnpm release`, which drafts the release with its notes at one commit of main. This waits for main's CI
-# on that commit, attaches the app CI built and smoke-tested there, and publishes the draft.
+# on that commit, attaches the app CI built and smoke-tested there, and publishes the draft. The Linux beta's
+# packages come from linux.yml's run on the commit, and only when it passed: without them the release still goes out.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +14,8 @@ concurrency: { group: release, cancel-in-progress: true }
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    # an hour for main's CI, then up to 20 minutes for the Linux run
+    timeout-minutes: 95
     defaults:
       run: { shell: bash }
     env:
@@ -70,10 +72,35 @@ jobs:
           done
           echo "::error::main's CI on $TARGET did not finish within an hour"
           exit 1
+      - name: Find the Linux build
+        id: linux
+        env:
+          TARGET: ${{ steps.draft.outputs.target }}
+        run: |
+          latest='.[0] | "\(.databaseId) \(.status) \(.conclusion)"'
+          for i in $(seq 40); do
+            read -r run status conclusion < <(gh run list --workflow linux.yml --branch main --commit "$TARGET" \
+              --limit 1 --json databaseId,status,conclusion --jq "$latest") || true
+            if [ "${status:-}" = completed ]; then
+              if [ "$conclusion" = success ]; then
+                echo "run=$run" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::the Linux run $run on $TARGET ended with $conclusion; releasing without Linux packages"
+              fi
+              exit 0
+            fi
+            if [ "${run:-null}" = null ] && [ "$i" -ge 10 ]; then
+              echo "::warning::linux.yml never ran on $TARGET; releasing without Linux packages"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::warning::the Linux run on $TARGET did not finish in 20 minutes; releasing without Linux packages"
       - name: Attach the build
         env:
           ID: ${{ steps.draft.outputs.id }}
           RUN: ${{ steps.ci.outputs.run }}
+          LINUX_RUN: ${{ steps.linux.outputs.run }}
         run: |
           # gh release upload resolves the tag to a published release first, then to a draft, so the tag must name
           # this draft alone. pnpm release may have replaced it while CI ran.
@@ -91,6 +118,21 @@ jobs:
             echo "::error::the build of CI run $RUN is gone; run gh workflow run ci.yml --ref main, then" \
               "gh workflow run release.yml -f tag=$TAG"
             exit 1
+          fi
+          # into a folder of its own, so a download that fails partway adds nothing
+          if [ -n "$LINUX_RUN" ]; then
+            if gh run download "$LINUX_RUN" --name linux-amd64 --dir linux; then
+              mv linux/* release/
+            else
+              echo "::warning::the Linux packages of run $LINUX_RUN are gone; releasing without them"
+            fi
+          fi
+          # an earlier attempt at this draft may have attached packages that the new SHA256SUMS.txt will not list
+          if ! ls release/codebaer-linux-* > /dev/null 2>&1; then
+            for asset in $(gh api "repos/$GH_REPO/releases/$ID" \
+              --jq '.assets[] | select(.name | startswith("codebaer-linux-")) | .id'); do
+              gh api -X DELETE "repos/$GH_REPO/releases/assets/$asset"
+            done
           fi
           (cd release && sha256sum -- * > SHA256SUMS.txt)
           gh release upload "$TAG" release/* --clobber

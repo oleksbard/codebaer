@@ -1,8 +1,11 @@
+//! Only XNU holds an exiting child until its pty drains; sys/linux.rs tests that Linux does not.
+#![cfg(target_os = "macos")]
+
 use std::io::Read;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use codebaer_lib::pty::orphans;
+use codebaer_lib::sys;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 fn stat(pid: i32) -> String {
@@ -36,7 +39,7 @@ fn flushing_a_leftover_terminal_lets_a_session_stuck_exiting_finish() {
     assert!(stat(pid).contains('E'), "the child never got stuck exiting: {:?}", stat(pid));
 
     let reaper = std::thread::spawn(move || child.wait());
-    orphans::unstick(std::process::id() as i32, pid).unwrap();
+    sys::unstick(std::process::id() as i32, pid).unwrap();
     assert!(reaper.join().unwrap().is_ok());
     drop(pair.master);
 

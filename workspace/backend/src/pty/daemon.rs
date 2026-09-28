@@ -85,25 +85,7 @@ pub fn login_shell() -> String {
             }
         }
     }
-    "/bin/zsh".to_string()
-}
-
-/// The folder the kernel has for `pid`, with symlinks already resolved, so it compares equal to
-/// a canonicalized repo root. macOS has no notification for a chdir; this can only be asked.
-fn cwd_of(pid: i32) -> Option<String> {
-    if pid <= 0 {
-        return None;
-    }
-    let mut info = std::mem::MaybeUninit::<libc::proc_vnodepathinfo>::zeroed();
-    let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as i32;
-    let got = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDVNODEPATHINFO, 0, info.as_mut_ptr().cast(), size) };
-    if got != size {
-        return None;
-    }
-    let info = unsafe { info.assume_init() };
-    let raw = unsafe { std::ffi::CStr::from_ptr(info.pvi_cdir.vip_path.as_ptr().cast()) };
-    // empty for a process whose folder was deleted out from under it
-    raw.to_str().ok().filter(|s| !s.is_empty()).map(String::from)
+    crate::sys::FALLBACK_SHELL.to_string()
 }
 
 /// Blocking, and called from outside the hub lock for the same reason the reader threads send
@@ -433,8 +415,9 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
     cmd.env("TERM_PROGRAM", "codebaer");
     cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     cmd.env("CODEBAER_SESSION", id.to_string());
-    if !std::env::var("LANG").is_ok_and(|l| l.to_uppercase().contains("UTF-8")) {
-        cmd.env("LANG", "en_US.UTF-8");
+    // glibc also spells it utf8, as in de_DE.utf8
+    if !std::env::var("LANG").is_ok_and(|l| l.to_uppercase().replace('-', "").contains("UTF8")) {
+        cmd.env("LANG", crate::sys::UTF8_LOCALE);
     }
     // a bash-only convention that goes stale on the first resize; TIOCSWINSZ is the real channel
     cmd.env_remove("COLUMNS");
@@ -542,7 +525,7 @@ fn recheck(s: &mut Session) -> Option<ServerMsg> {
     if matches!(s.info.state, State::Exited { .. }) {
         return None;
     }
-    let cwd = cwd_of(s.pgid)?;
+    let cwd = crate::sys::cwd_of(s.pgid)?;
     if cwd == s.info.cwd {
         return None;
     }
@@ -756,18 +739,6 @@ pub fn run(sock: &Path) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn reads_the_folder_a_live_process_is_in() {
-        let here = std::env::current_dir().unwrap().canonicalize().unwrap();
-        assert_eq!(cwd_of(std::process::id() as i32).as_deref(), here.to_str());
-    }
-
-    #[test]
-    fn has_no_folder_for_a_pid_that_is_not_running() {
-        assert_eq!(cwd_of(-1), None);
-        assert_eq!(cwd_of(0x7fff_fff0), None);
-    }
 
     #[test]
     fn emit_waits_for_room_rather_than_dropping() {

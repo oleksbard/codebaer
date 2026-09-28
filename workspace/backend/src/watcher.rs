@@ -1,11 +1,11 @@
 use crate::error::AppError;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::Emitter;
 
 pub struct Handle {
     _watcher: RecommendedWatcher,
@@ -44,32 +44,45 @@ pub fn watch_roots(root: &Path, git_dir: &Path, common: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-pub fn start(app: &tauri::AppHandle, root: &Path, git_dir: &Path, common: &Path) -> Result<Handle, AppError> {
+/// inotify reports every open and close, and each `git status` opens the index, so counting them would make every
+/// refresh start the next one. A close after writing stays: it is all a write through mmap produces.
+fn changes(kind: &EventKind) -> bool {
+    !matches!(kind, EventKind::Access(a) if *a != AccessKind::Close(AccessMode::Write))
+}
+
+fn watch_error(e: notify::Error) -> AppError {
+    match e.kind {
+        notify::ErrorKind::MaxFilesWatch => AppError::WatchLimit,
+        _ => AppError::Io(e.to_string()),
+    }
+}
+
+/// Calls `changed` once per burst of changes, from a thread of its own.
+pub fn start(root: &Path, git_dir: &Path, common: &Path, changed: impl Fn() + Send + 'static) -> Result<Handle, AppError> {
     let (tx, rx) = channel::<()>();
     let (gd, cd) = (git_dir.to_path_buf(), common.to_path_buf());
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let hit = match res {
-            Ok(ev) => ev.need_rescan() || ev.paths.iter().any(|p| relevant(p, &gd, &cd)),
+            Ok(ev) => ev.need_rescan() || (changes(&ev.kind) && ev.paths.iter().any(|p| relevant(p, &gd, &cd))),
             Err(_) => true,
         };
         if hit {
             let _ = tx.send(());
         }
     })
-    .map_err(|e| AppError::Io(e.to_string()))?;
+    .map_err(watch_error)?;
     for d in watch_roots(root, git_dir, common) {
-        watcher.watch(&d, RecursiveMode::Recursive).map_err(|e| AppError::Io(e.to_string()))?;
+        watcher.watch(&d, RecursiveMode::Recursive).map_err(watch_error)?;
     }
     let stop = Arc::new(AtomicBool::new(false));
     let stop2 = stop.clone();
-    let app = app.clone();
     std::thread::spawn(move || {
         while !stop2.load(Ordering::Relaxed) {
             match rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(()) => {
                     let deadline = Instant::now() + Duration::from_millis(250);
                     while rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).is_ok() {}
-                    let _ = app.emit("repo-changed", ());
+                    changed();
                 }
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -81,8 +94,20 @@ pub fn start(app: &tauri::AppHandle, root: &Path, git_dir: &Path, common: &Path)
 
 #[cfg(test)]
 mod tests {
-    use super::{relevant, watch_roots};
+    use super::{changes, relevant, watch_roots};
+    use notify::event::{AccessKind, AccessMode, CreateKind, ModifyKind};
+    use notify::EventKind;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn a_read_is_not_a_change_and_a_closed_write_is() {
+        assert!(!changes(&EventKind::Access(AccessKind::Open(AccessMode::Any))));
+        assert!(!changes(&EventKind::Access(AccessKind::Close(AccessMode::Read))));
+        assert!(!changes(&EventKind::Access(AccessKind::Read)));
+        assert!(changes(&EventKind::Access(AccessKind::Close(AccessMode::Write))));
+        assert!(changes(&EventKind::Create(CreateKind::File)));
+        assert!(changes(&EventKind::Modify(ModifyKind::Any)));
+    }
 
     #[test]
     fn watch_roots_covers_the_three_layouts() {

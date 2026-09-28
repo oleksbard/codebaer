@@ -2,7 +2,7 @@ import { expect, row, test } from './fixtures';
 
 test('accepting a hunk stages just that hunk and moves on', async ({ page, open }) => {
   const mock = await open();
-  await page.keyboard.press('Meta+Y');
+  await page.keyboard.press('ControlOrMeta+Y');
   await mock.idle();
   await expect(page.getByText('hunk 1 of 2')).toBeVisible();
   await expect(row(page, 'staged', 'src/cart.ts')).toBeVisible();
@@ -14,7 +14,7 @@ test('accepting a hunk stages just that hunk and moves on', async ({ page, open 
 
 test('rejecting a hunk reverts it in the working tree', async ({ page, open }) => {
   const mock = await open();
-  await page.keyboard.press('Meta+N');
+  await page.keyboard.press('ControlOrMeta+N');
   await mock.idle();
   await expect(page.getByText('hunk 1 of 2')).toBeVisible();
   const cart = (await mock.state()).files['src/cart.ts']!;
@@ -25,7 +25,7 @@ test('rejecting a hunk reverts it in the working tree', async ({ page, open }) =
 
 test('accepting the whole file stages every hunk', async ({ page, open }) => {
   const mock = await open();
-  await page.keyboard.press('Meta+Shift+Y');
+  await page.keyboard.press('ControlOrMeta+Shift+Y');
   await mock.idle();
   await expect(row(page, 'unstaged', 'src/cart.ts')).toHaveCount(0);
   await expect(row(page, 'staged', 'src/cart.ts')).toBeVisible();

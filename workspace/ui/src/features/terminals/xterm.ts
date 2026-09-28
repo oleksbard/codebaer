@@ -5,7 +5,10 @@ import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { errText } from '#ipc/git';
 import { input, inputBytes, resize, restore, subscribe as attach, type ServerMsg } from '#ipc/terminal';
+import { toast } from '#kernel/dialogs';
+import { matches } from '#kernel/keymap';
 
 export type Term = {
   term: Terminal;
@@ -159,6 +162,14 @@ function create(id: number, el: HTMLDivElement): Term {
   term.attachCustomKeyEventHandler((e) => {
     // already acted on by a dialog around the terminal: Radix closes one on Escape in the capture phase
     if (e.defaultPrevented) return false;
+    // macOS copies and pastes through the Edit menu, and Linux has neither the menu nor these in xterm
+    for (const [command, run] of [['terminals.copy', copy], ['terminals.paste', paste]] as const) {
+      if (e.type === 'keydown' && matches(e, command)) {
+        e.preventDefault();
+        void run(id);
+        return false;
+      }
+    }
     if (e.type !== 'keydown' || e.key !== 'Enter' || e.isComposing) return true;
     if (!e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return true;
     // refusing the event returns before xterm's own cancel(), and an Enter whose default still
@@ -269,6 +280,38 @@ export function find(id: number, query: string, back = false): void {
 
 export function clear(id: number): void {
   terms.get(id)?.term.clear();
+}
+
+/** Focuses `t` and says whether it has the focus, which only a terminal on screen can take. */
+function focused(t: Term): boolean {
+  t.term.focus();
+  return !!t.term.textarea && document.activeElement === t.term.textarea;
+}
+
+/** The webview's own copy first: WebKitGTK refuses the Clipboard API, and runs the command because lib.rs
+ *  allows it. It reaches xterm as a copy event on its textarea, which xterm fills with the selection. */
+export async function copy(id: number): Promise<void> {
+  const t = terms.get(id);
+  const text = t?.term.getSelection();
+  if (!t || !text) return;
+  if (focused(t) && document.execCommand('copy')) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    toast(`Could not copy: ${errText(e)}`, 'err');
+  }
+}
+
+/** As copy: a paste event on xterm's textarea, which xterm brackets when the program asked for bracketed paste. */
+export async function paste(id: number): Promise<void> {
+  const t = terms.get(id);
+  if (!t) return;
+  if (focused(t) && document.execCommand('paste')) return;
+  try {
+    t.term.paste(await navigator.clipboard.readText());
+  } catch (e) {
+    toast(`Could not paste: ${errText(e)}`, 'err');
+  }
 }
 
 type Pending = { chunks: Uint8Array[]; size: number };

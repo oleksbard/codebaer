@@ -1,5 +1,7 @@
+import { platform } from './platform';
+
 /** Every place the frontend reads a platform path; the Windows port changes this file (platform doc, 5.2). */
-export const HOME_ROOT = '/Users/';
+export const HOME_ROOT = platform() === 'linux' ? '/home/' : '/Users/';
 
 /** The last segment of a path. */
 export const baseName = (path: string): string => path.slice(path.lastIndexOf('/') + 1);

@@ -5,7 +5,7 @@ import { loadFiles, quickOpen, showFiles } from './files';
 export const files = defineFeature({
   id: 'files',
   commands: [
-    { id: 'files.quickOpen', run: quickOpen },
+    { id: 'files.quickOpen', label: 'Go to File…', run: quickOpen },
     { id: 'files.show', run: () => { void showFiles().then(() => refs.list?.focus()); } },
   ],
   onRefresh: async () => { if (S.tab === 'files') await loadFiles(); },

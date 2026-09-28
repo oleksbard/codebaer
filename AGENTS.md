@@ -26,7 +26,7 @@ pnpm mem fixtures                   # memory against other apps (scripts/mem.py)
                                     # `run <app> --repo ../comparison/m` measures one app, `report` tabulates the runs
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also keeps the packaged app as an artifact, which is what a release ships. Run the ones that cover your change before you call it done.
+CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot`, with `e2e` in WebKit only, plus `pnpm tauri build --ci` and `scripts/smoke.sh`, which starts the built app on a scratch repo and fails unless the webview logs that it opened it, the app is still running a moment later, and nothing logged an error. The smoke script runs only in CI, because it uses the machine's real app data and kills every pty host. On main CI also keeps the packaged app as an artifact, which is what a release ships. `.github/workflows/linux.yml` runs the same checks on Ubuntu 24.04 and builds the Linux beta's `.deb` and `.rpm` in an `ubuntu:22.04` container, for its older glibc. It then installs the `.deb` on 24.04 and runs the smoke script on X11 (`xvfb-run`) and on Wayland (headless weston) and `scripts/drive.mjs`, and installs the `.rpm` in a Fedora container and runs the smoke script there. `drive.mjs` drives the installed app through `tauri-driver` and WebKitWebDriver: real git, a real terminal and the real keymap, with screenshots in the run's artifacts. It is CI only, like the smoke script. `linux.yml` stays out of `ci.yml`, whose result gates a release. Run the ones that cover your change before you call it done.
 
 - Lint: oxlint does the real linting (`workspace/ui/.oxlintrc.json`). It uses type-aware rules for unnecessary assertions and conditions and for floating or misused promises. ESLint runs only for `max-len`, parsed with babel because typescript-eslint does not support TypeScript 7 yet.
 - Frontend tests: co-located `workspace/ui/src/**/*.test.ts(x)`. Vitest runs from the root `vitest.config.ts`, which lists the ui project (configured in `workspace/ui/vite.config.ts`) and `scripts/`. `workspace/ui/src/test-setup.ts` polyfills the DOM APIs that jsdom lacks and CodeMirror, Radix and xterm need. Tests mock the local wrapper modules (`vi.mock('#ipc/git')`, `#ipc/terminal`), not `@tauri-apps/api`. A test that mounts the whole app uses `mountApp()` and the fixtures in `workspace/ui/src/test-app.ts`, and keeps its own `vi.mock` calls, since Vitest hoists them per file. Components are rendered with `react-dom/client` directly, without testing-library.
@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`).
-- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call.
+- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome.
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -115,7 +115,7 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
     bootstrap.ts         register(), start()
     state.ts             sets every declared field's initial value
     actions.ts           app-level actions: tab switch, sidebar toggle and width
-    keymap/              the binding tables, one per platform (mac.ts)
+    keymap/              the binding tables, one per platform (mac.ts, linux.ts)
     styles.css           imports every folder's CSS in cascade order; base, layout, panes and overlays CSS
 workspace/backend/src/   Rust backend
   lib.rs                 app bootstrap, native menu, plugins, the generate_handler![] command list
@@ -123,7 +123,11 @@ workspace/backend/src/   Rust backend
   git.rs                 every git operation; runs the `git` CLI (no libgit2), holds AppState
   status.rs, eol.rs      porcelain status parser, line-ending handling
   error.rs               AppError, serialized as {kind, detail}
-  watcher.rs             `notify` watcher on the worktree and .git, debounced, emits `repo-changed`
+  watcher.rs             `notify` watcher on the worktree and .git, debounced, emits `repo-changed`; ignores reads,
+                         which inotify reports
+  sys/                   what macOS and Linux answer differently, one file each behind the same names: a process's
+                         folder, a socket's peer, the process listing, the terminal host's folder, default shell,
+                         locale and PATH dirs, opening a URL
   ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command icons
   browser.rs             opens an https page in the default browser
   recents.rs, logs.rs    recent repos, file logging
@@ -161,7 +165,7 @@ Adding a feature:
 - `S` is changed in place. Every change must be followed by `notify()`, or the UI goes stale without any error. Components never write it: `useApp()` returns it read-only, lint bans importing `S` in `.tsx`, and a component changes state through an action.
 - State is declared where it is owned: a feature's `state.ts` adds its fields to `State` by declaration merging and returns their initial values, and `app/state.ts` sets them all. A state module imports only types and modules no test mocks.
 - A feature is registered, not wired by hand: its commands, backend events, overlays, editor extensions and hooks (`onOpen`, `onRefresh`, `onRepoChange`) go in its `defineFeature()`, and `app/features.ts` lists the features in order. The palette, key and menu dispatch, the overlay host and the repo switch read the registry. Don't call a feature from core or add a case to a shared switch.
-- Key bindings live in one table per platform (`app/keymap/mac.ts`), not on commands, and every shortcut label comes from `keyLabel()`. A component with its own key handler lists its keys as `local` rows and tests them with `matches()`. The table test fails on two bindings that could fire in the same place.
+- Key bindings live in one table per platform (`app/keymap/mac.ts`, `linux.ts`), not on commands, and every shortcut label comes from `keyLabel()`. A component with its own key handler lists its keys as `local` rows and tests them with `matches()`. The table test fails on two bindings that could fire in the same place.
 - Actions that change git go through `guarded(fn)` in `core/session.ts`, which shows the busy state and refreshes afterwards. Do not call `git.*` mutations directly from components.
 - Edits stay unsaved until Cmd+S (`Open.dirty`); nothing writes the open file on its own. An action that reads the file from disk saves it first with `saveFirst()` or asks with `offerSave()`, and anything that drops the buffer asks with `settle()`. Spec section 6.3 lists which does what.
 - Async work that writes state after an await takes a check from an `epoch()` (`kernel/epoch.ts`) before the await and returns when it is false, or checks that the record it started on is still `S.open`, so a late result cannot overwrite a newer view.
@@ -176,7 +180,7 @@ Adding a feature:
 - A change a user can notice includes a bump in the same change: `pnpm bump minor` for a feature, `pnpm bump patch` for a fix. Docs, tests, CI and refactors get none. Never `major`, that is the owner's call.
 - `scripts/bump.mjs` counts from the last published release, the newest `v*` tag on origin. Repeating a bump within one release cycle changes nothing, and a feature after a fix raises the patch to a minor. It only reads git, fails without changing anything when origin is unreachable, and rewrites `Cargo.toml` and `Cargo.lock`.
 - Never create tags or releases. The owner releases with `pnpm release` (`scripts/release.mjs`): it writes the notes for main's head on origin with Claude Opus through the local `claude` CLI, replaces any draft with a draft of that commit carrying them, and starts `.github/workflows/release.yml`. That workflow waits for main's CI on the commit, attaches the app CI built and smoke-tested there (kept for 30 days), and publishes the draft, which creates the tag. Commits pushed after that are not in the release. `install.sh` is what the README's install one-liner runs.
-- Builds are macOS on Apple Silicon only. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`.
+- Releases are macOS on Apple Silicon, plus the Linux x86_64 beta's `.deb` and `.rpm` when `linux.yml` passed on the same commit; without them `release.yml` publishes the macOS app alone and says so. `install.sh` installs on macOS, and on Linux downloads and checks the package and prints the `apt`, `dnf` or `zypper` line. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`. Platform code goes in `workspace/backend/src/sys/`, and the frontend reads the platform from `kernel/platform.ts`; the Linux keymap is `app/keymap/linux.ts`.
 
 ## Boundaries
 

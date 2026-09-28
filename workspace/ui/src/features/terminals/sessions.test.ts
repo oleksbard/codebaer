@@ -11,7 +11,13 @@ vi.mock('#kernel/dialogs', async () => {
   return { ...actual, toast: vi.fn() };
 });
 
-const { onTermEvent } = await import('./sessions');
+vi.mock('#ipc/terminal', async () => {
+  const actual = await vi.importActual<typeof import('#ipc/terminal')>('#ipc/terminal');
+  return { ...actual, menu: vi.fn(), spawn: vi.fn(), subscribe: vi.fn() };
+});
+
+const { newTerminal, onTermEvent } = await import('./sessions');
+const pty = await import('#ipc/terminal');
 const { S, subscribe } = await import('#kernel/store');
 const { toast } = await import('#kernel/dialogs');
 
@@ -37,4 +43,16 @@ it('moves a session to the folder its host reports, and only that session', () =
   S.terminals = [session(1), session(2)];
   onTermEvent({ t: 'Cwd', id: 1, cwd: '/elsewhere' });
   expect(S.terminals.map((t) => t.cwd)).toEqual(['/elsewhere', '/repo']);
+});
+
+it('shows a new terminal whose host announced it before the spawn call returned', async () => {
+  S.terminals = [session(1)];
+  S.activeTerm = 1;
+  vi.mocked(pty.menu).mockResolvedValue({ shells: [], default: '/bin/zsh', commands: [] });
+  vi.mocked(pty.spawn).mockImplementation(async () => {
+    onTermEvent({ t: 'Spawned', req: 7, info: session(3) });
+    return 7;
+  });
+  await newTerminal({ t: 'Shell', path: '/bin/zsh' });
+  expect(S.activeTerm).toBe(3);
 });

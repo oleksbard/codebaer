@@ -1,0 +1,159 @@
+name: linux
+# Linux, a beta: release.yml publishes only a commit whose ci.yml run passed, and adds these packages when this run
+# passed too, so a Linux failure cannot hold up a macOS release.
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+# as ci.yml: release.yml takes the packages of the commit it drafted, which a newer push must not cancel
+concurrency:
+  group: linux-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  frontend:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # with its system libraries, which the macOS runner has
+      - run: pnpm --filter @codebaer/ui --fail-if-no-match exec playwright install --with-deps webkit
+      - run: pnpm e2e --project=webkit
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-linux
+          path: workspace/ui/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+  backend:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: workspace/backend }
+      # Tauri's build dependencies, and zsh for the shell tests
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev build-essential file libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev zsh
+      # the image leaves a folder on zsh's fpath that compaudit calls insecure, so the compinit in Debian's
+      # /etc/zsh/zshrc stops to ask whether to use it, and that question eats the first key a zsh test types
+      - run: |
+          for d in $(zsh -c 'autoload -Uz compaudit; compaudit' 2>/dev/null); do
+            echo "securing $d"; sudo chown root "$d"; sudo chmod go-w "$d"
+          done
+      - run: cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path workspace/backend/Cargo.toml
+  package:
+    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    # the oldest glibc the packages support is the one they are built against: 2.35 runs on Ubuntu 22.04, Debian 12
+    # and Fedora 36 and later
+    container: ubuntu:22.04
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates xz-utils build-essential file \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/checkout@v4
+      # before pnpm, unlike the other jobs: pnpm's install script runs `node`, which this image lacks. The store cache
+      # moves to the pnpm step, since setup-node's cache needs pnpm installed first
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v4
+        with: { cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: workspace/backend, key: ubuntu-22.04 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --ci --bundles deb,rpm
+      - run: |
+          test "$(uname -m)" = x86_64
+          bundle=workspace/backend/target/release/bundle
+          mkdir release
+          cp "$bundle"/deb/*.deb release/codebaer-linux-amd64.deb
+          cp "$bundle"/rpm/*.rpm release/codebaer-linux-x86_64.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: release/
+          if-no-files-found: error
+          # how long after its push a commit can still be released
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+  # the package as a user installs it, on a newer Ubuntu than it was built on
+  ubuntu:
+    needs: package
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: linux-amd64, path: release }
+      # Xvfb, weston for Wayland, a session bus, and WebKitWebDriver and xclip for drive.mjs
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth dbus-x11 weston webkit2gtk-driver xclip
+          sudo apt-get install -y ./release/codebaer-linux-amd64.deb
+      - uses: actions/cache@v4
+        id: driver
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-2.1.0-${{ runner.os }}
+      - if: steps.driver.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --version 2.1.0 --locked
+      - run: xvfb-run -a dbus-run-session -- scripts/smoke.sh
+      - name: Smoke on Wayland
+        run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$RUNNER_TEMP/xdg}"
+          mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless --socket=wayland-ci --idle-time=0 &
+          for _ in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wayland-ci" ] && break; sleep 0.1; done
+          WAYLAND_DISPLAY=wayland-ci GDK_BACKEND=wayland SMOKE_TAG=wayland dbus-run-session -- scripts/smoke.sh
+      - run: xvfb-run -a dbus-run-session -- node --test --test-timeout=120000 scripts/drive.mjs
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-ubuntu-runs
+          path: |
+            ${{ runner.temp }}/smoke*/
+            ${{ runner.temp }}/drive/
+          if-no-files-found: ignore
+          retention-days: 7
+  fedora:
+    needs: package
+    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - run: dnf install -y git xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon dbus-tools procps-ng
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: linux-amd64, path: release }
+      - run: dnf install -y ./release/codebaer-linux-x86_64.rpm
+      - run: xvfb-run -a dbus-run-session -- scripts/smoke.sh
+        env: { SMOKE_TAG: fedora }
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-fedora-smoke
+          path: ${{ runner.temp }}/smoke-fedora/
+          if-no-files-found: ignore
+          retention-days: 7

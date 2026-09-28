@@ -1,6 +1,6 @@
 use crate::AppError;
 
-/// Only a web page: `open` would just as readily launch an app, a file or another scheme's handler.
+/// Only a web page: `open` and `xdg-open` would just as readily launch an app, a file or another scheme's handler.
 fn web_url(url: &str) -> bool {
     url.strip_prefix("https://")
         .is_some_and(|rest| !rest.is_empty() && !rest.chars().any(|c| c.is_whitespace() || c.is_control()))
@@ -11,12 +11,7 @@ pub fn open_url(url: String) -> Result<(), AppError> {
     if !web_url(&url) {
         return Err(AppError::Io(format!("not a web address: {url}")));
     }
-    // -u: a relative path spelled like a URL would otherwise open as a file in the working directory
-    let out = std::process::Command::new("/usr/bin/open").args(["-u", &url]).output()?;
-    if !out.status.success() {
-        return Err(AppError::Io(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-    }
-    Ok(())
+    crate::sys::open_url(&url)
 }
 
 #[cfg(test)]

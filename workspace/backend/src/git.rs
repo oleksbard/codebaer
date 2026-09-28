@@ -412,7 +412,10 @@ pub(crate) fn repo_title(root: &Path) -> Option<String> {
 #[tauri::command(async)]
 pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<Opened, AppError> {
     let repo = discover(Path::new(&path))?;
-    let handle = crate::watcher::start(&app, &repo.root, &repo.git_dir, &repo.common_dir)?;
+    let emitter = app.clone();
+    let handle = crate::watcher::start(&repo.root, &repo.git_dir, &repo.common_dir, move || {
+        let _ = tauri::Emitter::emit(&emitter, "repo-changed", ());
+    })?;
     let opened = Opened::of(&repo.root);
     // The watcher is created first, so a failure to start it leaves state
     // untouched; once it succeeds, the repo is stored before the new

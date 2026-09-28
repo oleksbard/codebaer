@@ -6,9 +6,16 @@ set -eu
 
 main() {
   base=https://github.com/oleksbard/codebaer/releases/latest/download
-  asset=codebaer-macos-arm64.tar.gz
+  releases=https://github.com/oleksbard/codebaer/releases
+  case "$(uname -s)" in
+    Darwin) macos ;;
+    Linux) linux ;;
+    *) fail "CodeBär is built for macOS and Linux only" ;;
+  esac
+}
 
-  [ "$(uname -s)" = Darwin ] || fail "CodeBär is built for macOS only for now"
+macos() {
+  asset=codebaer-macos-arm64.tar.gz
   # uname -m says x86_64 inside a Rosetta shell; the sysctl reports the hardware.
   [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "CodeBär is built for Apple Silicon Macs only"
   if osascript -e 'application id "com.codebaer.app" is running' 2>/dev/null | grep -q true; then
@@ -58,9 +65,40 @@ main() {
   done
 }
 
+# The Linux beta is a .deb or an .rpm, and the package manager that installs it asks for a password, which a script
+# read from a pipe should not do: this one downloads and checks the package, and says what to run.
+linux() {
+  [ "$(uname -m)" = x86_64 ] || fail "the Linux beta is built for x86_64 only for now"
+  # by the distro, not by which tools are installed: Fedora can have apt, and openSUSE dnf
+  # shellcheck disable=SC1091
+  like=$(. /etc/os-release 2>/dev/null && echo "${ID:-} ${ID_LIKE:-}")
+  case " $like " in
+    *" debian "* | *" ubuntu "*) asset=codebaer-linux-amd64.deb install="sudo apt install" ;;
+    *" suse "* | *" opensuse "*) asset=codebaer-linux-x86_64.rpm install="sudo zypper install --allow-unsigned-rpm" ;;
+    *" fedora "* | *" rhel "*) asset=codebaer-linux-x86_64.rpm install="sudo dnf install" ;;
+    *) fail "the Linux beta has packages for Debian, Fedora and openSUSE and their relatives only: $releases" ;;
+  esac
+
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  echo "Downloading the latest CodeBär release"
+  fetch "$asset" \
+    "could not download $asset; the latest release may have gone out without the Linux beta: $releases"
+  fetch SHA256SUMS.txt
+  (cd "$tmp" && grep "  $asset\$" SHA256SUMS.txt | sha256sum -c --status -) ||
+    fail "the download does not match its checksum, so it was not kept"
+
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/codebaer"
+  mkdir -p "$dir"
+  mv "$tmp/$asset" "$dir/$asset"
+  echo "Downloaded $dir/$asset. To install it, or update to it, run:"
+  echo "  $install '$dir/$asset'"
+}
+
+# $2 says what went wrong, when that is more than a failed download
 fetch() {
   curl -fsSL --proto '=https' -o "$tmp/$1" "$base/$1" ||
-    fail "could not download $1 of the latest release from https://github.com/oleksbard/codebaer/releases"
+    fail "${2:-could not download $1 of the latest release from $releases}"
 }
 
 fail() {
