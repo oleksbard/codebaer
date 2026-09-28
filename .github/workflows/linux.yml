@@ -2,7 +2,7 @@ name: linux
 # Linux, a beta: release.yml publishes only a commit whose ci.yml run passed, and adds these packages when this run
 # passed too, so a Linux failure cannot hold up a macOS release.
 on:
-  push: { branches: ['**'] }
+  push: { branches: [main] }
   pull_request:
   workflow_dispatch:
 permissions:
