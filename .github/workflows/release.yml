@@ -1,7 +1,8 @@
 name: release
 # Started by `pnpm release`, which drafts the release with its notes at one commit of main. This waits for main's CI
-# on that commit, attaches the app CI built and smoke-tested there, and publishes the draft. The Linux beta's
-# packages come from linux.yml's run on the commit, and only when it passed: without them the release still goes out.
+# on that commit, attaches the app CI built and smoke-tested there with latest.json, the manifest the updater reads,
+# and publishes the draft. The Linux beta's packages come from linux.yml's run on the commit, and only when it
+# passed: without them the release still goes out.
 on:
   workflow_dispatch:
     inputs:
@@ -43,6 +44,11 @@ jobs:
           fi
           IFS=$'\t' read -r id target <<< "$found"
           { echo "id=$id"; echo "target=$target"; } >> "$GITHUB_OUTPUT"
+      # the manifest takes the updater's public key, the app's version and the terminal protocol from this commit
+      - uses: actions/checkout@v4
+        with: { ref: '${{ steps.draft.outputs.target }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - name: Wait for main's CI on the draft's commit
         id: ci
         env:
@@ -134,6 +140,8 @@ jobs:
               gh api -X DELETE "repos/$GH_REPO/releases/assets/$asset"
             done
           fi
+          gh api "repos/$GH_REPO/releases/$ID" --jq .body > "$RUNNER_TEMP/notes.md"
+          node scripts/updates.mjs manifest release "$GH_REPO" "$TAG" "$RUNNER_TEMP/notes.md"
           (cd release && sha256sum -- * > SHA256SUMS.txt)
           gh release upload "$TAG" release/* --clobber
       - name: Publish the release
@@ -141,7 +149,8 @@ jobs:
           ID: ${{ steps.draft.outputs.id }}
         run: |
           assets=$(gh api "repos/$GH_REPO/releases/$ID" --jq '.assets[].name')
-          for name in codebaer-macos-arm64.tar.gz codebaer-macos-arm64.dmg SHA256SUMS.txt; do
+          for name in codebaer-macos-arm64.tar.gz codebaer-macos-arm64.tar.gz.sig codebaer-macos-arm64.dmg latest.json \
+            SHA256SUMS.txt; do
             if ! grep -qxF "$name" <<< "$assets"; then
               echo "::error::the draft for $TAG has no $name"
               exit 1

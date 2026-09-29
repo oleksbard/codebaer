@@ -89,6 +89,16 @@ jobs:
           mkdir release
           cp "$bundle"/deb/*.deb release/codebaer-linux-amd64.deb
           cp "$bundle"/rpm/*.rpm release/codebaer-linux-x86_64.rpm
+      # signed on main only, as in ci.yml's Package step: release.yml ships nothing else
+      - if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for pkg in release/codebaer-linux-amd64.deb release/codebaer-linux-x86_64.rpm; do
+            pnpm tauri signer sign "$pkg"
+          done
+          node scripts/updates.mjs verify release/codebaer-linux-amd64.deb release/codebaer-linux-x86_64.rpm
       - uses: actions/upload-artifact@v4
         with:
           name: linux-amd64

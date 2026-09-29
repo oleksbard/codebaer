@@ -61,13 +61,21 @@ jobs:
           retention-days: 7
       - name: Package
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           test "$(uname -m)" = arm64
           bundle=workspace/backend/target/release/bundle
           app=$(basename "$bundle"/macos/*.app)
           codesign --verify --deep --strict "$bundle/macos/$app"
           mkdir "$RUNNER_TEMP/release"
-          COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/release/codebaer-macos-arm64.tar.gz" -C "$bundle/macos" "$app"
+          tarball="$RUNNER_TEMP/release/codebaer-macos-arm64.tar.gz"
+          COPYFILE_DISABLE=1 tar -czf "$tarball" -C "$bundle/macos" "$app"
+          # the updater installs this tarball only with a signature from the key in tauri.conf.json; checked here so
+          # a secret from another key pair fails this push rather than the release
+          pnpm tauri signer sign "$tarball"
+          node scripts/updates.mjs verify "$tarball"
           cp "$bundle"/dmg/*.dmg "$RUNNER_TEMP/release/codebaer-macos-arm64.dmg"
       - if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
