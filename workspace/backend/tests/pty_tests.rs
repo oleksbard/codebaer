@@ -267,8 +267,9 @@ fn killing_a_session_reaches_past_the_shell_into_its_jobs() {
     // bash, not /bin/sh: dash, Ubuntu's sh, exits on SIGHUP without hanging up its jobs
     let id = c.spawn_shell("/bin/bash", &dir.path().to_string_lossy());
     // a job control shell puts this in a process group of its own, so killpg on the shell
-    // alone would leave it running: this is the orphan the hangup has to reach
-    c.input(id, format!("sleep 300 & echo $! > {} ; echo armed\n", pidfile.display()).as_bytes());
+    // alone would leave it running: this is the orphan the hangup has to reach. The marker is
+    // quoted apart so the echo of the typed line cannot pass for it having run
+    c.input(id, format!("sleep 300 & echo $! > {} ; echo ar''med\n", pidfile.display()).as_bytes());
     assert!(c.wait_for("armed", Duration::from_secs(5)), "got: {:?}", c.text());
 
     let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
@@ -289,7 +290,7 @@ fn shutdown_takes_every_session_with_it() {
     let h = Harness::start();
     let mut c = h.connect();
     let id = c.spawn_shell("/bin/bash", &dir.path().to_string_lossy());
-    c.input(id, format!("sleep 300 & echo $! > {} ; echo armed\n", pidfile.display()).as_bytes());
+    c.input(id, format!("sleep 300 & echo $! > {} ; echo ar''med\n", pidfile.display()).as_bytes());
     assert!(c.wait_for("armed", Duration::from_secs(5)));
     let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
 
@@ -347,7 +348,7 @@ fn closing_a_live_session_does_not_strand_its_process_tree() {
     let h = Harness::start();
     let mut c = h.connect();
     let id = c.spawn_shell("/bin/bash", &dir.path().to_string_lossy());
-    c.input(id, format!("sleep 300 & echo $! > {} ; echo armed\n", pidfile.display()).as_bytes());
+    c.input(id, format!("sleep 300 & echo $! > {} ; echo ar''med\n", pidfile.display()).as_bytes());
     assert!(c.wait_for("armed", Duration::from_secs(5)));
     let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
     assert!(alive(pid));
@@ -457,7 +458,7 @@ fn a_check_on_demand_finds_a_folder_change_nothing_announced() {
     let h = Harness::start();
     let mut c = h.connect();
     let id = c.spawn_sh(&start);
-    c.input(id, format!("cd '{moved}' && echo moved-now\n").as_bytes());
+    c.input(id, format!("cd '{moved}' && echo moved-''now\n").as_bytes());
     assert!(c.wait_for("moved-now", Duration::from_secs(5)), "got: {:?}", c.text());
     c.pump(Duration::from_millis(300));
     // sh has no prompt marks, so only the explicit check can have noticed

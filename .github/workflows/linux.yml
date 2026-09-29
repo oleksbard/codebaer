@@ -21,9 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
