@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { DropdownMenu } from 'radix-ui';
+import { GlyphSvg, pickedGlyph } from '#features/command-icons';
 import type { Info } from '#ipc/terminal';
 import { keyLabel } from '#kernel/keymap';
 import { baseName } from '#kernel/paths';
@@ -8,6 +9,8 @@ import { Button } from '#ui/Button';
 import { ContextMenu } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
 import { Kbd } from '#ui/Kbd';
+import { ensureTermIcons, iconFor } from './icons';
+import { Away, OutsideBadge } from './OutsideBadge';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './sessions';
 import {
   agentNamed, agentOf, awayLabel, homeFrom, isExited, statusLabel, termLabels, terminalsOf, type Agent,
@@ -64,6 +67,17 @@ function PlusIcon() {
   );
 }
 
+/** The power sign: one icon for every session that was killed or finished, whatever it ran. */
+function EndedIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinecap="round" aria-hidden="true">
+      <path d="M8 2.4v5.4" />
+      <path d="M4.66 4.62a5.2 5.2 0 1 0 6.68 0" />
+    </svg>
+  );
+}
+
 function TerminalIcon() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3"
@@ -101,6 +115,7 @@ export function Terminals() {
   const s = useApp();
   const host = useRef<HTMLDivElement>(null);
   const id = s.activeTerm;
+  const session = s.terminals.find((t) => t.id === id);
 
   useEffect(() => {
     if (id !== null && host.current) {
@@ -120,7 +135,10 @@ export function Terminals() {
   return (
     <main className="main">
       {s.termError && <div className="banner conflict">{s.termError}</div>}
-      <div className="term-host" ref={host} hidden={id === null} />
+      <div className="term-frame" hidden={id === null}>
+        <div className="term-host" ref={host} />
+        {session && <OutsideBadge key={session.id} session={session} />}
+      </div>
       {id === null && <Empty />}
     </main>
   );
@@ -144,15 +162,6 @@ function Empty() {
   );
 }
 
-function Away() {
-  return (
-    <svg className="away" viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
-      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 10v3.5h-9v-9H6" />
-    </svg>
-  );
-}
-
 function Dot({ session }: { session: DeepReadonly<Info> }) {
   const tone = isExited(session) ? 'off' : session.state.t === 'Running' ? 'run' : 'idle';
   return <span className={`term-dot ${tone}`} aria-hidden="true" />;
@@ -163,6 +172,11 @@ export function TerminalRail() {
   const active = app.tab === 'terminals' ? app.activeTerm : null;
   const sessions = terminalsOf(app.terminals);
   const names = termLabels(sessions);
+  const icons = sessions.flatMap((s) => iconFor(s, app.termIcons) ?? []);
+  const wanted = [
+    app.settings['general.headless-ai-provider'], ...icons.map((it) => `${it.icon}\n${it.name}\n${it.command}`),
+  ].join('\0');
+  useEffect(() => { ensureTermIcons(icons); }, [wanted]);
   return (
     <div className="rail">
       {sessions.map((s) => {
@@ -194,7 +208,7 @@ export function TerminalRail() {
               onClick={() => selectTerminal(s.id)}
             >
               <span className="tile">
-                <Glyph session={s} />
+                <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
                 {away && <Away />}
                 <Dot session={s} />
                 {wants && <span className="bell" aria-hidden="true" />}
@@ -209,12 +223,21 @@ export function TerminalRail() {
   );
 }
 
-/** The session id, not its place in the list: closing one must not renumber the rest. */
-function Glyph({ session }: { session: DeepReadonly<Info> }) {
+/** What the session's rail button shows: the power sign once it has ended, an agent's mark, else its icon, else
+ *  `fallback`. The rail's is the session id, not its place in the list: closing one must not renumber the rest. */
+export function TermGlyph({ session, fallback = <TerminalIcon /> }: {
+  session: DeepReadonly<Info>; fallback?: ReactNode;
+}) {
+  const app = useApp();
+  if (isExited(session)) return <span className="ended" aria-hidden="true"><EndedIcon /></span>;
   const agent = agentOf(session);
-  if (!agent) return <span className="num" aria-hidden="true">{session.id}</span>;
-  const Icon = ICONS[agent];
-  return <span className={`agent ${agent}`}><Icon busy={term.working(session.id)} /></span>;
+  if (agent) {
+    const Icon = ICONS[agent];
+    return <span className={`agent ${agent}`}><Icon busy={term.working(session.id)} /></span>;
+  }
+  const it = iconFor(session, app.termIcons);
+  const g = it && pickedGlyph(app.commandIcons, it);
+  return g ? <span className="pick" aria-hidden="true"><GlyphSvg g={g} /></span> : fallback;
 }
 
 function NewMenu() {

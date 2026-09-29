@@ -133,3 +133,22 @@ export function blameText(b: BlameLine): string {
   const date = new Date(b.time * 1000).toISOString().slice(0, 10);
   return [b.oid.slice(0, 7), b.author, date, b.summary].filter(Boolean).join(' · ');
 }
+
+/** What the file bar shows of `blameText`, which it keeps for the hover. */
+export function blameShort(b: BlameLine, nowMs: number): string {
+  if (ZERO_OID.test(b.oid)) return 'uncommitted';
+  return [b.author, ago(nowMs / 1000 - b.time)].filter(Boolean).join(' · ');
+}
+
+/** A commit dated ahead of this machine's clock reads as just now. */
+export function ago(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  if (m < 1) return 'just now';
+  if (h < 1) return `${m}m ago`;
+  if (d < 1) return `${h}h ago`;
+  if (d < 30) return `${d}d ago`;
+  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+}

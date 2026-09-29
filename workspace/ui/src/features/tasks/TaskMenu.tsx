@@ -4,7 +4,7 @@ import { CommandIcon, ensureIcons } from '#features/command-icons';
 import { errKind, errText, type Scripts } from '#ipc/git';
 import { commandTitle, inMenu, openSettings, scriptHidden } from '#features/settings';
 import * as term from '#features/terminals';
-import { isExited, isTask, killTerminal, statusLabel } from '#features/terminals';
+import { isExited, isTask, killTerminal, statusLabel, type TermIcon } from '#features/terminals';
 import type { Info, Task } from '#ipc/terminal';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
@@ -70,9 +70,9 @@ export function TaskMenu() {
     const shownScripts = (found?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, root, sc.name));
     void ensureIcons([...unpicked, ...shownScripts]);
   };
-  const run = (task: Task) => {
+  const run = (task: Task, icon: TermIcon) => {
     if (task.t === 'Custom' && task.hide_terminal) setLaunched((n) => n + 1);
-    void runTask(task);
+    void runTask(task, icon);
   };
   const label = running ? `Commands - ${running} running` : 'Commands';
   return (
@@ -89,46 +89,51 @@ export function TaskMenu() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu term-menu task-menu" side="right" align="start" sideOffset={6}>
-          {tasks.length > 0 && (
-            <>
-              <div className="menu-label">Output</div>
-              {tasks.map((t) => (
-                <DropdownMenu.Item key={t.id} className="menu-item" onSelect={() => openTask(t.id)}>
-                  <span className="name"><span className={`term-dot ${tone(t)}`} aria-hidden="true" />{t.title}</span>
-                  <span className="detail">{outcome(t)?.text ?? statusLabel(t, Date.now())}</span>
+        <DropdownMenu.Content className="menu term-menu task-menu" side="right" align="start" sideOffset={6}
+          collisionPadding={8}>
+          <div className="task-scroll">
+            {tasks.length > 0 && (
+              <>
+                <div className="menu-label">Output</div>
+                {tasks.map((t) => (
+                  <DropdownMenu.Item key={t.id} className="menu-item" onSelect={() => openTask(t.id)}>
+                    <span className="name"><span className={`term-dot ${tone(t)}`} aria-hidden="true" />{t.title}</span>
+                    <span className="detail">{outcome(t)?.text ?? statusLabel(t, Date.now())}</span>
+                  </DropdownMenu.Item>
+                ))}
+                <DropdownMenu.Separator className="menu-sep" />
+              </>
+            )}
+            <div className="menu-label">Commands</div>
+            {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
+            {saved.map((c, i) => {
+              const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
+              return (
+                <DropdownMenu.Item key={i} className="menu-item" title={c.command}
+                  onSelect={() => run({ t: 'Custom', ...c }, { name: c.name, command: c.command, icon: c.icon })}>
+                  {commandTitle(c) === c.command
+                    ? <span className="name wide">{icon}{c.command}</span>
+                    : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
                 </DropdownMenu.Item>
-              ))}
-              <DropdownMenu.Separator className="menu-sep" />
-            </>
-          )}
-          <div className="menu-label">Commands</div>
-          {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
-          {saved.map((c, i) => {
-            const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
-            return (
-              <DropdownMenu.Item key={i} className="menu-item" title={c.command}
-                onSelect={() => run({ t: 'Custom', ...c })}>
-                {commandTitle(c) === c.command
-                  ? <span className="name wide">{icon}{c.command}</span>
-                  : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
-              </DropdownMenu.Item>
-            );
-          })}
-          {here?.error && <div className="menu-empty">{here.error}</div>}
-          {here?.scripts && scripts.length > 0 && (
-            <>
-              <DropdownMenu.Separator className="menu-sep" />
-              <div className="menu-label">package.json · {here.scripts.runner}</div>
-              {scripts.map((sc, i) => (
-                <DropdownMenu.Item key={sc.name} className="menu-item" title={sc.command}
-                  onSelect={() => run({ t: 'Script', name: sc.name })}>
-                  <span className="name"><CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}</span>
-                  <Command text={shown[i] ?? sc.command} />
-                </DropdownMenu.Item>
-              ))}
-            </>
-          )}
+              );
+            })}
+            {here?.error && <div className="menu-empty">{here.error}</div>}
+            {here?.scripts && scripts.length > 0 && (
+              <>
+                <DropdownMenu.Separator className="menu-sep" />
+                <div className="menu-label">package.json · {here.scripts.runner}</div>
+                {scripts.map((sc, i) => (
+                  <DropdownMenu.Item key={sc.name} className="menu-item" title={sc.command}
+                    onSelect={() => run({ t: 'Script', name: sc.name }, { ...sc, icon: null })}>
+                    <span className="name">
+                      <CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}
+                    </span>
+                    <Command text={shown[i] ?? sc.command} />
+                  </DropdownMenu.Item>
+                ))}
+              </>
+            )}
+          </div>
           <DropdownMenu.Separator className="menu-sep" />
           <DropdownMenu.Item className="menu-item menu-foot" onSelect={() => void openSettings('commands')}>
             <GearIcon />Manage commands…

@@ -288,6 +288,10 @@ export const SCENARIOS: Record<string, () => Scenario> = {
           pid: 50_005, title: 'claude', tier: 'process', state: { t: 'Idle' }, cwd: '/Users/dev/projects/blog',
           transcript: AGENT_TRANSCRIPT,
         },
+        {
+          pid: 50_006, title: 'zsh', tier: 'marks', state: { t: 'Idle' }, cwd: '/Users/dev/projects/website/src/pages',
+          transcript: SHELL_TRANSCRIPT,
+        },
       ],
       orphans: {
         sock: NO_ORPHANS.sock,

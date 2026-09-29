@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentOf, awayLabel, elapsed, homeFrom, outsideRepo, shortCwd, statusLabel, termLabels, terminalsOf,
+  agentOf, awayLabel, elapsed, homeFrom, outsideRepo, placeOf, shortCwd, statusLabel, termLabels, terminalsOf,
 } from './status';
 import type { Info } from '#ipc/terminal';
 
@@ -145,5 +145,31 @@ describe('the rail', () => {
 
   it('keeps tasks out of the rail until one is moved there', () => {
     expect(terminalsOf([shell(1), task(2), { ...task(3), task: false }]).map((s) => s.id)).toEqual([1, 3]);
+  });
+});
+
+describe('where a session outside the repo works', () => {
+  const HOME = '/Users/me';
+  const web = { path: '/Users/me/projects/web', name: 'Web' };
+  const repos = [web, { path: '/Users/me/projects/web/vendor/lib', name: 'lib' }];
+
+  it('names the repo holding the folder, with the path below it', () => {
+    expect(placeOf('/Users/me/projects/web', HOME, repos)).toEqual({ repo: web, lead: '', name: 'Web', tail: '' });
+    expect(placeOf('/Users/me/projects/web/src/pages', HOME, repos))
+      .toEqual({ repo: web, lead: '', name: 'Web', tail: '/src/pages' });
+  });
+
+  it('names the innermost of two nested repos, and not a sibling that only shares a prefix', () => {
+    expect(placeOf('/Users/me/projects/web/vendor/lib/src', HOME, repos))
+      .toMatchObject({ name: 'lib', tail: '/src' });
+    expect(placeOf('/Users/me/projects/website', HOME, repos))
+      .toEqual({ repo: null, lead: '~/projects/', name: 'website', tail: '' });
+  });
+
+  it('falls back to the folder, and shortens the path to it', () => {
+    expect(placeOf('/Users/me/notes', HOME, [])).toEqual({ repo: null, lead: '~/', name: 'notes', tail: '' });
+    expect(placeOf('/Users/me', HOME, [])).toEqual({ repo: null, lead: '', name: '~', tail: '' });
+    expect(placeOf('/tmp', HOME, [])).toEqual({ repo: null, lead: '/', name: 'tmp', tail: '' });
+    expect(placeOf('/', HOME, [])).toEqual({ repo: null, lead: '', name: '/', tail: '' });
   });
 });

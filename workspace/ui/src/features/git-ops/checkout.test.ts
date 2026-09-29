@@ -43,7 +43,7 @@ it('creates the branch when the create row is picked', async () => {
   pickMock.mockImplementation(async (items) => items[0]!.value);
   promptMock.mockResolvedValue('topic');
   await checkout();
-  expect(promptMock).toHaveBeenCalledWith('New branch name');
+  expect(promptMock).toHaveBeenCalledWith('New branch name', true);
   expect(git.createBranch).toHaveBeenCalledWith('topic');
   expect(git.switchBranch).not.toHaveBeenCalled();
 });

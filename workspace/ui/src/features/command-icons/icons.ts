@@ -94,10 +94,12 @@ export type IconAsk<T> = {
 /**
  * The function that asks about the items with no icon yet. One ask at a time, and items that come in meanwhile go in
  * the next. A key is asked about once per launch: an ask that failed, or got no icon back, waits for the next launch.
- * No epoch: a pick is keyed by the item's own text, so one that lands late is still right.
+ * No epoch: a pick is keyed by the item's own text, so one that lands late is still right. A quiet call's items never
+ * lead to the toast.
  */
-export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[]) => Promise<void> {
+export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[], opts?: { quiet?: boolean }) => Promise<void> {
   const asked = new Set<string>();
+  const loud = new Set<string>();
   let queue: T[] = [];
   let asking = false;
   let warned = false;
@@ -109,8 +111,10 @@ export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[]) => Promise<vo
       got = await k.ask(items, offered);
     } catch (e) {
       logError(e, k.what);
-      if (k.warn !== null && !warned) toast(`${k.warn}: ${errText(e)}`, 'warn');
-      warned = true;
+      if (k.warn !== null && !warned && items.some((it) => loud.has(k.key(it)))) {
+        warned = true;
+        toast(`${k.warn}: ${errText(e)}`, 'warn');
+      }
       return;
     }
     const picks = items.flatMap((it, i): [T, string][] => {
@@ -133,7 +137,7 @@ export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[]) => Promise<vo
     }
   }
 
-  return async (items) => {
+  return async (items, { quiet = false } = {}) => {
     // checked before the sets load, since loading them is the only real cost
     if (S.settings['general.headless-ai-provider'] === 'off' || !items.some(fresh)) return;
     try {
@@ -145,12 +149,14 @@ export function iconAsker<T>(k: IconAsk<T>): (items: readonly T[]) => Promise<vo
     for (const it of items) {
       if (!fresh(it)) continue;
       asked.add(k.key(it));
+      if (!quiet) loud.add(k.key(it));
       queue.push(it);
     }
     if (!asking) await drain();
   };
 }
 
+/** One for the command menu and the terminal rail, so a line both show is asked about once. */
 const askCommands = iconAsker<IconItem>({
   key: (it) => iconKey(it.name, it.command),
   has: (it) => Object.hasOwn(S.commandIcons, iconKey(it.name, it.command)),
@@ -169,12 +175,21 @@ const askCommands = iconAsker<IconItem>({
   warn: 'Command icons not picked',
 });
 
-export async function ensureIcons(items: readonly IconItem[]): Promise<void> {
+/** `quiet` is for the terminal rail: a terminal keeps its number without an icon, and the rail is on screen at every
+ *  launch, so its failures would be said every time. */
+export async function ensureIcons(items: readonly IconItem[], { quiet = false } = {}): Promise<void> {
   try {
     await Promise.all([loadIconSets(), readPicks()]);
   } catch (e) {
     logError(e, 'load icon sets');
     return;
   }
-  await askCommands(items);
+  await askCommands(items, { quiet });
+}
+
+/** The user's pick, else the AI's; null while the sets load. */
+export function pickedGlyph(
+  picks: Readonly<Record<string, string>>, it: { name: string; command: string; icon: string | null },
+): Glyph | null {
+  return glyph(it.icon) ?? glyph(picks[iconKey(it.name, it.command)] ?? null);
 }

@@ -19,6 +19,22 @@ export { acceptChunk, rejectChunk, goToNextChunk, goToPreviousChunk, getOriginal
  *  and document changes through it, and editor/ sits below the features, so it cannot import one. */
 export const onCursor = { run: () => {} };
 
+export const folding: Extension = codeFolding({
+  preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number + 1,
+  placeholderDOM: (_view, onclick, lines: number) => {
+    // a button, not CodeMirror's default span: expanding a gap is the only way to see the
+    // hidden lines, so it has to be reachable by keyboard and announced as an action
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'cm-foldPlaceholder';
+    el.title = 'unfold';
+    el.setAttribute('aria-label', `expand ${lines} hidden line${lines === 1 ? '' : 's'}`);
+    el.textContent = `⋯ ${lines} line${lines === 1 ? '' : 's'}`;
+    el.onclick = onclick;
+    return el;
+  },
+});
+
 async function languageFor(path: string): Promise<Extension> {
   const desc = LanguageDescription.matchFilename(languages, path);
   if (!desc) return [];
@@ -56,21 +72,7 @@ export async function buildState(
     editorTheme,
     editorDark(isDark(getTheme())),
     syntaxHighlighting(editorHighlight),
-    codeFolding({
-      preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number + 1,
-      placeholderDOM: (_view, onclick, lines: number) => {
-        // a button, not CodeMirror's default span: expanding a gap is the only way to see the
-        // hidden lines, so it has to be reachable by keyboard and announced as an action
-        const el = document.createElement('button');
-        el.type = 'button';
-        el.className = 'cm-foldPlaceholder';
-        el.title = 'unfold';
-        el.setAttribute('aria-label', `expand ${lines} hidden line${lines === 1 ? '' : 's'}`);
-        el.textContent = `⋯ ${lines} line${lines === 1 ? '' : 's'}`;
-        el.onclick = onclick;
-        return el;
-      },
-    }),
+    folding,
     language,
     ...extensions,
     // ahead of searchKeymap, whose Mod-g is findNext and so Ctrl-g off macOS

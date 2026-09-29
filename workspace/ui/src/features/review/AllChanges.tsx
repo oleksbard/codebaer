@@ -15,7 +15,8 @@ import {
   showLarge, spy, toggleSection,
 } from './all-changes';
 import { acceptFile, rejectFile } from './hunks';
-import { PANEL_TEXT, useDiffStat } from './ReviewPane';
+import { sideChosen } from './layout';
+import { LayoutButton, PANEL_TEXT, useDiffStat } from './ReviewPane';
 
 const FOLD_ALL = 'M5 2.5l3 3 3-3M5 13.5l3-3 3 3';
 const UNFOLD_ALL = 'M5 5.5l3-3 3 3M5 10.5l3 3 3-3';
@@ -44,6 +45,7 @@ export function AllChanges() {
         {stat && stat.added + stat.removed > 0 ? <DiffStat added={stat.added} removed={stat.removed} /> : null}
         <div className="right">
           <PendingPill />
+          <LayoutButton />
           <IconButton label={unfolded ? 'Collapse all files' : 'Expand all files'}
             onClick={() => collapseAll(unfolded)}>
             <StrokeIcon d={unfolded ? FOLD_ALL : UNFOLD_ALL} size={14} /></IconButton>
@@ -55,7 +57,7 @@ export function AllChanges() {
         {page.order.length
           ? page.order.map((p) => (
             <FileSection key={p} path={p} row={rows.get(p) ?? null} staged={staged.has(p)}
-              collapsed={page.collapsed.has(p)} opened={page.shown.has(p)} />
+              collapsed={page.collapsed.has(p)} opened={page.shown.has(p)} side={sideChosen(s)} />
           ))
           : <div className="blank"><h2>Nothing left to review</h2></div>}
       </div>
@@ -108,13 +110,14 @@ function useSections(box: RefObject<HTMLDivElement | null>): void {
   });
 }
 
-function FileSection({ path, row, staged, collapsed, opened }: {
+function FileSection({ path, row, staged, collapsed, opened, side }: {
   path: string;
   /** Null once the file has left the queue: accepted, rejected, or reverted by the agent. */
   row: Row | null;
   staged: boolean;
   collapsed: boolean;
   opened: boolean;
+  side: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -159,7 +162,7 @@ function FileSection({ path, row, staged, collapsed, opened }: {
           </div>
         )}
       </header>
-      <div className="fbody" hidden={folded || !v || !hunks || large} />
+      <div className={side ? 'fbody split' : 'fbody'} hidden={folded || !v || !hunks || large} />
       {waiting && <div className="fwait" />}
       {note && <div className="fnote">{note}
         {gate ? <Button onClick={() => showLarge(path)}>Show diff</Button> : null}</div>}

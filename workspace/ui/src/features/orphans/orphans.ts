@@ -18,6 +18,9 @@ export type OrphanRow = {
   key: string;
   status: Status;
   session: number | null;
+  /** The rail session this row is, which draws its icon; `session` may be another host's id, and a task that is
+   *  still in its own dialog has no rail button. */
+  listed: number | null;
   pid: number | null;
   tty: string;
   command: string;
@@ -113,7 +116,7 @@ export function orphanRows(r: DeepReadonly<Orphans>, listed: readonly DeepReadon
     ({ key: `p${p.pid}`, pid: p.pid, tty: p.tty, command: commandOf(p), host });
   // no signal ends one, and the backend, given its pid, flushes the terminals its host left behind
   const stuck = (p: Proc, host: string, blocked: string | null): OrphanRow => ({
-    ...base(p, host), session: p.session, status: 'stuck', restore: null,
+    ...base(p, host), session: p.session, listed: null, status: 'stuck', restore: null,
     kill: blocked ? null : { t: 'signal', pid: p.pid }, why: blocked ?? STUCK,
   });
 
@@ -131,6 +134,7 @@ export function orphanRows(r: DeepReadonly<Orphans>, listed: readonly DeepReadon
     rows.push({
       ...base(p, sockName(current?.sock ?? '')),
       session: id,
+      listed: shown && !listed.find((t) => t.id === id)?.task ? id : null,
       status,
       restore: shown || unmatched ? null : { t: 'relist', id },
       kill: id === null || unmatched || p.holds_app ? null : { t: 'close', id, pid: p.pid },
@@ -148,7 +152,7 @@ export function orphanRows(r: DeepReadonly<Orphans>, listed: readonly DeepReadon
     if (unknown) why = UNMATCHED;
     else if (status === 'ghost' && !current) why = NO_HOST;
     rows.push({
-      key: `s${t.id}`, status, session: t.id, pid: null, tty: '', command: t.title,
+      key: `s${t.id}`, status, session: t.id, listed: t.task ? null : t.id, pid: null, tty: '', command: t.title,
       host: current ? sockName(current.sock) : '', restore: null,
       kill: status === 'ghost' && current ? { t: 'close', id: t.id, pid: null } : null,
       why,
@@ -173,6 +177,7 @@ export function orphanRows(r: DeepReadonly<Orphans>, listed: readonly DeepReadon
       rows.push({
         ...base(p, `${sockName(h.sock)} · pid ${h.pid}`),
         session: p.session,
+        listed: null,
         status: relayed ? 'relayed' : 'stale',
         restore: open ? { t: 'relay', sock: h.sock, id: p.session, pid: p.pid } : null,
         kill: h.in_use || h.unclear || p.holds_app ? null : { t: 'signal', pid: p.pid },
@@ -182,7 +187,7 @@ export function orphanRows(r: DeepReadonly<Orphans>, listed: readonly DeepReadon
   }
   for (const p of r.escaped) {
     rows.push({
-      ...base(p, ''), session: p.session, status: 'escaped', restore: null,
+      ...base(p, ''), session: p.session, listed: null, status: 'escaped', restore: null,
       kill: p.holds_app ? null : { t: 'signal', pid: p.pid },
       why: p.holds_app ? HOLDS_APP : 'no terminal is left to attach it to',
     });

@@ -25,6 +25,21 @@ describe('orphanRows', () => {
     ]);
   });
 
+  it('names the rail session only for the rows that are one, never by another host\'s id or a task', () => {
+    const r: Orphans = {
+      sock: SOCK, hosts: [host(10, SOCK, [proc(11, 1), proc(12, 4)]), host(20, OLD, [proc(21, 2)])], escaped: [],
+    };
+    const rows = orphanRows(r, [info(1), info(2), info(3, { t: 'Exited', code: 0 })]);
+    expect(rows.map((row) => [row.status, row.session, row.listed])).toEqual([
+      ['shown', 1, 1], ['hidden', 4, null], ['ghost', 2, 2], ['exited', 3, 3], ['stale', 2, null],
+    ]);
+    // a task in its own dialog has no rail button to match
+    const tasks = orphanRows(r, [
+      info(1, { t: 'Idle' }, { task: true }), info(3, { t: 'Exited', code: 0 }, { task: true }),
+    ]);
+    expect(tasks.map((row) => [row.session, row.listed])).toEqual([[1, null], [4, null], [3, null], [2, null]]);
+  });
+
   it('relays each of a stale host\'s sessions, and only kills what escaped', () => {
     const r: Orphans = {
       sock: SOCK,

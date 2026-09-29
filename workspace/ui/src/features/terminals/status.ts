@@ -48,6 +48,21 @@ export function awayLabel(s: DeepReadonly<Info>, root: string | null, home: stri
   return s.state.t === 'Idle' ? 'outside the repo' : `outside the repo, in ${shortCwd(s.cwd, home)}`;
 }
 
+/** Where a session works, split so the badge can stress the place: `lead` comes before `name`, `tail` after. */
+export type Place<R> = { repo: R | null; lead: string; name: string; tail: string };
+
+/** The deepest known repo holding `cwd`, so a checkout nested in another names itself; else the folder. */
+export function placeOf<R extends { path: string; name: string }>(
+  cwd: string, home: string | null, repos: readonly R[],
+): Place<R> {
+  let repo: R | null = null;
+  for (const r of repos) if (within(cwd, r.path) && r.path.length > (repo?.path.length ?? -1)) repo = r;
+  if (repo) return { repo, lead: '', name: repo.name, tail: cwd.slice(repo.path.length) };
+  const name = baseName(cwd);
+  if (cwd === home || !name) return { repo: null, lead: '', name: cwd === home ? '~' : '/', tail: '' };
+  return { repo: null, lead: `${shortCwd(cwd.slice(0, -name.length - 1), home)}/`, name, tail: '' };
+}
+
 /** Home directory as the shells report it, so a label can shorten a path without asking Rust. */
 export function homeFrom(cwd: string): string | null {
   if (!cwd.startsWith(HOME_ROOT)) return null;

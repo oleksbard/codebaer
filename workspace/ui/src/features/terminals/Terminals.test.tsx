@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { icons as lucide } from '@iconify-json/lucide';
 import type { Info } from '#ipc/terminal';
 import { tick } from '#test-setup';
 
 vi.mock('./sessions', () => ({
   closeTerminal: vi.fn(), killTerminal: vi.fn(), newTerminal: vi.fn(), selectTerminal: vi.fn(),
 }));
+vi.mock('#ipc/git', async () => ({
+  ...(await vi.importActual<object>('#ipc/git')),
+  git: {
+    commandIcons: vi.fn(() => Promise.resolve({})), aiCommandIcons: vi.fn(),
+    saveCommandIcons: vi.fn(() => Promise.resolve()),
+  },
+}));
 
+const { git } = await import('#ipc/git');
 const { S } = await import('#kernel/store');
 const { closeTerminal, killTerminal } = await import('./sessions');
 const { TerminalRail } = await import('./Terminals');
@@ -24,6 +33,7 @@ beforeEach(() => {
   S.termAttention = new Set();
   S.root = '/Users/me/projects/x';
   S.termMenu = null;
+  S.termIcons = new Map();
   root = createRoot(document.getElementById('host')!);
 });
 
@@ -32,9 +42,9 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+/** By its place, since an ended session shows no number. */
 const button = (id: number): HTMLButtonElement =>
-  [...document.querySelectorAll<HTMLButtonElement>('.rail-b')]
-    .find((b) => b.querySelector('.num')?.textContent === String(id))!;
+  document.querySelectorAll<HTMLButtonElement>('.rail-b:not(.new)')[S.terminals.findIndex((t) => t.id === id)]!;
 
 it('marks only the session that left the repo, and says so in its label', () => {
   S.terminals = [session(1, '/Users/me/projects/x/src'), session(2, '/Users/me/other')];
@@ -99,3 +109,51 @@ it('gives each new-terminal entry an icon: an agent its own mark, a runtime its 
     });
     expect(icons).toEqual(['terminal', 'prog agent claude', 'language', 'terminal']);
   });
+
+it('draws the icon picked for a shell\'s first long command and for a program in place of the number', async () => {
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  const here = '/Users/me/projects/x';
+  S.terminals = [
+    session(1, here), session(2, here),
+    { id: 3, title: 'htop', cwd: here, tier: 'process', state: { t: 'Running', command: null, since_ms: 0 } },
+  ];
+  S.termIcons = new Map([[2, { name: '', command: 'pnpm dev', icon: null }]]);
+  vi.mocked(git.aiCommandIcons).mockResolvedValue(['lucide:play', 'lucide:activity']);
+  flushSync(() => root.render(<TerminalRail />));
+
+  await vi.waitFor(() => expect(document.querySelectorAll('.rail-b .pick svg')).toHaveLength(2));
+  expect(vi.mocked(git.aiCommandIcons).mock.calls[0]![0]).toEqual([
+    { name: '', command: 'pnpm dev' }, { name: '', command: 'htop' },
+  ]);
+  const path = (name: string) => /\bd="([^"]+)"/.exec(lucide.icons[name]!.body)![1];
+  const tiles = [...document.querySelectorAll('.rail-b:not(.new) .tile')];
+  expect(tiles.map((t) => t.querySelector('.num')?.textContent ?? t.querySelector('.pick path')?.getAttribute('d')))
+    .toEqual(['1', path('play'), path('activity')]);
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
+});
+
+it('draws every killed or finished session with the same icon, agents too, and asks for none of them', () => {
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  const here = '/Users/me/projects/x';
+  const ended = (id: number, title: string, code: number | null): Info =>
+    ({ ...session(id, here), title, tier: 'process', state: { t: 'Exited', code } });
+  S.terminals = [ended(1, 'zsh', 0), ended(2, 'claude', null), ended(3, 'htop', 1), session(4, here)];
+  S.termIcons = new Map([[1, { name: '', command: 'pnpm dev', icon: null }]]);
+  flushSync(() => root.render(<TerminalRail />));
+
+  const tiles = [...document.querySelectorAll('.rail-b:not(.new) .tile')];
+  const drawn = tiles.map((t) => t.querySelector('.ended svg')?.innerHTML ?? t.querySelector('.num')?.textContent);
+  expect(drawn.slice(0, 3).every((d) => d === drawn[0] && d !== undefined)).toBe(true);
+  expect(drawn[3]).toBe('4');
+  expect(git.aiCommandIcons).not.toHaveBeenCalled();
+  expect(git.commandIcons).not.toHaveBeenCalled();
+  S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
+});
+
+it('draws the agent\'s mark while one runs in a shell that has an icon', () => {
+  S.terminals = [{ ...session(1, '/Users/me/projects/x'), state: { t: 'Running', command: 'claude', since_ms: 0 } }];
+  S.termIcons = new Map([[1, { name: '', command: 'pnpm dev', icon: 'lucide:play' }]]);
+  flushSync(() => root.render(<TerminalRail />));
+  expect(button(1).querySelector('.agent.claude')).not.toBeNull();
+  expect(button(1).querySelector('.pick')).toBeNull();
+});

@@ -47,6 +47,10 @@ export type StashKind = 'all' | 'staged' | 'unstaged';
 export type Stash = {
   index: number; oid: string; branch: string | null; message: string; wip: boolean; time: number;
 };
+/** `summary` is the subject line; `time` is the author date, in seconds. */
+export type Commit = { oid: string; summary: string; author: string; time: number };
+/** The commits a push would send, newest first; `more` when there are more than the backend lists. */
+export type Outgoing = { commits: Commit[]; more: boolean };
 
 export type AppError =
   | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
@@ -150,6 +154,10 @@ export const git = {
   stashList: () => invoke<Stash[]>('stash_list'),
   /** `oid` is the stash as listed: the pop fails when `stash@{index}` is another one by now. */
   stashPop: (index: number, oid: string) => invoke<void>('stash_pop', { index, oid }),
+  /** Past the upstream, or with no upstream on no remote; none without a remote. */
+  outgoing: () => invoke<Outgoing>('outgoing'),
+  /** A soft reset of HEAD, which must still be `oid` and on no remote. Resolves to the commit's message. */
+  undoCommit: (oid: string) => invoke<string>('undo_commit', { oid }),
   listFiles: () => invoke<Listing>('list_files'),
   listDir: (path: string) => invoke<string[]>('list_dir', { path }),
 };

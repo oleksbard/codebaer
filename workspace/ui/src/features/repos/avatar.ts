@@ -159,6 +159,9 @@ export function avatars(repos: Repo[]): Map<string, Avatar> {
   }));
 }
 
+/** One repo's avatar, with the code the switcher gave it or will give it. */
+export const avatarOf = (r: Repo): Avatar | undefined => avatars([r]).get(r.path);
+
 export function hasAvatarIcon(r: Repo): boolean {
   const e = load()[r.path];
   return e?.name === r.name && e.icon !== undefined;

@@ -54,6 +54,14 @@ export const SECTIONS: Section[] = [
           + 'A light theme turns the editor light too.',
         choices: THEMES.map((t) => ({ value: t.id, label: t.label })),
       },
+      {
+        key: 'appearance.diff-layout',
+        label: 'Diff layout',
+        description: 'How a file\'s unstaged changes and the All changes page show a diff: old and new lines '
+          + 'in one column, or the index on the left and the working tree on the right. '
+          + 'The staged view always uses one column.',
+        choices: [{ value: 'unified', label: 'Unified' }, { value: 'side-by-side', label: 'Side by side' }],
+      },
     ],
   },
   // a list the user edits rather than choices, so SettingsDialog.tsx draws this pane itself

@@ -1,11 +1,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { withBusy } from '#core/session';
+import { refresh, withBusy } from '#core/session';
 import { choiceDialog, confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
-import type { Stash } from '#ipc/git';
+import type { Outgoing, Stash } from '#ipc/git';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
-import { age, commit, network, stash, unstash } from './git-ops';
+import { age, commit, loadOutgoing, network, stash, undoCommit, unstash } from './git-ops';
 import { gitOps } from './index';
 
 vi.mock('#ipc/git', async () => {
@@ -268,7 +268,8 @@ describe('unstashing', () => {
     ]);
     const done = unstash();
     await vi.waitFor(() => expect(S.palette).not.toBeNull());
-    expect(S.palette!.items.map((i) => [i.label, i.note])).toEqual([
+    expect(S.palette!.wide).toBe(true);
+    expect(S.palette!.items.map((i) => [i.label, i.sub])).toEqual([
       ['Adds a thing.', 'main · 5 minutes ago'], ['WIP on 1a2b3c4 init', '5 minutes ago'],
     ]);
     S.palette!.resolve(S.palette!.items[1]!.value);
@@ -280,5 +281,103 @@ describe('unstashing', () => {
     const at = (s: number) => age(Math.floor(now / 1000) - s, now);
     expect([at(5), at(90), at(7200), at(86_400 * 1.5), at(86_400 * 3), at(86_400 * 400)])
       .toEqual(['just now', '1 minute ago', '2 hours ago', 'yesterday', '3 days ago', 'last year']);
+  });
+});
+
+describe('the commits a push would send', () => {
+  const last = { oid: 'b'.repeat(40), summary: 'Add the thing', author: 't', time: 1 };
+  const one: Outgoing = { commits: [last], more: false };
+  beforeEach(() => {
+    S.outgoing = { commits: [], more: false };
+    S.commitMessage = '';
+    S.toasts = [];
+  });
+
+  it('are read on every refresh, without holding it up, and dropped with the repo', async () => {
+    g.status!.mockResolvedValue(S.status);
+    let answer: (o: Outgoing) => void = () => {};
+    g.outgoing!.mockReturnValue(new Promise<Outgoing>((r) => { answer = r; }));
+    await refresh();
+    expect(S.outgoing.commits).toEqual([]);
+    answer(one);
+    await tick();
+    expect(S.outgoing).toEqual(one);
+    gitOps.onRepoChange.reset();
+    expect(S.outgoing.commits).toEqual([]);
+  });
+
+  it('are none when the read fails, without failing the refresh', async () => {
+    S.outgoing = one;
+    g.status!.mockResolvedValue(S.status);
+    g.outgoing!.mockRejectedValue({ kind: 'Git', detail: 'bad revision' });
+    await refresh();
+    await tick();
+    expect(S.outgoing.commits).toEqual([]);
+    expect(S.toasts).toEqual([]);
+  });
+
+  it('are not written by a read that a newer one started after', async () => {
+    let first: (o: Outgoing) => void = () => {};
+    g.outgoing!.mockReturnValueOnce(new Promise<Outgoing>((r) => { first = r; }))
+      .mockResolvedValueOnce({ commits: [], more: false });
+    const older = loadOutgoing();
+    await loadOutgoing();
+    first(one);
+    await older;
+    expect(S.outgoing.commits).toEqual([]);
+  });
+
+  it('are not written for a repo switched from while they were read', async () => {
+    let answer: (o: Outgoing) => void = () => {};
+    g.outgoing!.mockReturnValue(new Promise<Outgoing>((r) => { answer = r; }));
+    const load = loadOutgoing();
+    S.root = '/repo/b';
+    answer(one);
+    await load;
+    expect(S.outgoing.commits).toEqual([]);
+  });
+
+  it('put the reverted commit\'s message into an empty commit box', async () => {
+    S.outgoing = one;
+    g.undoCommit!.mockResolvedValue('Add the thing\n\nWhy it was added');
+    await undoCommit();
+    expect(g.undoCommit).toHaveBeenCalledWith(last.oid);
+    expect(S.commitMessage).toBe('Add the thing\n\nWhy it was added');
+    expect(S.toasts.map((t) => t.message)).toEqual(['Reverted "Add the thing"\nIts changes are staged.']);
+  });
+
+  it('keep a message already typed, and show a failed revert', async () => {
+    S.outgoing = one;
+    S.commitMessage = 'mine';
+    g.undoCommit!.mockResolvedValue('Add the thing');
+    await undoCommit();
+    expect(S.commitMessage).toBe('mine');
+    expect(S.toasts.map((t) => t.message))
+      .toEqual(['Reverted "Add the thing"\nIts changes are staged, and the commit box kept what you typed.']);
+    S.toasts = [];
+    g.undoCommit!.mockRejectedValue({ kind: 'Git', detail: 'The last commit changed. Look at the commits again.' });
+    await undoCommit();
+    expect(S.commitMessage).toBe('mine');
+    expect(S.toasts.map((t) => [t.kind, t.message]))
+      .toEqual([['err', 'The last commit changed. Look at the commits again.']]);
+  });
+
+  it('leave the box of a repo opened during the revert alone', async () => {
+    S.outgoing = one;
+    let answer: (m: string) => void = () => {};
+    g.undoCommit!.mockReturnValue(new Promise<string>((r) => { answer = r; }));
+    const undo = undoCommit();
+    S.root = '/repo/b';
+    answer('Add the thing');
+    await undo;
+    expect(S.commitMessage).toBe('');
+    expect(S.toasts).toEqual([]);
+  });
+
+  it('offer the revert in the palette only while there is one', () => {
+    const cmd = gitOps.commands.find((c) => c.id === 'git.undoCommit')!;
+    expect('when' in cmd && cmd.when()).toBe(false);
+    S.outgoing = one;
+    expect('when' in cmd && cmd.when()).toBe(true);
   });
 });

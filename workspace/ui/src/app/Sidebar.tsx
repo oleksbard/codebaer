@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
-import { buildQueue, type Section } from '#core/model';
+import { buildQueue } from '#core/model';
 import type { Tab } from '#core/state';
 import { openAiTools } from '#features/ai-tools';
 import { FilesList } from '#features/files';
 import { CommitBox } from '#features/git-ops';
 import { findOrphans } from '#features/orphans';
-import { allChangesShown, QueueList } from '#features/review';
+import { allChangesShown, QueueList, type QueueSection } from '#features/review';
 import { openSettings } from '#features/settings';
 import { TaskMenu } from '#features/tasks';
 import { TerminalRail } from '#features/terminals';
@@ -93,7 +93,7 @@ export function ActivityBar() {
 
 export function Sidebar() {
   const s = useApp();
-  const [open, setOpen] = useState<Record<Section, boolean>>({ unstaged: true, staged: true });
+  const [open, setOpen] = useState<Record<QueueSection, boolean>>({ unstaged: true, staged: true, commits: true });
   const q = s.status ? buildQueue(s.status) : { unstaged: [], staged: [] };
   return (
     <aside className="side">

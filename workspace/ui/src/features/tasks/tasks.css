@@ -9,10 +9,22 @@
 .task-menu {
   display: grid;
   grid-template-columns: fit-content(200px) minmax(0, 1fr);
+  /* the lists scroll inside the window's height, under Manage commands, which stays in view */
+  grid-template-rows: minmax(0, 1fr) auto auto;
   column-gap: 16px;
   max-width: 440px;
+  max-height: var(--radix-dropdown-menu-content-available-height);
 
-  > * { grid-column: 1 / -1; }
+  > *, .task-scroll > * { grid-column: 1 / -1; }
+
+  /* a subgrid, so the names and commands of every section still line up in the menu's two columns */
+  .task-scroll {
+    display: grid;
+    grid-template-columns: subgrid;
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+  }
 
   .menu-item { display: grid; grid-template-columns: subgrid; }
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

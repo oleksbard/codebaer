@@ -1,10 +1,14 @@
 import { pinDefaultBranches } from '#core/model';
-import { guarded, offerSave, refresh, withBusy } from '#core/session';
+import { expandSide, guarded, offerSave, refresh, withBusy } from '#core/session';
 import { errKind, errText, git, type Branch, type Stash, type StashKind } from '#ipc/git';
+import { logError } from '#ipc/log';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
+import { epoch } from '#kernel/epoch';
 import { pick, type Item } from '#kernel/pick';
+import { run } from '#kernel/registry';
 import { notify, refs, S } from '#kernel/store';
 import { fetched } from './auto-fetch';
+import { NO_OUTGOING } from './state';
 
 export async function commit(): Promise<void> {
   if (S.committing) return;
@@ -23,6 +27,37 @@ export async function commit(): Promise<void> {
     notify();
   }
   void refresh();
+}
+
+const outgoingEpoch = epoch();
+
+/** Not awaited by the refresh, which it would slow down by a few git processes. A failure shows no commits. */
+export async function loadOutgoing(): Promise<void> {
+  const live = outgoingEpoch.next();
+  const root = S.root;
+  let outgoing = NO_OUTGOING;
+  try {
+    const { commits, more } = await git.outgoing();
+    outgoing = { commits, more };
+  } catch (e) {
+    logError(e, 'outgoing commits');
+  }
+  if (!live() || S.root !== root) return;
+  S.outgoing = outgoing;
+  notify();
+}
+
+/** Its changes go back to Staged, and its message into the commit box unless something is typed there. */
+export async function undoCommit(): Promise<void> {
+  const last = S.outgoing.commits[0];
+  const root = S.root;
+  if (!last || S.committing) return;
+  const message = await guarded(() => git.undoCommit(last.oid));
+  if (message === undefined || S.root !== root) return;
+  const typed = S.commitMessage.trim() !== '';
+  if (!typed) setCommitMessage(message);
+  toast(`Reverted "${last.summary}"\nIts changes are staged${typed ? ', and the commit box kept what you typed' : ''}.`,
+    'ok');
 }
 
 export async function aiMessage(): Promise<void> {
@@ -130,8 +165,8 @@ export async function unstash(): Promise<void> {
   if (!list.length) { toast('No stashes to restore', 'info'); return; }
   const now = Date.now();
   const picked = await pick(list.map((s) => ({
-    label: stashLabel(s), note: [s.branch, age(s.time, now)].filter(Boolean).join(' · '), value: s,
-  })), 'Select a stash to restore');
+    label: stashLabel(s), sub: [s.branch, age(s.time, now)].filter(Boolean).join(' · '), value: s,
+  })), 'Select a stash to restore', true);
   if (!picked) return;
   await guarded(() => git.stashPop(picked.index, picked.oid));
   const st = await git.status().catch(() => null);
@@ -154,14 +189,16 @@ export async function checkout(): Promise<void> {
 }
 
 export async function createBranch(): Promise<void> {
-  const name = await promptDialog('New branch name');
+  const name = await promptDialog('New branch name', true);
   if (name) await guarded(() => git.createBranch(name));
 }
 
 export const cancel = (): Promise<void> => git.cancel();
 
 export function focusCommit(): void {
-  S.tab = 'changes';
+  // the review feature imports this one, so the tab switch goes through its command
+  run('review.showChanges');
+  expandSide();
   notify();
   // React applies the tab change in a microtask queued by notify(); the focus has to land after it
   queueMicrotask(() => refs.commit?.focus());

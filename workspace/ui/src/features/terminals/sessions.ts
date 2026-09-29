@@ -4,6 +4,7 @@ import * as pty from '#ipc/terminal';
 import type { Info, ServerMsg, SpawnKind } from '#ipc/terminal';
 import { promptDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
+import { forgetIcon, restoreIcons, watchLong } from './icons';
 import { isTask, terminalsOf } from './status';
 import * as term from './xterm';
 
@@ -34,6 +35,7 @@ export function onTermEvent(m: ServerMsg): void {
     switch (m.t) {
       case 'Hello': {
         S.terminals = m.sessions;
+        restoreIcons(m.sessions);
         const rail = terminalsOf(m.sessions);
         if (!rail.some((t) => t.id === S.activeTerm)) S.activeTerm = rail.at(-1)?.id ?? null;
         taskEvents.hello(m.sessions);
@@ -50,9 +52,12 @@ export function onTermEvent(m: ServerMsg): void {
           early.set(m.req, m.info.id);
         }
         break;
-      case 'Status':
+      case 'Status': {
         S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, state: m.state, tier: m.tier } : t));
+        const t = S.terminals.find((x) => x.id === m.id);
+        if (t) watchLong(t);
         break;
+      }
       case 'Command':
         if (m.code !== null && m.code !== 0) flag(m.id);
         break;
@@ -72,6 +77,7 @@ export function onTermEvent(m: ServerMsg): void {
       case 'Closed':
         S.terminals = S.terminals.filter((t) => t.id !== m.id);
         S.termAttention.delete(m.id);
+        forgetIcon(m.id);
         taskEvents.closed(m.id);
         if (S.activeTerm === m.id) S.activeTerm = terminalsOf(S.terminals).at(-1)?.id ?? null;
         // last, because it is the one step here that reaches into xterm: a teardown that

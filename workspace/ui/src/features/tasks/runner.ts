@@ -1,6 +1,6 @@
 import { flush } from '#core/session';
 import {
-  closeTerminal, connectTerminals, isExited, isTask, selectTerminal, size,
+  closeTerminal, connectTerminals, isExited, isTask, keepIcon, selectTerminal, size, type TermIcon,
 } from '#features/terminals';
 import { HIDDEN_TASK_MS, loadCommands } from '#features/settings';
 import { errText, git, type Scripts } from '#ipc/git';
@@ -19,6 +19,7 @@ const expiry = new Map<number, ReturnType<typeof setTimeout>>();
 const hidden = new Map<number, ReturnType<typeof setTimeout>>();
 let awaitingTask = 0;
 let awaitingHidden = false;
+let awaitingIcon: TermIcon | null = null;
 /** A Spawned can overtake the reply to the invoke that asked for it, so each side checks for the other. */
 let earlyTask: { req: number; info: Info } | null = null;
 
@@ -52,6 +53,7 @@ function hideTask(id: number): void {
 export function taskSpawned(req: number, info: Info): void {
   if (req !== awaitingTask) { earlyTask = { req, info }; return; }
   awaitingTask = 0;
+  if (awaitingIcon) keepIcon(info.id, awaitingIcon);
   if (awaitingHidden) hideTask(info.id);
   else if (idle()) S.taskView = info.id;
   else toast(`${info.title} is running. Its output is in the command menu.`);
@@ -84,7 +86,8 @@ export function taskClosed(id: number): void {
   if (S.taskView === id) S.taskView = null;
 }
 
-export async function runTask(task: Task): Promise<void> {
+/** `icon` is what the command menu draws for the task, which its session keeps once it is moved to the rail. */
+export async function runTask(task: Task, icon: TermIcon): Promise<void> {
   // VS Code's task.saveBeforeRun: a save that fails shows why, and the task runs on what the disk holds
   await flush();
   const hide = task.t === 'Custom' && task.hide_terminal;
@@ -96,6 +99,7 @@ export async function runTask(task: Task): Promise<void> {
     const early = earlyTask?.req === req ? earlyTask : null;
     awaitingTask = req;
     awaitingHidden = hide;
+    awaitingIcon = icon;
     if (early) {
       earlyTask = null;
       taskSpawned(req, early.info);

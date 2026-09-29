@@ -1,6 +1,6 @@
 import { view } from '#core/session';
 import { setEditorDark } from '#editor/editor-theme';
-import { rethemeAllChanges } from '#features/review';
+import { applyDiffLayout, rethemeAllChanges } from '#features/review';
 import { retheme } from '#features/terminals';
 import { errText, git } from '#ipc/git';
 import { logError } from '#ipc/log';
@@ -35,6 +35,12 @@ function showTheme(): void {
   retheme();
 }
 
+/** Everything outside the state that follows S.settings. */
+function showSettings(): void {
+  showTheme();
+  applyDiffLayout();
+}
+
 /** Like `confirmed`, for the command list and the hidden scripts. */
 let confirmedCommands: CustomCommand[] = [];
 let confirmedHidden: HiddenScripts = {};
@@ -45,7 +51,7 @@ export function loadSettings(): Promise<void> {
     S.settings = confirmed = settings;
     S.commands = confirmedCommands = commands;
     S.hiddenScripts = confirmedHidden = hidden;
-    showTheme();
+    showSettings();
     notify();
   });
 }
@@ -146,7 +152,7 @@ const same = (a: Settings, b: Settings) => (Object.keys(a) as SettingKey[]).ever
 
 export function setSetting<K extends SettingKey>(key: K, value: Settings[K]): Promise<void> {
   S.settings = { ...S.settings, [key]: value };
-  showTheme();
+  showSettings();
   notify();
   return inOrder(async () => {
     const sent = S.settings;
@@ -158,9 +164,12 @@ export function setSetting<K extends SettingKey>(key: K, value: Settings[K]): Pr
     } catch (e) {
       // a failed write leaves the file as it was
       S.settings = confirmed;
-      showTheme();
+      showSettings();
       toast(`Settings not saved: ${errText(e)}`, 'err');
     }
     notify();
   });
 }
+
+export const toggleDiffLayout = (): Promise<void> => setSetting('appearance.diff-layout',
+  S.settings['appearance.diff-layout'] === 'side-by-side' ? 'unified' : 'side-by-side');

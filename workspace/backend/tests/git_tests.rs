@@ -2,6 +2,7 @@ use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{outgoing_impl, undo_commit_guarded, undo_commit_impl, OUTGOING};
 use codebaer_lib::git::{stash_list_impl, stash_pop_impl, stash_push_impl, StashKind};
 use codebaer_lib::git::{cancel_impl, diff_stat_impl, fetch_background_impl, push_args, run_net, AppState, DiffStat};
 use codebaer_lib::settings::AiProvider;
@@ -1306,4 +1307,209 @@ fn blame_re_encodes_the_buffer_to_the_files_line_endings() {
     let doc = "a\nb\n";
     assert_eq!(blame_impl(r, "w.txt", 2, doc, Eol::Crlf).unwrap().summary, "crlf");
     assert_eq!(blame_impl(r, "w.txt", 2, doc, Eol::Lf).unwrap().oid, "0".repeat(40));
+}
+
+fn head_oid(r: &Path) -> String {
+    sh(r, &["rev-parse", "HEAD"]).trim().to_string()
+}
+
+fn summaries(r: &Path) -> Vec<String> {
+    outgoing_impl(r).unwrap().commits.into_iter().map(|c| c.summary).collect()
+}
+
+#[test]
+fn outgoing_lists_the_commits_past_the_upstream_newest_first() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    assert!(summaries(r).is_empty());
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "first\n\nbody"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "second"]);
+    let out = outgoing_impl(r).unwrap();
+    assert_eq!(out.commits.iter().map(|c| c.summary.as_str()).collect::<Vec<_>>(), ["second", "first"]);
+    assert_eq!(out.commits[0].oid, head_oid(r));
+    assert_eq!(out.commits[0].author, "t");
+    assert!(out.commits[0].time > 0);
+    assert!(!out.more);
+    sh(r, &["push", "-q"]);
+    assert!(summaries(r).is_empty());
+}
+
+#[test]
+fn outgoing_without_an_upstream_is_what_no_remote_holds() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["switch", "-q", "-c", "feat"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "on feat"]);
+    assert_eq!(summaries(r), ["on feat"]);
+    sh(r, &["switch", "-q", "--detach"]);
+    assert_eq!(summaries(r), ["on feat"]);
+}
+
+#[test]
+fn outgoing_is_empty_with_no_remote_or_no_commit() {
+    let d = repo();
+    sh(d.path(), &["commit", "-q", "--allow-empty", "-m", "local"]);
+    assert!(summaries(d.path()).is_empty());
+    let unborn = tempfile::tempdir().unwrap();
+    sh(unborn.path(), &["init", "-q"]);
+    assert!(summaries(unborn.path()).is_empty());
+}
+
+#[test]
+fn outgoing_stops_at_the_cap() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    for n in 0..=OUTGOING {
+        sh(r, &["commit", "-q", "--allow-empty", "-m", &format!("c{n}")]);
+    }
+    let out = outgoing_impl(r).unwrap();
+    assert_eq!(out.commits.len(), OUTGOING);
+    assert_eq!(out.commits[0].summary, format!("c{OUTGOING}"));
+    assert!(out.more);
+}
+
+#[test]
+fn undo_commit_keeps_its_changes_staged_and_returns_its_message() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "changed\n").unwrap();
+    sh(r, &["commit", "-qam", "change a\n\nwhy it changed"]);
+    fs::write(r.join("b.txt"), "unstaged\n").unwrap();
+    let before = sh(r, &["rev-parse", "HEAD^"]);
+    assert_eq!(undo_commit_impl(r, &head_oid(r)).unwrap(), "change a\n\nwhy it changed");
+    assert_eq!(sh(r, &["rev-parse", "HEAD"]), before);
+    assert_eq!(sh(r, &["diff", "--cached", "--name-only"]).trim(), "a.txt");
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "changed\n");
+    assert_eq!(fs::read_to_string(r.join("b.txt")).unwrap(), "unstaged\n");
+}
+
+#[test]
+fn undo_commit_refuses_a_moved_head_and_a_pushed_commit() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    let pushed = head_oid(r);
+    assert!(matches!(undo_commit_impl(r, &pushed), Err(AppError::Git(ref s)) if s.contains("not one waiting")));
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    let one = head_oid(r);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "two"]);
+    assert!(matches!(undo_commit_impl(r, &one), Err(AppError::Git(ref s)) if s.contains("changed")));
+    assert!(matches!(undo_commit_impl(r, "--all"), Err(AppError::Git(_))));
+    assert_eq!(sh(r, &["log", "-1", "--format=%s"]).trim(), "two");
+}
+
+/// A remote with no branches yet, so every commit is one to push.
+fn repo_with_empty_remote() -> (TempDir, TempDir) {
+    let bare = tempfile::tempdir().unwrap();
+    sh(bare.path(), &["init", "-q", "--bare", "."]);
+    let d = repo();
+    sh(d.path(), &["remote", "add", "origin", bare.path().to_str().unwrap()]);
+    (d, bare)
+}
+
+#[test]
+fn undo_commit_of_the_first_commit_leaves_the_branch_unborn() {
+    let (d, _bare) = repo_with_empty_remote();
+    let r = d.path();
+    undo_commit_impl(r, &head_oid(r)).unwrap();
+    assert!(Command::new("git").args(["rev-parse", "-q", "--verify", "HEAD"]).current_dir(r).output().unwrap().stdout.is_empty());
+    assert_eq!(sh(r, &["branch", "--show-current"]).trim(), "main");
+    assert_eq!(sh(r, &["diff", "--cached", "--name-only"]).trim(), "a.txt");
+}
+
+#[test]
+fn outgoing_for_a_branch_tracking_a_local_one_is_what_no_remote_holds() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "on main"]);
+    sh(r, &["config", "branch.autoSetupMerge", "always"]);
+    sh(r, &["switch", "-q", "-c", "feat"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "on feat"]);
+    // push_args pushes this branch to origin, which lacks both
+    assert_eq!(summaries(r), ["on feat", "on main"]);
+}
+
+#[test]
+fn outgoing_is_empty_for_an_upstream_with_no_remote_tracking_ref() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["switch", "-q", "-c", "feat"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "pushed"]);
+    sh(r, &["push", "-q", "-u", "origin", "feat"]);
+    // what a prune leaves, and what a single-branch clone never writes
+    sh(r, &["update-ref", "-d", "refs/remotes/origin/feat"]);
+    assert!(summaries(r).is_empty());
+    assert!(matches!(undo_commit_impl(r, &head_oid(r)), Err(AppError::Git(ref s)) if s.contains("not one waiting")));
+}
+
+#[test]
+fn undo_commit_refuses_while_a_merge_or_rebase_is_in_progress() {
+    let d = conflicted_repo();
+    let r = d.path();
+    assert!(matches!(undo_commit_impl(r, &head_oid(r)), Err(AppError::Git(ref s)) if s.starts_with("A merge is in progress")));
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    let rebase = sh(r, &["rev-parse", "--git-path", "rebase-merge"]);
+    fs::create_dir_all(r.join(rebase.trim())).unwrap();
+    assert!(matches!(undo_commit_impl(r, &head_oid(r)), Err(AppError::Git(ref s)) if s.starts_with("A rebase is in progress")));
+}
+
+#[test]
+fn undo_commit_refuses_a_merge_commit_and_the_first_commit_of_a_detached_head() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["switch", "-q", "-c", "side"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "side"]);
+    sh(r, &["switch", "-q", "main"]);
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "main"]);
+    sh(r, &["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+    assert!(matches!(undo_commit_impl(r, &head_oid(r)), Err(AppError::Git(ref s)) if s.contains("merge commit")));
+    let (d, _bare) = repo_with_empty_remote();
+    let r = d.path();
+    sh(r, &["switch", "-q", "--detach"]);
+    assert!(matches!(undo_commit_impl(r, &head_oid(r)), Err(AppError::Git(ref s)) if s.contains("detached")));
+    assert_eq!(sh(r, &["rev-parse", "HEAD"]).trim().len(), 40);
+}
+
+#[test]
+fn undo_commit_refuses_during_a_push_and_takes_over_from_the_background_fetch() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    let state = std::sync::Arc::new(AppState::new());
+    *state.repo.lock().unwrap() = Some(discover(r).unwrap());
+    let oid = head_oid(r);
+    {
+        let _push = state.net_lock.lock().unwrap();
+        assert!(matches!(undo_commit_guarded(&state, &oid), Err(AppError::Git(ref s)) if s.contains("push or pull")));
+    }
+    // a stand-in for the background fetch, which lets go once it is told to stop
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let s2 = state.clone();
+    let fetch = std::thread::spawn(move || {
+        let _g = s2.net_lock.lock().unwrap();
+        s2.net_background.store(true, std::sync::atomic::Ordering::SeqCst);
+        held_tx.send(()).unwrap();
+        while s2.net_background.load(std::sync::atomic::Ordering::SeqCst) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    });
+    held_rx.recv().unwrap();
+    assert_eq!(undo_commit_guarded(&state, &oid).unwrap(), "one");
+    fetch.join().unwrap();
+}
+
+#[test]
+fn undo_commit_refuses_while_a_cherry_pick_or_revert_is_in_progress() {
+    let (d, _bare) = repo_with_remote();
+    let r = d.path();
+    sh(r, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    let oid = head_oid(r);
+    for (head, what) in [("CHERRY_PICK_HEAD", "A cherry-pick"), ("REVERT_HEAD", "A revert")] {
+        let path = r.join(sh(r, &["rev-parse", "--git-path", head]).trim());
+        fs::write(&path, format!("{oid}\n")).unwrap();
+        assert!(matches!(undo_commit_impl(r, &oid), Err(AppError::Git(ref s)) if s.starts_with(what)), "{head}");
+        fs::remove_file(&path).unwrap();
+    }
+    assert_eq!(undo_commit_impl(r, &oid).unwrap(), "one");
 }

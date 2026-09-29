@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   HEALTHY, ORPHANED, orphanRows, sockName, STATUS, type OrphanAction, type OrphanRow, type OrphanScan,
 } from './orphans';
+import { TermGlyph } from '#features/terminals';
+import type { Info } from '#ipc/terminal';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
@@ -24,6 +26,11 @@ function Labels({ all, show }: { all: string[]; show: string }) {
   );
 }
 
+/** The slot stays for a row that is not in the sidebar, so the ids line up. */
+function SessionGlyph({ session }: { session: DeepReadonly<Info> | undefined }) {
+  return <span className="sess-glyph" aria-hidden="true">{session && <TermGlyph session={session} />}</span>;
+}
+
 export function OrphansOverlay() {
   const s = useApp();
   return s.orphans ? <OrphansDialog scan={s.orphans} /> : null;
@@ -31,6 +38,7 @@ export function OrphansOverlay() {
 
 export function OrphansDialog({ scan }: { scan: DeepReadonly<OrphanScan> }) {
   const { report } = scan;
+  const { terminals } = useApp();
   const [busy, setBusy] = useState<{ key: string; what: 'restore' | 'kill' } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   useEffect(() => {
@@ -88,7 +96,13 @@ export function OrphansDialog({ scan }: { scan: DeepReadonly<OrphanScan> }) {
                   {rows.map((r) => (
                     <tr key={r.key} className={busy?.key === r.key ? 'busy' : ''}>
                       <td><Pill tone={HEALTHY.has(r.status) ? 'default' : 'warn'}>{STATUS[r.status]}</Pill></td>
-                      <td className="num">{r.session ?? ''}</td>
+                      <td className="num">
+                        <span className="sess">
+                          <SessionGlyph session={terminals.find((t) => t.id === r.listed)
+                            ?? scan.listed.find((t) => t.id === r.listed)} />
+                          {r.session ?? ''}
+                        </span>
+                      </td>
                       <td className="num">{r.pid ?? ''}</td>
                       <td className="num">{r.tty}</td>
                       <td className="cmd" title={r.command}>{r.command}</td>

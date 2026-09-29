@@ -92,13 +92,16 @@ it('shows each script\'s command without the words they all start with, and the 
   expect(item(items, 'make deploy').querySelector('.name.wide')!.textContent).toBe('make deploy');
 });
 
-it('runs the command picked as it was saved, and a script by its name', async () => {
+it('runs the command picked as it was saved, and a script by its name, each with its icon', async () => {
   item(await openMenu(), 'Lint').click();
   expect(c.runTask).toHaveBeenCalledWith(
     { t: 'Custom', name: 'Lint', command: 'pnpm lint', repo: HERE, hide_terminal: false, icon: null },
+    { name: 'Lint', command: 'pnpm lint', icon: null },
   );
   item(await openMenu(), 'test').click();
-  expect(c.runTask).toHaveBeenLastCalledWith({ t: 'Script', name: 'test' });
+  expect(c.runTask).toHaveBeenLastCalledWith(
+    { t: 'Script', name: 'test' }, { name: 'test', command: 'vitest run', icon: null },
+  );
 });
 
 it('leaves out the scripts hidden for this repo, and asks no icon for them', async () => {

@@ -17,6 +17,7 @@ const { closeSettings, openSettings, setSetting } = await import('./settings');
 const { view } = await import('#core/session');
 const { run } = await import('#kernel/registry');
 const { buildState } = await import('#editor/editor');
+const { isSideBySide, sideBySide } = await import('#editor/side-by-side');
 const { EditorView } = await import('@codemirror/view');
 const { confirmDialog } = await import('#kernel/dialogs');
 const { OverlayHost } = await import('#app/OverlayHost');
@@ -25,6 +26,7 @@ await import('#app/bootstrap');
 const KEY = 'general.headless-ai-provider';
 const THEME = 'appearance.theme';
 const AUTO_FETCH = 'general.auto-fetch';
+const DIFF = 'appearance.diff-layout';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
@@ -139,7 +141,7 @@ describe('settings dialog', () => {
     expect([...document.querySelectorAll('.tip li')].map((li) => li.textContent)).toEqual([
       'Writes the commit message from the staged diff', 'Describes what each stash holds',
       'Picks an icon for each repository in the switcher',
-      'Picks an icon for each command in the command menu',
+      'Picks an icon for each command in the command menu, and for each terminal',
     ]);
   });
 
@@ -261,7 +263,7 @@ describe('settings dialog', () => {
 });
 
 describe('appearance', () => {
-  const cards = () => [...document.querySelectorAll<HTMLButtonElement>('.settings [role="radio"]')];
+  const cards = () => [...document.querySelectorAll<HTMLButtonElement>('.settings .themes [role="radio"]')];
   const name = (c: Element) => c.querySelector('.theme-name')!.textContent;
   const card = (label: string) => cards().find((c) => name(c) === label)!;
   const checked = () => cards().filter((c) => c.getAttribute('aria-checked') === 'true').map(name);
@@ -335,6 +337,31 @@ describe('appearance', () => {
     await openAppearance();
     expect(document.documentElement.dataset.theme).toBe('gruvbox-light');
     expect(checked()).toEqual(['Gruvbox Light']);
+  });
+
+  it('offers the diff layout, unified by default, and lays the open diff out as the saved choice', async () => {
+    view.setState(await buildState('unstaged', 'a.ts', 'b\n', 'a\n', () => {}, [sideBySide(false)]));
+    S.open = {
+      path: 'a.ts', view: 'unstaged', eol: 'lf', baseline: 'b\n', originalOid: 'o', originalExists: true, docOid: null,
+      dirty: false, badge: null, panel: null, conflicted: false,
+    };
+    try {
+      await openAppearance();
+      expect(pressed(DIFF)).toEqual(['Unified']);
+      choice('Side by side', DIFF).click();
+      await tick();
+      expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [DIFF]: 'side-by-side' });
+      expect(isSideBySide(view)).toBe(true);
+
+      vi.mocked(git.saveSettings).mockRejectedValue({ kind: 'Io', detail: 'disk full' });
+      choice('Unified', DIFF).click();
+      await tick();
+      await tick();
+      expect(pressed(DIFF)).toEqual(['Side by side']);
+      expect(isSideBySide(view)).toBe(true);
+    } finally {
+      S.open = null;
+    }
   });
 });
 

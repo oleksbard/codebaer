@@ -4,12 +4,14 @@ import type { Item } from './pick';
 export type ToastKind = 'info' | 'ok' | 'warn' | 'err';
 export type Toast = { id: number; message: string; kind: ToastKind };
 /** `id` keys the palette component so a request that replaces an open one starts with an empty filter. */
-export type PaletteRequest = { id: number; items: Item<unknown>[]; placeholder: string; resolve(v: unknown): void };
+export type PaletteRequest = {
+  id: number; items: Item<unknown>[]; placeholder: string; wide: boolean; resolve(v: unknown): void;
+};
 /** `ok` and `alt` relabel OK and add a second answer beside it, which `resolve` reports as 'alt'. */
 export type ConfirmRequest = {
   message: string; error?: boolean; ok?: string; alt?: string; resolve(answer: boolean | 'alt'): void;
 };
-export type PromptRequest = { placeholder: string; resolve(value: string | null): void };
+export type PromptRequest = { placeholder: string; wide: boolean; resolve(value: string | null): void };
 
 /** core/state.ts, each feature's state.ts and app/state.ts add their fields by declaration merging;
  *  app/state.ts sets them all. */

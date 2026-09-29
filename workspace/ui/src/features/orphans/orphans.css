@@ -60,6 +60,20 @@
   }
 
   .num { font-family: var(--mono); color: var(--muted); }
+
+  .sess { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
+
+  /* the rail's glyphs, at the size the new-terminal menu draws them */
+  .sess-glyph {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    color: var(--muted);
+
+    svg { width: 16px; height: 16px; }
+    .mark { font-size: 16px; line-height: 1; }
+  }
   .host { color: var(--muted); }
 
   .cmd {

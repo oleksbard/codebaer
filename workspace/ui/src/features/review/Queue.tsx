@@ -1,8 +1,9 @@
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { rowKey, split, STATUS_LABEL, type Row, type Section } from '#core/model';
 import { openPlain } from '#core/session';
-import { stash, unstash } from '#features/git-ops';
+import { age, stash, undoCommit, unstash } from '#features/git-ops';
+import type { Commit } from '#ipc/git';
 import { copyItem } from '#kernel/clipboard';
 import { keyLabel } from '#kernel/keymap';
 import { refs, useApp } from '#kernel/store';
@@ -24,21 +25,27 @@ const MORE = 'M3.5 8h.01M8 8h.01M12.5 8h.01';
 const BOX = 'M2.5 2.5h11v3h-11zM3.5 5.5v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7';
 const STASH = `${BOX}M8 7.5v4M6.25 9.75 8 11.5l1.75-1.75`;
 const UNSTASH = `${BOX}M8 11.5v-4M6.25 9.25 8 7.5l1.75 1.75`;
+const COMMIT = 'M1.5 8h4M10.5 8h4M8 5.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z';
+const UNCOMMIT = 'M1.5 4.5h4M10.5 4.5h4M8 2a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5zM8 7v7M5.75 11.75 8 14l2.25-2.25';
 
 const stop = (fn: () => unknown) => (e: MouseEvent) => { e.stopPropagation(); void fn(); };
 
 /** One entry of a section header. `id` is its `data-all`; an action that cannot run now is not shown. */
 type HeaderAction = { id: string; label: string; icon: string; keys?: string; available: boolean; run(): unknown };
 
+export type QueueSection = Section | 'commits';
+
 export function QueueList({ q, selected, open, onToggle, allChanges }: {
   q: { unstaged: Row[]; staged: Row[] };
   selected: string | null;
-  open: Record<Section, boolean>;
-  onToggle(sec: Section, open: boolean): void;
+  open: Record<QueueSection, boolean>;
+  onToggle(sec: QueueSection, open: boolean): void;
   /** The All changes page is in the main pane. */
   allChanges: boolean;
 }) {
-  const st = useApp().status;
+  const s = useApp();
+  const st = s.status;
+  const { commits, more } = s.outgoing;
   const hasHead = (st?.head ?? null) !== null;
   const conflicted = q.unstaged.some((r) => r.conflicted);
   const changes: HeaderAction[][] = [[
@@ -63,12 +70,25 @@ export function QueueList({ q, selected, open, onToggle, allChanges }: {
     { id: 'stash-staged', label: 'Stash staged changes', icon: STASH,
       available: hasHead && q.staged.length > 0 && !conflicted, run: () => stash('staged') },
   ]];
+  const commitActions: HeaderAction[][] = [[
+    { id: 'undo', label: 'Revert last commit', icon: UNCOMMIT, available: !s.committing, run: undoCommit },
+  ]];
   return (
     <List ref={(el) => { refs.list = el; }}>
-      <SectionBlock id="unstaged" label="Changes" rows={q.unstaged} empty="Nothing left to review"
-        selected={selected} open={open.unstaged} onToggle={onToggle} actions={changes} pinned={[stageAllAction]} />
-      <SectionBlock id="staged" label="Staged" rows={q.staged} empty="Accepted hunks land here"
-        selected={selected} open={open.staged} onToggle={onToggle} actions={staged} />
+      <SectionBlock id="unstaged" label="Changes" count={q.unstaged.length} open={open.unstaged}
+        onToggle={onToggle} actions={changes} pinned={[stageAllAction]}>
+        <FileRows rows={q.unstaged} selected={selected} empty="Nothing left to review" />
+      </SectionBlock>
+      {q.staged.length > 0 &&
+        <SectionBlock id="staged" label="Staged" count={q.staged.length} open={open.staged} onToggle={onToggle}
+          actions={staged}>
+          <FileRows rows={q.staged} selected={selected} />
+        </SectionBlock>}
+      {commits.length > 0 &&
+        <SectionBlock id="commits" label="Commits" count={commits.length} more={more} open={open.commits}
+          onToggle={onToggle} actions={commitActions}>
+          {commits.map((c) => <CommitRow key={c.oid} commit={c} />)}
+        </SectionBlock>}
     </List>
   );
 }
@@ -114,31 +134,47 @@ function HeaderActions({ section, groups }: { section: string; groups: HeaderAct
   );
 }
 
-function SectionBlock({ id, label, rows, empty, actions, pinned = [], selected, open, onToggle }: {
-  id: Section;
+function SectionBlock({ id, label, count, more = false, actions, pinned = [], open, onToggle, children }: {
+  id: QueueSection;
   label: string;
-  rows: Row[];
-  empty: string;
+  count: number;
+  /** There are more than `count`. */
+  more?: boolean;
   actions: HeaderAction[][];
   /** Buttons of their own after the menu, shown while available. */
   pinned?: HeaderAction[];
-  selected: string | null;
   open: boolean;
-  onToggle(sec: Section, open: boolean): void;
+  onToggle(sec: QueueSection, open: boolean): void;
+  children: ReactNode;
 }) {
   return (
     <details data-sec={id} open={open} onToggle={(e) => onToggle(id, e.currentTarget.open)}>
       <summary className="sec">
-        <span className="l">{label}{rows.length > 0 && <span className="n">{rows.length}</span>}</span>
+        <span className="l">{label}{count > 0 && <span className="n">{count}{more && '+'}</span>}</span>
         <span className="r">
           <HeaderActions section={label} groups={actions} />
           {pinned.filter((a) => a.available).map((a) => <ActionButton key={a.id} a={a} />)}
         </span>
       </summary>
-      {rows.length
-        ? rows.map((r) => <QueueRow key={rowKey(r)} row={r} selected={selected === rowKey(r)} />)
-        : <div className="empty-sec">{empty}</div>}
+      {children}
     </details>
+  );
+}
+
+function FileRows({ rows, selected, empty }: { rows: Row[]; selected: string | null; empty?: string }) {
+  if (!rows.length) return <div className="empty-sec">{empty}</div>;
+  return rows.map((r) => <QueueRow key={rowKey(r)} row={r} selected={selected === rowKey(r)} />);
+}
+
+/** Not a `.row`: the list's arrow keys walk the files and pass these by. */
+function CommitRow({ commit: c }: { commit: Commit }) {
+  const short = c.oid.slice(0, 7);
+  return (
+    <div className="commit-row" data-oid={c.oid} title={`${c.summary}\n${short} · ${c.author} · ${age(c.time)}`}>
+      <StrokeIcon d={COMMIT} size={14} />
+      <span className="summary">{c.summary}</span>
+      <span className="oid">{short}</span>
+    </div>
   );
 }
 

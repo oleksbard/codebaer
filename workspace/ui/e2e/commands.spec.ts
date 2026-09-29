@@ -48,3 +48,22 @@ test('a script hidden in Settings leaves the command menu, stays hidden, and com
   await openMenu();
   await expect(menuItem('dev')).toBeVisible();
 });
+
+test('a command menu taller than the window scrolls, with Manage commands kept in view', async ({ page, open }) => {
+  await page.setViewportSize({ width: 1000, height: 220 });
+  const mock = await open();
+  await page.locator('.task-b').click();
+  await mock.idle();
+  const menu = page.locator('.task-menu');
+  const box = (await menu.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(220);
+  await expect(page.getByRole('menuitem', { name: /Manage commands/ })).toBeInViewport();
+  const last = page.locator('.task-menu .menu-item').filter({ hasText: 'vitest run' });
+  await expect(last).not.toBeInViewport();
+
+  await page.locator('.task-scroll').hover();
+  await page.mouse.wheel(0, 400);
+  await expect(last).toBeInViewport();
+  await expect(page.getByRole('menuitem', { name: /Manage commands/ })).toBeInViewport();
+});

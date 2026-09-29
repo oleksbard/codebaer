@@ -33,6 +33,8 @@ declare module '#kernel/store' {
     fatal: string | null;
     busy: boolean;
     changesOnly: boolean;
+    /** Folds just the panel; `sidebarHidden` takes the activity bar with it. */
+    sideCollapsed: boolean;
     /** Directory paths expanded in the Files tree; outlives the tab switch that unmounts the tree. */
     filesOpen: Set<string>;
     /** Until the launch has opened its repo or found none to open, so the no-repo screen does not flash first. */
@@ -44,6 +46,7 @@ export const coreState = () => ({
   root: null, rootLabel: null, title: null, status: null, tab: 'changes' as Tab, open: null, selected: null,
   refreshing: false, refreshAgain: false, flushing: null, fatal: null, busy: false,
   changesOnly: localStorage.getItem('codebaer.changesOnly') === 'true',
+  sideCollapsed: localStorage.getItem('codebaer.sideCollapsed') === 'true',
   filesOpen: new Set<string>(),
   starting: true,
 });

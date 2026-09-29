@@ -29,6 +29,8 @@ const cmd = (command: string, repo: string | null): CustomCommand =>
 const hidden: Task = { t: 'Custom', ...cmd('pnpm test', null), hide_terminal: true };
 const task = (id: number, state: TermState = { t: 'Running', command: null, since_ms: 0 }): Info =>
   ({ id, title: 'pnpm test', cwd: '/r', tier: 'process', state, task: true });
+const SCRIPT = { name: 'test', command: 'vitest', icon: null };
+const SAVED = { name: '', command: 'pnpm test', icon: null };
 const shell = (id: number): Info => ({ id, title: 'zsh', cwd: '/r', tier: 'marks', state: { t: 'Idle' } });
 
 describe('task lifecycle', () => {
@@ -41,6 +43,7 @@ describe('task lifecycle', () => {
     S.tab = 'changes';
     S.toasts = [];
     S.termAttention = new Set();
+    S.termIcons = new Map();
     S.palette = null; S.confirm = null; S.prompt = null; S.orphans = null; S.settingsOpen = false;
     vi.mocked(term.runTask).mockResolvedValue(7);
     vi.mocked(term.promote).mockResolvedValue();
@@ -56,17 +59,23 @@ describe('task lifecycle', () => {
   it('opens the dialog for the task it started, and leaves the terminal view alone', async () => {
     S.terminals = [shell(1)];
     S.activeTerm = 1;
-    await c.runTask({ t: 'Script', name: 'test' });
+    await c.runTask({ t: 'Script', name: 'test' }, SCRIPT);
     expect(term.runTask).toHaveBeenCalledWith({ t: 'Script', name: 'test' }, 120, 30);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     expect(S.taskView).toBe(4);
     expect(S.activeTerm).toBe(1);
   });
 
+  it('hands the session the icon the command menu draws for its task', async () => {
+    await c.runTask({ t: 'Script', name: 'test' }, SCRIPT);
+    onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
+    expect(S.termIcons.get(4)).toEqual(SCRIPT);
+  });
+
   it('still opens the dialog when the Spawned beats the reply to the run', async () => {
     let reply!: (req: number) => void;
     vi.mocked(term.runTask).mockReturnValue(new Promise((r) => { reply = r; }));
-    const running = c.runTask({ t: 'Script', name: 'test' });
+    const running = c.runTask({ t: 'Script', name: 'test' }, SCRIPT);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     expect(S.taskView).toBeNull();
     reply(7);
@@ -75,7 +84,7 @@ describe('task lifecycle', () => {
   });
 
   it('does not open over something that took the screen meanwhile, and says where the output went', async () => {
-    await c.runTask({ t: 'Script', name: 'test' });
+    await c.runTask({ t: 'Script', name: 'test' }, SCRIPT);
     S.settingsOpen = true;
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     expect(S.taskView).toBeNull();
@@ -85,7 +94,7 @@ describe('task lifecycle', () => {
 
   it('says why a run was refused', async () => {
     vi.mocked(term.runTask).mockRejectedValue({ kind: 'Io', detail: 'package.json has no script named test' });
-    await c.runTask({ t: 'Script', name: 'test' });
+    await c.runTask({ t: 'Script', name: 'test' }, SCRIPT);
     expect(S.toasts.map((t) => [t.kind, t.message])).toEqual([['err', 'package.json has no script named test']]);
   });
 
@@ -190,7 +199,7 @@ describe('task lifecycle', () => {
   });
 
   it('runs a hidden task with no dialog, and closes it the moment it ends', async () => {
-    await c.runTask(hidden);
+    await c.runTask(hidden, SAVED);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     expect(S.taskView).toBeNull();
     expect(S.toasts).toEqual([]);
@@ -200,13 +209,13 @@ describe('task lifecycle', () => {
   });
 
   it('opens the dialog for a saved command that shows its terminal', async () => {
-    await c.runTask({ t: 'Custom', ...cmd('pnpm test', null) });
+    await c.runTask({ t: 'Custom', ...cmd('pnpm test', null) }, SAVED);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     expect(S.taskView).toBe(4);
   });
 
   it('stops a hidden task that is still running at the limit', async () => {
-    await c.runTask(hidden);
+    await c.runTask(hidden, SAVED);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     vi.advanceTimersByTime(HIDDEN_TASK_MS - 1);
     expect(term.close).not.toHaveBeenCalled();
@@ -220,7 +229,7 @@ describe('task lifecycle', () => {
   });
 
   it('treats a hidden task opened from the menu as an ordinary one', async () => {
-    await c.runTask(hidden);
+    await c.runTask(hidden, SAVED);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     c.openTask(4);
     vi.advanceTimersByTime(HIDDEN_TASK_MS);
@@ -230,7 +239,7 @@ describe('task lifecycle', () => {
   });
 
   it('closes a hidden task that ended while no window was listening', async () => {
-    await c.runTask(hidden);
+    await c.runTask(hidden, SAVED);
     onTermEvent({ t: 'Spawned', req: 7, info: task(4) });
     onTermEvent({ t: 'Hello', proto: 3, sessions: [task(4, { t: 'Exited', code: 0 })] });
     expect(term.close).toHaveBeenCalledExactlyOnceWith(4);

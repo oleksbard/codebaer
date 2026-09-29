@@ -10,3 +10,26 @@
 
   svg { flex: none; color: var(--muted); }
 }
+
+.commit-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin: 0 8px;
+  padding: 2px 8px;
+  min-height: 26px;
+
+  svg { color: var(--muted); }
+
+  .summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .oid {
+    color: var(--faint);
+    font: var(--fs-1)/16px var(--mono);
+  }
+}

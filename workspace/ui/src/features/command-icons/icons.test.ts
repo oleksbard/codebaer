@@ -104,6 +104,15 @@ describe('ensureIcons', () => {
     expect(S.commandIcons[iconKey('shot', 'node shot.mjs')]).toBe('lucide:camera');
   });
 
+  // before the next one, which shows that a quiet failure leaves the one warning of the launch to the menu
+  it('asks about a line the rail and the menu share once, and a failure the rail asked for says nothing', async () => {
+    vi.mocked(git.aiCommandIcons).mockRejectedValue({ kind: 'Ai', detail: 'claude CLI not found' });
+    await ensureIcons([item('', 'pnpm dev')], { quiet: true });
+    await ensureIcons([item('', 'pnpm dev')]);
+    expect(asked()).toEqual([[item('', 'pnpm dev')]]);
+    expect(S.toasts).toEqual([]);
+  });
+
   it('says once per launch that the AI failed, and does not ask about those commands again', async () => {
     vi.mocked(git.aiCommandIcons).mockRejectedValue({ kind: 'Ai', detail: 'claude CLI not found' });
     await ensureIcons([item('fmt', 'prettier -w .')]);

@@ -38,12 +38,20 @@ export const editorTheme = EditorView.theme(
     '.cm-deletedChunk': { backgroundColor: 'var(--del-bg)' },
     '.cm-insertedLine': { backgroundColor: 'var(--add-bg)' },
     '&.cm-merge-b .cm-changedLine': { backgroundColor: 'var(--add-bg)' },
+    '&.cm-merge-a .cm-changedLine': { backgroundColor: 'var(--del-bg)' },
     // the line tint already marks the change; @codemirror/merge's own word-level fill on top of it
     // reads as a second highlight per token, so both word rules are cleared rather than recoloured
     '&.cm-merge-b .cm-changedText, &.cm-merge-a .cm-changedText': { background: 'none' },
     '.cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': { background: 'none' },
     '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--add)' },
-    '.cm-deletedLineGutter': { background: 'var(--del)' },
+    '.cm-deletedLineGutter, &.cm-merge-a .cm-changedLineGutter': { background: 'var(--del)' },
+    // side by side, the left editor shows the deleted lines, and the widget that held them keeps only the buttons
+    '&.cm-side .cm-deletedChunk .cm-deletedLine': { display: 'none' },
+    // the chunk buttons' width and their inset, so the line wraps before it reaches them
+    '&.cm-side .cm-chunkStart': { paddingRight: '118px' },
+    '.cm-mergeSpacer': {
+      background: 'repeating-linear-gradient(-45deg, transparent 0 5px, var(--line) 5px 6px)',
+    },
     // floated rather than @codemirror/merge's absolute position: lines wrap, so the deleted text flows
     // around the buttons instead of under them. The merge root outranks the library's base theme rule of the
     // same shape. A chunk that deletes nothing keeps the overlay: a row of its own would get the gutter's
@@ -52,7 +60,8 @@ export const editorTheme = EditorView.theme(
     '&.cm-merge-b .cm-deletedChunk .cm-chunkButtons': {
       position: 'static', float: 'right', display: 'flex', margin: '1px 5px 1px 12px',
     },
-    '&.cm-merge-b .cm-deletedChunk:not(:has(.cm-deletedLine)) .cm-chunkButtons': {
+    ['&.cm-merge-b .cm-deletedChunk:not(:has(.cm-deletedLine)) .cm-chunkButtons,'
+      + ' &.cm-merge-b.cm-side .cm-deletedChunk .cm-chunkButtons']: {
       position: 'absolute', float: 'none', margin: '0',
     },
     // [name] outranks the library's saturated [name=accept]/[name=reject] fills; quieter than the toolbar's

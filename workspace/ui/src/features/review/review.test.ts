@@ -1,12 +1,14 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openRow, refresh, view } from '#core/session';
+import { openPlain, openRow, refresh, view } from '#core/session';
 import { getOriginalDoc } from '#editor/editor';
+import { isSideBySide } from '#editor/side-by-side';
 import type { BlameLine, Blob, Status } from '#ipc/git';
 import { confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
 import { blob, file, g, headerItem, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
 import { accept, acceptFile, discardAll, reject, rejectFile, unstageHunk } from './hunks';
+import { applyDiffLayout } from './index';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -252,18 +254,21 @@ describe('the title bar', () => {
     expect(S.open!.badge).toBe(null);
   });
 
-  it('counts the hunk and offers Reject and Accept for an unstaged record', async () => {
-    await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
+  it('counts the hunks and offers Reject file and Accept file for an unstaged record', async () => {
+    await openUnstaged('a.txt', blob('a\nb\nc\nd\ne\nf\ng\n'), file('A\nb\nc\nd\ne\nf\nG\n'));
     await tick();
-    expect(document.querySelector('.tbar .pos')!.textContent).toBe('hunk 1 of 1');
-    expect(document.querySelector('.tbar .mode')!.textContent).toBe('index → working tree');
+    expect(document.querySelector('.tbar .pos')!.textContent).toBe('hunk 1 of 2');
     const btns = [...document.querySelectorAll<HTMLButtonElement>('.tbar .right .btn')];
-    expect(btns.map((b) => b.textContent)).toEqual(['Reject ⌘N', 'Accept ⌘Y']);
+    expect(btns.map((b) => b.textContent)).toEqual(['Reject file ⌘⇧N', 'Accept file ⌘⇧Y']);
 
-    g.stageContent!.mockResolvedValue({ oid: 'oid2' });
     btns[1]!.click();
+    await vi.waitFor(() => expect(g.stagePath!).toHaveBeenCalledExactlyOnceWith('a.txt'));
+    expect(g.stageContent!).not.toHaveBeenCalled();
 
-    await vi.waitFor(() => expect(g.stageContent!).toHaveBeenCalledTimes(1));
+    confirmMock.mockResolvedValue(true);
+    btns[0]!.click();
+    await vi.waitFor(() => expect(g.revertPath!).toHaveBeenCalledExactlyOnceWith('a.txt'));
+    expect(g.writeFile!).not.toHaveBeenCalled();
   });
 });
 
@@ -298,6 +303,83 @@ describe('accept moves on to the next change', () => {
     await tick();
 
     expect(S.open?.path).toBe('b.txt');
+  });
+});
+
+describe('accepting the whole file', () => {
+  const three = (): Status => ({ ...status('a.txt'), files: ['a.txt', 'b.txt', 'c.txt'].map((path) => ({
+    path, indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false,
+  })) });
+
+  const left = (accepted: string): Status => ({ ...three(), files: three().files.filter((f) => f.path !== accepted) });
+
+  it.each([
+    ['a.txt', 'b.txt'],
+    ['b.txt', 'a.txt'],
+    ['c.txt', 'a.txt'],
+  ])('opens the first file left in the queue after accepting %s, as accepting its last hunk does',
+    async (accepted, next) => {
+      S.status = three();
+      await openUnstaged(accepted, blob('a\n'), file('A\n'));
+      g.status!.mockResolvedValue(left(accepted));
+
+      await acceptFile(accepted);
+
+      expect(g.stagePath!).toHaveBeenCalledExactlyOnceWith(accepted);
+      expect(S.open?.path).toBe(next);
+    });
+
+  it('moves on the same way while the refresh after the stage is still reading the status', async () => {
+    S.status = three();
+    await openUnstaged('a.txt', blob('a\n'), file('A\n'));
+    let answer!: (s: Status) => void;
+    g.status!.mockReturnValue(new Promise<Status>((done) => { answer = done; }));
+
+    await acceptFile('a.txt');
+    expect(S.open?.path).toBe('b.txt');
+
+    answer(left('a.txt'));
+    await tick();
+    expect(S.open?.path).toBe('b.txt');
+  });
+
+  it('keeps a conflict marked resolved open', async () => {
+    S.status = { ...three(), files: [{ ...three().files[0]!, indexStatus: 'U', worktreeStatus: 'U', conflicted: true },
+      ...three().files.slice(1)] };
+    g.status!.mockResolvedValue(S.status);
+    g.readFile!.mockResolvedValue(file('resolved\n'));
+    await openRow({ section: 'unstaged', path: 'a.txt', letter: '!', untracked: false, conflicted: true });
+    expect(S.open?.conflicted).toBe(true);
+
+    await acceptFile('a.txt');
+
+    expect(g.stagePath!).toHaveBeenCalledWith('a.txt');
+    expect(S.open?.path).toBe('a.txt');
+  });
+
+  it('stays on the file when git refuses the stage, or when no other file is left', async () => {
+    await openUnstaged('a.txt', blob('a\n'), file('A\n'));
+    g.stagePath!.mockRejectedValueOnce({ kind: 'Git', detail: 'index.lock exists' });
+    await acceptFile('a.txt');
+    expect(S.open?.path).toBe('a.txt');
+
+    await acceptFile('a.txt');
+    expect(g.stagePath!).toHaveBeenCalledTimes(2);
+    expect(S.open?.path).toBe('a.txt');
+    expect(S.toasts.at(-1)?.message).toBe('Nothing left to review');
+  });
+
+  it('keeps a file opened from the Files tab open', async () => {
+    g.readFile!.mockResolvedValue(file('A\n'));
+    await openPlain('a.txt');
+    g.status!.mockResolvedValue(status('b.txt'));
+
+    await acceptFile('a.txt');
+    await tick();
+
+    expect(g.stagePath!).toHaveBeenCalledWith('a.txt');
+    expect(S.open?.path).toBe('a.txt');
+    expect(S.open?.view).toBe('plain');
   });
 });
 
@@ -361,6 +443,56 @@ describe('the inline hunk buttons act on their own chunk', () => {
   });
 });
 
+describe('side by side', () => {
+  const host = (): Element => document.querySelector('.editor-host')!;
+  const toggle = (): HTMLButtonElement | null => document.querySelector('.tbar [aria-label="Side by side"]');
+  const sides = (): string[] =>
+    [...host().children].map((c) => (c.classList.contains('cm-merge-a') ? 'left' : 'right'));
+  afterEach(() => {
+    S.settings = { ...S.settings, 'appearance.diff-layout': 'unified' };
+    applyDiffLayout();
+  });
+
+  it('the file bar button switches the unstaged view, saves the choice, and keeps it for the next file', async () => {
+    await openUnstaged('a.txt', blob('a\nb\nc\n'), file('a\nB\nc\n'));
+    await tick();
+    expect(sides()).toEqual(['right']);
+    expect(toggle()!.getAttribute('aria-pressed')).toBe('false');
+
+    toggle()!.click();
+    await tick();
+    expect(g.saveSettings!)
+      .toHaveBeenLastCalledWith(expect.objectContaining({ 'appearance.diff-layout': 'side-by-side' }));
+    expect(host().classList.contains('split')).toBe(true);
+    expect(sides()).toEqual(['left', 'right']);
+    expect(host().querySelector('.cm-merge-a .cm-changedLine')!.textContent).toBe('b');
+    // the lines it took out show on the left, not inline
+    expect(view.dom.classList.contains('cm-side')).toBe(true);
+
+    await openUnstaged('b.txt', blob('x\n'), file('y\n'));
+    await tick();
+    expect(isSideBySide(view)).toBe(true);
+    expect(host().querySelector('.cm-merge-a')!.textContent).toContain('x');
+
+    toggle()!.click();
+    await tick();
+    expect(g.saveSettings!).toHaveBeenLastCalledWith(expect.objectContaining({ 'appearance.diff-layout': 'unified' }));
+    expect(sides()).toEqual(['right']);
+    expect(isSideBySide(view)).toBe(false);
+  });
+
+  it('leaves the staged view unified', async () => {
+    S.settings = { ...S.settings, 'appearance.diff-layout': 'side-by-side' };
+    g.readBlob!.mockImplementation((rev: unknown) =>
+      Promise.resolve(rev === 'head' ? blob('a\n') : blob('A\n', 'oidA')));
+    await openRow({ section: 'staged', path: 'a.txt', letter: 'M', untracked: false, conflicted: false });
+    await tick();
+    expect(isSideBySide(view)).toBe(false);
+    expect(sides()).toEqual(['right']);
+    expect(toggle()).toBeNull();
+  });
+});
+
 describe('changes-only survives the refresh path', () => {
   const lines = (mod: Record<number, string>): string =>
     Array.from({ length: 30 }, (_, i) => mod[i + 1] ?? `line ${i + 1}`).join('\n') + '\n';
@@ -410,11 +542,11 @@ describe('blame in the file bar', () => {
 
     moveTo(3);
     await settle();
-    expect(S.blame).toBe('9081303 · Ada · 2026-09-17 · second');
+    expect(S.blame?.summary).toBe('second');
 
     late(line('1111111111111111111111111111111111111111', 'first'));
     await tick();
-    expect(S.blame).toBe('9081303 · Ada · 2026-09-17 · second');
+    expect(S.blame?.summary).toBe('second');
   });
 
   it('blames the edited buffer and shows nothing when git cannot blame', async () => {

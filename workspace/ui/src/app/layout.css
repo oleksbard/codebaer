@@ -13,15 +13,27 @@
 
 .app.nosidebar .act,
 .app.nosidebar .side,
-.app.nosidebar .gutter {
+.app.nosidebar .gutter,
+.app.nosidebar .side-handle {
   display: none;
+}
+
+/* 1 open, 0 collapsed. Registered so that it can transition: the drag, the terminals tab and Cmd+B change
+   the columns without it and stay instant */
+@property --side-open {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
 }
 
 .frame {
   grid-area: frame;
   display: grid;
+  /* set here as well, for a webview without @property, where an unset var() would void the columns */
+  --side-open: 1;
   /* the terminals layout re-templates the same columns, so the width lives here only */
-  grid-template-columns: min(var(--side-w,272px),calc(100% - 400px)) minmax(0,1fr);
+  grid-template-columns: calc(min(var(--side-w,272px),calc(100% - 400px)) * var(--side-open)) minmax(0,1fr);
+  transition: --side-open 240ms cubic-bezier(.2,0,0,1);
   grid-template-rows: minmax(0,1fr);
   grid-template-areas: "side main";
   min-width: 0;
@@ -129,6 +141,8 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  /* CodeMirror's gutters take z-index 200, which would otherwise paint over the sidebar's handle */
+  isolation: isolate;
 }
 
 .side {
@@ -137,5 +151,38 @@
   background: var(--panel);
   display: flex;
   flex-direction: column;
+  /* with the width below, the panel slides out under the frame's left edge instead of reflowing as its
+     track narrows */
+  align-items: flex-end;
   min-height: 0;
+
+  > * { width: calc(100% / max(var(--side-open), .01)); }
+}
+
+.app.sidecollapsed {
+  .frame { --side-open: 0; }
+  .side { visibility: hidden; transition: visibility 0s 240ms; }
+  .gutter { visibility: hidden; }
+}
+
+.side-handle {
+  grid-area: side;
+  justify-self: end;
+  align-self: start;
+  z-index: 2;
+  width: 18px;
+  height: 28px;
+  /* below the pane's toolbar; straddles the sidebar's edge when open, and when collapsed sits inside the
+     frame, its left border clipped against the frame's own */
+  margin: 48px calc(8px * var(--side-open) - 17px) 0 0;
+  border: 1px solid var(--line);
+  border-radius: calc(9px * var(--side-open)) 9px 9px calc(9px * var(--side-open));
+  background: var(--panel);
+
+  &:hover { background: var(--panel2); }
+  svg { transform: rotate(calc(180deg * (1 - var(--side-open)))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame, .app.sidecollapsed .side { transition: none; }
 }

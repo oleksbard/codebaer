@@ -109,8 +109,17 @@ export async function unstageHunk(): Promise<void> {
 
 /** Stages the file as it is on disk, so its unsaved changes are saved first. */
 export async function acceptFile(path: string): Promise<void> {
-  if (S.open?.path === path && !(await saveFirst())) return;
-  await guarded(() => git.stagePath(path));
+  const o = S.open?.path === path ? S.open : null;
+  if (o && !(await saveFirst())) return;
+  // taken before the stage, since the refresh guarded() starts may or may not have landed when it returns
+  const rows = S.status ? buildQueue(S.status).unstaged : [];
+  const staged = await guarded(async () => { await git.stagePath(path); return true; });
+  // on to the first file left, as accepting its last hunk does; a conflict marked resolved and a file opened from
+  // the Files tab stay open
+  if (!staged || !o || S.open !== o || o.view !== 'unstaged' || o.conflicted) return;
+  const next = rows.find((r) => r.path !== path);
+  if (next) await openRow(next);
+  else toast('Nothing left to review', 'info');
 }
 export const unstageFile = (path: string): Promise<void | undefined> =>
   guarded(() => git.unstagePath(path));

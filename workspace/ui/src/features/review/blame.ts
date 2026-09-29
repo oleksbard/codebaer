@@ -1,8 +1,7 @@
 import type { Text } from '@codemirror/state';
-import { blameText } from '#core/model';
 import { view } from '#core/session';
 import type { Open } from '#core/state';
-import { git } from '#ipc/git';
+import { git, type BlameLine } from '#ipc/git';
 import { notify, S } from '#kernel/store';
 
 /** `doc` is CodeMirror's immutable Text, so comparing it by identity catches every edit,
@@ -15,9 +14,12 @@ let blameTimer: ReturnType<typeof setTimeout> = 0;
 const sameAsk = (a: Asked, b: Asked | null): boolean =>
   !!b && a.open === b.open && a.line === b.line && a.doc === b.doc && a.head === b.head;
 
-function setBlame(text: string | null): void {
-  if (S.blame === text) return;
-  S.blame = text;
+const sameLine = (a: BlameLine | null, b: BlameLine | null): boolean => a === b
+  || (!!a && !!b && a.oid === b.oid && a.author === b.author && a.time === b.time && a.summary === b.summary);
+
+function setBlame(b: BlameLine | null): void {
+  if (sameLine(S.blame, b)) return;
+  S.blame = b;
   notify();
 }
 
@@ -48,7 +50,7 @@ async function loadBlame(ask: Asked): Promise<void> {
   // dirty buffer is ahead of disk, and the agent can rewrite the file between two cursor moves
   try {
     const b = await git.blame(o.path, ask.line, ask.doc.toString(), o.eol);
-    if (S.open === o && sameAsk(ask, asked)) setBlame(blameText(b));
+    if (S.open === o && sameAsk(ask, asked)) setBlame(b);
   } catch {
     // an untracked path and an unborn HEAD have nothing to blame, and this runs on every cursor
     // move: a toast per keystroke would bury the ones that matter. Rust logs every git call it

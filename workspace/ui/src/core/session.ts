@@ -473,6 +473,17 @@ export function toggleChangesOnly(): void {
   notify();
 }
 
+export function toggleSide(): void {
+  S.sideCollapsed = !S.sideCollapsed;
+  localStorage.setItem('codebaer.sideCollapsed', String(S.sideCollapsed));
+  notify();
+}
+
+/** For whatever focuses inside the sidebar: a collapsed one is hidden, and the focus would miss. */
+export function expandSide(): void {
+  if (S.sideCollapsed) toggleSide();
+}
+
 export function hasUnstaged(path: string): boolean {
   return !!S.status?.files.some((f) => f.path === path && (f.worktreeStatus !== '.' || f.untracked));
 }

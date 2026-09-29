@@ -16,6 +16,59 @@
   background: var(--bg);
 }
 
+/* holds the badge beside the host, since mounting a terminal replaces the host's children */
+.term-frame {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+
+  /* keeps xterm's own layers, up to z-index 11, under the badge */
+  > .term-host { isolation: isolate; }
+}
+
+.term-outside {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 28px);
+  height: 28px;
+  padding: 0 10px 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: color-mix(in oklch, var(--panel) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px -6px var(--scrim);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  animation: term-outside-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &[data-near] { opacity: 0.1; }
+
+  .folder { flex: none; margin-left: 3px; color: var(--faint); }
+
+  .where { display: flex; min-width: 0; }
+
+  /* the path around the name gives way first */
+  .lead, .tail, .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .lead, .tail { flex: 0 100 auto; color: var(--faint); }
+  .name { flex: 0 1 auto; font-weight: 600; color: var(--text); }
+  .away { flex: none; margin-left: 1px; color: var(--faint); }
+}
+
+@keyframes term-outside-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+}
+
 .term,
 .term .xterm {
   height: 100%;
@@ -67,9 +120,10 @@
   }
 }
 
-:is(.rail-b, .term-menu) .agent.claude { color: var(--agent-claude); }
-:is(.rail-b, .term-menu) .agent.codex { color: var(--agent-codex); }
-:is(.rail-b, .term-menu) .agent.opencode { color: var(--agent-opencode); }
+/* wherever a session's glyph is drawn: the rail, the new-terminal menu, the orphans dialog */
+.agent.claude { color: var(--agent-claude); }
+.agent.codex { color: var(--agent-codex); }
+.agent.opencode { color: var(--agent-opencode); }
 
 .blank .dim { color: var(--faint); font-family: var(--mono); }
 
@@ -96,7 +150,10 @@
 
 .rail-b {
   .num { font: 20px var(--mono); }
-  .agent { display: grid; }
+  .agent, .pick, .ended { display: grid; }
+  .pick svg { width: 24px; height: 24px; }
+  .ended { color: var(--faint); }
+  &:is(:hover, .on) .ended { color: inherit; }
   .mark { font-size: 32px; line-height: 1; }
 
   .term-dot { position: absolute; right: 5px; bottom: 5px; }
@@ -107,17 +164,18 @@
   &.outside {
     > .cap { color: var(--faint); font-style: italic; }
     .away { color: var(--faint); }
-    .agent, .num { opacity: 0.45; filter: grayscale(1); }
+    .agent, .num, .pick { opacity: 0.45; filter: grayscale(1); }
   }
 
   &.outside:is(:hover, .on) {
     > .cap, .away { color: var(--muted); }
-    .agent, .num { opacity: 0.8; }
+    .agent, .num, .pick { opacity: 0.8; }
   }
 
   /* a session producing output is thinking; one at its prompt is silent */
   &.busy .agent:not(.claude),
-  &.busy .num { animation: term-work 1.2s ease-in-out infinite; }
+  &.busy .num,
+  &.busy .pick { animation: term-work 1.2s ease-in-out infinite; }
 
   .bell {
     position: absolute;
@@ -136,5 +194,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .rail-b.busy .agent,
-  .rail-b.busy .num { animation: none; opacity: 0.55; }
+  .rail-b.busy .num,
+  .rail-b.busy .pick { animation: none; opacity: 0.55; }
+  .term-outside { animation: none; }
 }

@@ -1,16 +1,19 @@
 import { onCursor } from '#editor/editor';
+import { sideBySide } from '#editor/side-by-side';
 import { toast } from '#kernel/dialogs';
 import { defineFeature } from '#kernel/registry';
 import { S } from '#kernel/store';
 import {
-  dropPage, onPage, stackAccept, stackFile, stackHunk, stackPath, stackReject, syncAllChanges,
+  dropPage, onPage, relayoutAllChanges, stackAccept, stackFile, stackHunk, stackPath, stackReject, syncAllChanges,
   toggleAllChanges,
 } from './all-changes';
 import { cursorMoved } from './blame';
+import { showChanges } from './changes-tab';
 import {
   accept, acceptFile, discardAll, nextFile, nextHunk, reject, rejectFile, stageAll, unstageAll, unstageFile,
   unstageHunk,
 } from './hunks';
+import { layoutMain } from './layout';
 
 // wired where the feature is defined: every open, refresh and cursor move ends in onCursor.run
 onCursor.run = () => {
@@ -38,6 +41,7 @@ export const review = defineFeature({
     { id: 'review.discardFile', label: 'Git: Discard File', run: () => onFile(rejectFile) },
     { id: 'review.unstageFile', label: 'Git: Unstage File', run: () => S.open && unstageFile(S.open.path) },
     { id: 'review.allChanges', label: 'Show All Changes', when: () => !onPage(), run: toggleAllChanges },
+    { id: 'review.showChanges', run: showChanges },
     { id: 'review.nextHunk', run: () => (onPage() ? stackHunk(1) : nextHunk(1)) },
     { id: 'review.prevHunk', run: () => (onPage() ? stackHunk(-1) : nextHunk(-1)) },
     { id: 'review.accept', run: () => (onPage() ? stackAccept() : accept()) },
@@ -46,11 +50,20 @@ export const review = defineFeature({
     { id: 'review.nextFile', run: () => (onPage() ? stackFile(1) : nextFile(1)) },
     { id: 'review.prevFile', run: () => (onPage() ? stackFile(-1) : nextFile(-1)) },
   ],
+  editorExtensions: [sideBySide(false)],
+  onOpen: layoutMain,
   onRefresh: syncAllChanges,
   onRepoChange: { reset: dropPage },
 });
 
-export { QueueList } from './Queue';
+/** For Settings, after the diff layout may have changed. */
+export function applyDiffLayout(): void {
+  layoutMain();
+  relayoutAllChanges();
+}
+
+export { QueueList, type QueueSection } from './Queue';
 export { ReviewPane } from './ReviewPane';
 export { AllChanges } from './AllChanges';
 export { allChangesShown, rethemeAllChanges } from './all-changes';
+export { showChanges } from './changes-tab';

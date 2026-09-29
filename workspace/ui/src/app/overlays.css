@@ -19,6 +19,8 @@
   .dialog-actions { padding: 12px 14px; }
 }
 
+:is(.pal, .prompt).wide { width: min(800px, calc(100vw - 32px)); }
+
 /* Top-anchored, not centered: the list shrinks as you type and a centered box would jump. */
 .pal {
   margin-top: 10vh;
@@ -48,7 +50,14 @@
     .note { flex: none; color: var(--muted); font-size: var(--fs-2); }
   }
 
+  .lbl { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .sub { display: block; margin-top: 2px; color: var(--muted); font-size: var(--fs-2); }
   .desc { color: var(--faint); font-size: var(--fs-2); }
+
+  &.wide {
+    ul { max-height: min(600px, 70vh); }
+    li { padding: 9px 12px; }
+  }
 }
 
 .toasts {

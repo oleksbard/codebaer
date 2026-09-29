@@ -27,6 +27,14 @@ pub enum AutoFetch {
     Off,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DiffLayout {
+    #[default]
+    Unified,
+    SideBySide,
+}
+
 /// The ids of the frontend's `THEMES` in `workspace/ui/src/ui/theme.ts`; a theme added there needs its variant here.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -63,6 +71,8 @@ pub struct Settings {
     pub auto_fetch: AutoFetch,
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
+    #[serde(rename = "appearance.diff-layout")]
+    pub diff_layout: DiffLayout,
 }
 
 /// A command saved in Settings. `repo` is the canonical root of the one repository it belongs to, the
@@ -138,6 +148,7 @@ fn from_file(map: &Map<String, Value>) -> Settings {
         headless_ai_provider: choice(map, "general.headless-ai-provider"),
         auto_fetch: choice(map, "general.auto-fetch"),
         theme: choice(map, "appearance.theme"),
+        diff_layout: choice(map, "appearance.diff-layout"),
     }
 }
 
@@ -324,8 +335,12 @@ mod tests {
         (d, f)
     }
 
-    const CLAUDE: Settings =
-        Settings { headless_ai_provider: AiProvider::Claude, auto_fetch: AutoFetch::On, theme: Theme::Codebaer };
+    const CLAUDE: Settings = Settings {
+        headless_ai_provider: AiProvider::Claude,
+        auto_fetch: AutoFetch::On,
+        theme: Theme::Codebaer,
+        diff_layout: DiffLayout::Unified,
+    };
 
     #[test]
     fn a_missing_file_reads_as_the_defaults() {
@@ -391,6 +406,17 @@ mod tests {
     }
 
     #[test]
+    fn the_diff_layout_is_unified_unless_the_file_says_side_by_side() {
+        assert_eq!(Settings::default().diff_layout, DiffLayout::Unified);
+        let (_d, f) = file(r#"{"appearance.diff-layout": "side-by-side"}"#);
+        assert_eq!(read_at(&f), Settings { diff_layout: DiffLayout::SideBySide, ..Settings::default() });
+        for v in [r#""side_by_side""#, r#""SideBySide""#, "true", "null"] {
+            let (_d, f) = file(&format!(r#"{{"appearance.diff-layout": {v}}}"#));
+            assert_eq!(read_at(&f).diff_layout, DiffLayout::Unified, "value {v}");
+        }
+    }
+
+    #[test]
     fn a_blank_file_reads_as_the_defaults_and_takes_a_write() {
         for body in ["", "  \n"] {
             let (_d, f) = file(body);
@@ -416,12 +442,14 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "appearance.theme": "codebaer",
+            "appearance.diff-layout": "unified",
         });
         assert_eq!(on_disk, want);
-        let rose = Settings { theme: Theme::RosePineDawn, ..CLAUDE };
+        let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
         write_at(&f, &rose).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(on_disk["appearance.theme"], "rose-pine-dawn");
+        assert_eq!(on_disk["appearance.diff-layout"], "side-by-side");
     }
 
     #[test]
@@ -440,7 +468,7 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
-            "appearance.theme": "codebaer",
+            "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
         });
         assert_eq!(on_disk, want);
     }
@@ -640,7 +668,10 @@ mod tests {
     fn the_command_argument_is_strict() {
         use serde_json::json;
         let with = |ai: &str, theme: &str| {
-            json!({ "general.headless-ai-provider": ai, "general.auto-fetch": "on", "appearance.theme": theme })
+            json!({
+                "general.headless-ai-provider": ai, "general.auto-fetch": "on", "appearance.theme": theme,
+                "appearance.diff-layout": "unified",
+            })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());
         assert!(serde_json::from_value::<Settings>(with("claude", "solarised")).is_err());

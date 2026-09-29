@@ -13,7 +13,7 @@ vi.mock('./hunks', async () => ({
   discardAll: vi.fn(),
 }));
 vi.mock('#features/git-ops', async () => ({
-  ...(await vi.importActual<object>('#features/git-ops')), stash: vi.fn(), unstash: vi.fn(),
+  ...(await vi.importActual<object>('#features/git-ops')), stash: vi.fn(), unstash: vi.fn(), undoCommit: vi.fn(),
 }));
 vi.mock('#kernel/clipboard', () => {
   const copyPath = vi.fn();
@@ -31,6 +31,7 @@ const h = {
   openRow: session.openRow, openPlain: session.openPlain, acceptFile: hunks.acceptFile, rejectFile: hunks.rejectFile,
   unstageFile: hunks.unstageFile, stageAll: hunks.stageAll, unstageAll: hunks.unstageAll, discardAll: hunks.discardAll,
   copyPath: (await import('#kernel/clipboard')).copyPath, stash: ops.stash, unstash: ops.unstash,
+  undoCommit: ops.undoCommit,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const row = (path: string, letter: string, section: Row['section'] = 'unstaged', extra: Partial<Row> = {}): Row =>
@@ -60,6 +61,7 @@ beforeEach(() => {
   S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
   S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
   S.ignoredKids = new Map(); S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  S.outgoing = { commits: [], more: false };
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -95,7 +97,8 @@ async function renderFiles(
   await tick();
 }
 
-const details = (sec: 'unstaged' | 'staged') => side.querySelector<HTMLDetailsElement>(`details[data-sec="${sec}"]`)!;
+const details = (sec: 'unstaged' | 'staged' | 'commits') =>
+  side.querySelector<HTMLDetailsElement>(`details[data-sec="${sec}"]`)!;
 
 describe('row layout', () => {
   it('shows the name first, the directory without its slash, and the letter last', async () => {
@@ -154,10 +157,13 @@ describe('sections', () => {
     expect(side.querySelector('summary.sec .l > .n')!.textContent).toBe('2');
   });
 
-  it('shows no count for an empty section', async () => {
+  it('leaves Staged out while nothing is staged, and shows no count for an empty Changes', async () => {
     await render([row('a', 'M')], []);
     expect(details('unstaged').querySelector('summary .n')!.textContent).toBe('1');
-    expect(details('staged').querySelector('summary .n')).toBe(null);
+    expect(side.querySelector('details[data-sec="staged"]')).toBe(null);
+    await render([], [row('b', 'M', 'staged')]);
+    expect(details('unstaged').querySelector('summary .n')).toBe(null);
+    expect(details('staged').querySelector('summary .n')!.textContent).toBe('1');
   });
 
   it('keeps a collapsed section collapsed across re-renders and a Files tab visit', async () => {
@@ -235,7 +241,6 @@ describe('sections', () => {
   it('shows the one available action as its own button, and nothing when none is', async () => {
     await render([], []);
     expect(headerButtons('unstaged')).toEqual([]);
-    expect(headerButtons('staged')).toEqual([]);
     await withStashes(1);
     expect(headerButtons('unstaged')).toEqual(['unstash']);
     const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
@@ -276,7 +281,6 @@ describe('sections', () => {
   it('the empty-section text lives inside its details so collapsing hides it', async () => {
     await render([], []);
     expect(details('unstaged').querySelector('.empty-sec')!.textContent).toBe('Nothing left to review');
-    expect(details('staged').querySelector('.empty-sec')!.textContent).toBe('Accepted hunks land here');
   });
 
   it('Enter does nothing while the selected row is inside a collapsed section', async () => {
@@ -334,5 +338,69 @@ describe('context menu', () => {
     await render([row('src/lib/auth/login.ts', 'M')]);
     (await open('.row')).find((i) => i.textContent === 'Copy relative path')!.click();
     expect(h.copyPath).toHaveBeenCalledExactlyOnceWith('src/lib/auth/login.ts');
+  });
+});
+
+describe('commits', () => {
+  const commit = (n: number, summary = `commit ${n}`) =>
+    ({ oid: `${n}-`.padEnd(40, 'f'), summary, author: 'Ada', time: 1_789_000_000 });
+  const withCommits = async (n: number, more = false) => {
+    S.outgoing = { commits: Array.from({ length: n }, (_, i) => commit(n - i)), more };
+    notify();
+    await tick();
+  };
+
+  it('shows the section only while there are commits to push', async () => {
+    await render([row('a', 'M')]);
+    expect(side.querySelector('details[data-sec="commits"]')).toBe(null);
+    await withCommits(2);
+    const secs = [...side.querySelectorAll<HTMLDetailsElement>('details[data-sec]')].map((d) => d.dataset.sec);
+    expect(secs).toEqual(['unstaged', 'commits']);
+    expect(details('commits').open).toBe(true);
+    await withCommits(0);
+    expect(side.querySelector('details[data-sec="commits"]')).toBe(null);
+  });
+
+  it('lists them in the order given, newest first, each summary a line of its own with the whole of it in the title',
+    async () => {
+      await render([], [row('b', 'M', 'staged')]);
+      const long = 'A summary long enough to run past the edge of the sidebar and be cut short there';
+      S.outgoing = { commits: [commit(3, long), commit(2), commit(1)], more: false };
+      notify();
+      await tick();
+      const rows = [...details('commits').querySelectorAll<HTMLElement>('.commit-row')];
+      expect(rows.map((r) => r.querySelector('.summary')!.textContent)).toEqual([long, 'commit 2', 'commit 1']);
+      expect(rows[0]!.title.split('\n')[0]).toBe(long);
+      expect(rows[0]!.querySelector('.oid')!.textContent).toBe('3-fffff');
+      expect(details('commits').querySelector('summary .n')!.textContent).toBe('3');
+    });
+
+  it('counts past the listed ones as more', async () => {
+    await render([]);
+    await withCommits(100, true);
+    expect(details('commits').querySelector('summary .n')!.textContent).toBe('100+');
+  });
+
+  it('has Revert last commit as its one header button, which does not fold the section', async () => {
+    await render([]);
+    await withCommits(2);
+    const undo = details('commits').querySelector<HTMLElement>('summary [data-all="undo"]')!;
+    expect(undo.getAttribute('aria-label')).toBe('Revert last commit');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    undo.dispatchEvent(ev);
+    expect(h.undoCommit).toHaveBeenCalledOnce();
+    expect(ev.defaultPrevented).toBe(true);
+    S.committing = true;
+    notify();
+    await tick();
+    expect(details('commits').querySelector('summary [data-all]')).toBe(null);
+  });
+
+  it('arrow keys pass the commit rows by', async () => {
+    await render([row('a', 'M')], [row('b', 'M', 'staged')], 'staged:b');
+    await withCommits(2);
+    side.querySelector<HTMLElement>('.list')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(h.openRow).toHaveBeenLastCalledWith(expect.objectContaining({ path: 'b', section: 'staged' }));
   });
 });

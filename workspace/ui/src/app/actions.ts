@@ -1,5 +1,6 @@
 import type { Tab } from '#core/state';
 import { showFiles } from '#features/files';
+import { showChanges } from '#features/review';
 import { showTerminals } from '#features/terminals';
 import { errText, git } from '#ipc/git';
 import { toast } from '#kernel/dialogs';
@@ -27,5 +28,5 @@ export function setSideWidth(w: number): void {
 export async function setTab(tab: Tab): Promise<void> {
   if (tab === 'files') await showFiles();
   else if (tab === 'terminals') await showTerminals();
-  else { S.tab = tab; notify(); }
+  else await showChanges();
 }

@@ -1,8 +1,11 @@
 import { type PointerEvent as ReactPointerEvent } from 'react';
+import { toggleSide } from '#core/session';
 import { RepoSwitcher } from '#features/repos';
 import { keyLabel } from '#kernel/keymap';
 import { openPalette } from '#kernel/registry';
 import { notify, useApp } from '#kernel/store';
+import { StrokeIcon } from '#ui/Icon';
+import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { setSideWidth } from './actions';
 
@@ -62,4 +65,14 @@ export function Gutter() {
     g.addEventListener('pointercancel', done);
   };
   return <div className="gutter" id="gutter" onPointerDown={onPointerDown} />;
+}
+
+export function SideHandle() {
+  const s = useApp();
+  return (
+    <IconButton label={s.sideCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} className="side-handle"
+      aria-expanded={!s.sideCollapsed} onClick={toggleSide}>
+      <StrokeIcon d="M9.5 4.5 6 8l3.5 3.5" size={12} />
+    </IconButton>
+  );
 }

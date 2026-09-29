@@ -90,6 +90,11 @@ function useLanded(message: string, writing: boolean): number {
   return landed;
 }
 
+function fitHeight(el: HTMLTextAreaElement): void {
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+}
+
 export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean }) {
   const s = useApp();
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -100,9 +105,24 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
   useEffect(() => {
     const el = ref.current;
     if (!el || hidden) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+    fitHeight(el);
   }, [message, hidden]);
+  // the same text wraps to another height at another width: the gutter drag, and the sidebar expanding from the
+  // zero width it was measured at while collapsed
+  useEffect(() => {
+    const el = ref.current!;
+    let width = -1;
+    let frame = 0;
+    const ro = new ResizeObserver(([e]) => {
+      if (!e || e.contentRect.width === width) return;
+      width = e.contentRect.width;
+      cancelAnimationFrame(frame);
+      // a resize inside the callback would end in a ResizeObserver loop error
+      frame = requestAnimationFrame(() => fitHeight(el));
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); cancelAnimationFrame(frame); };
+  }, []);
   return (
     <div className="commit" hidden={hidden}>
       <BranchBar />

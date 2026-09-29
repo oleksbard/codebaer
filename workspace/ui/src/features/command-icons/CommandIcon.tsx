@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { logError } from '#ipc/log';
 import { useApp } from '#kernel/store';
 import { StrokeIcon } from '#ui/Icon';
-import { glyph, iconKey, loadIconSets, type Glyph } from './icons';
+import { glyph, loadIconSets, pickedGlyph, type Glyph } from './icons';
 
 const PROMPT = 'M3.5 4.75L6.75 8 3.5 11.25M8.75 11.5h3.75';
 
@@ -20,7 +20,6 @@ export function SetIcon({ id }: { id: string }) {
 
 /** The user's pick, else the AI's, else a prompt sign, which also stands in while the icon sets load. */
 export function CommandIcon({ name, command, icon }: { name: string; command: string; icon: string | null }) {
-  const picks = useApp().commandIcons;
-  const g = glyph(icon) ?? glyph(picks[iconKey(name, command)] ?? null);
+  const g = pickedGlyph(useApp().commandIcons, { name, command, icon });
   return <span className="cicon" aria-hidden="true">{g ? <GlyphSvg g={g} /> : <StrokeIcon d={PROMPT} />}</span>;
 }

@@ -1,7 +1,10 @@
 import { defineFeature } from '#kernel/registry';
 import { S } from '#kernel/store';
 import { onStatus } from './auto-fetch';
-import { checkout, commit, createBranch, focusCommit, network, stash, unstash } from './git-ops';
+import {
+  checkout, commit, createBranch, focusCommit, loadOutgoing, network, stash, undoCommit, unstash,
+} from './git-ops';
+import { NO_OUTGOING } from './state';
 
 const hasHead = (): boolean => (S.status?.head ?? null) !== null;
 /** git refuses to stash or unstash while a path is unmerged. */
@@ -21,6 +24,8 @@ export const gitOps = defineFeature({
     { id: 'git.stashChanges', label: 'Git: Stash Changes', when: canStash, run: () => stash('unstaged') },
     { id: 'git.stashStaged', label: 'Git: Stash Staged', when: canStash, run: () => stash('staged') },
     { id: 'git.unstash', label: 'Git: Unstash…', when: canStash, run: unstash },
+    { id: 'git.undoCommit', label: 'Git: Revert Last Commit', when: () => S.outgoing.commits.length > 0,
+      run: undoCommit },
   ],
   aiUses: [{
     command: 'ai_commit_message', label: 'Writes the commit message from the staged diff',
@@ -28,9 +33,10 @@ export const gitOps = defineFeature({
   }, {
     command: 'ai_stash_description', label: 'Describes what each stash holds', icon: 'lucide:archive',
   }],
-  onRefresh: onStatus,
+  onRefresh: () => { onStatus(); void loadOutgoing(); },
+  onRepoChange: { reset: () => { S.outgoing = NO_OUTGOING; } },
 });
 
 export { startAutoFetch } from './auto-fetch';
 export { CommitBox } from './CommitBox';
-export { stash, unstash } from './git-ops';
+export { age, stash, undoCommit, unstash } from './git-ops';

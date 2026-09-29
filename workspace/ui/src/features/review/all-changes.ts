@@ -8,11 +8,13 @@ import {
   buildState, chunkCount, chunkIndexAtCursor, lineStat, rejectChunk, replaceDoc, replaceOriginal,
 } from '#editor/editor';
 import { setEditorDark } from '#editor/editor-theme';
+import { closePane, detachPane, isSideBySide, originalPane, setSideBySide, sideBySide } from '#editor/side-by-side';
 import { errKind, errText, git, staleText } from '#ipc/git';
 import { confirmDialog, toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
 import { notify, S } from '#kernel/store';
 import { removeText, stageChunk, type HunkFile } from './hunks';
+import { sideChosen } from './layout';
 
 /** One file on the page. `panel` is why it shows no diff: an error kind from reading it, Conflicted, or Large. */
 type Section = {
@@ -86,8 +88,10 @@ export async function closeAllChanges(): Promise<void> {
 
 export const toggleAllChanges = (): Promise<void> => (onPage() ? closeAllChanges() : showAllChanges());
 
+const destroy = (v: EditorView): void => { closePane(v); v.destroy(); };
+
 export function dropPage(): void {
-  for (const s of sections.values()) s.view?.destroy();
+  for (const s of sections.values()) if (s.view) destroy(s.view);
   sections.clear();
   near.clear();
   S.allChanges = null;
@@ -159,7 +163,20 @@ export function bindSection(path: string, el: HTMLElement | null): void {
 function attach(path: string): void {
   const v = sections.get(path)?.view;
   const body = els.get(path)?.querySelector('.fbody');
-  if (v && body && v.dom.parentElement !== body) body.appendChild(v.dom);
+  if (!v || !body) return;
+  if (v.dom.parentElement !== body) body.appendChild(v.dom);
+  if (!isSideBySide(v)) { detachPane(v); return; }
+  const left = originalPane(v);
+  if (left.dom.nextSibling !== v.dom) body.insertBefore(left.dom, v.dom);
+}
+
+export function relayoutAllChanges(): void {
+  const side = sideChosen(S);
+  for (const sec of sections.values()) {
+    if (!sec.view) continue;
+    setSideBySide(sec.view, side);
+    attach(sec.path);
+  }
 }
 
 export function nearScreen(path: string, isNear: boolean): void {
@@ -234,7 +251,7 @@ async function fill(sec: Section): Promise<void> {
     }
     // read only: an edit here would need the one-file view's unsaved state and its Stale handling for every file
     const state = await buildState('unstaged', sec.path, disk.text, orig.text, () => {},
-      [EditorState.readOnly.of(true), tracker(sec)],
+      [EditorState.readOnly.of(true), tracker(sec), sideBySide(sideChosen(S))],
       { accept: () => void acceptIn(sec), reject: () => void rejectIn(sec) });
     if (!live()) return;
     sec.file = {
@@ -285,7 +302,7 @@ async function reread(sec: Section): Promise<void> {
     // a file too big to diff stays that way until Show diff; reading it again is up to 4 MB for nothing
     if ((row.conflicted && sec.panel === 'Conflicted') || sec.panel === 'Large') return;
     // the panel stays up while fill reads, which replaces it either way
-    v?.destroy();
+    if (v) destroy(v);
     sec.view = null; sec.file = null;
     await fill(sec);
     return;
@@ -303,7 +320,7 @@ async function reread(sec: Section): Promise<void> {
     fold(v);
   } catch (e) {
     if (!live() || sec.view !== v) return;
-    v.destroy();
+    destroy(v);
     sec.view = null; sec.file = null; sec.panel = errKind(e); sec.error = errText(e);
   }
 }

@@ -13,14 +13,14 @@ import { tasks } from '#features/tasks';
 import { terminals } from '#features/terminals';
 import { about, toggleSidebar } from './actions';
 import { core } from '#core/feature';
-import { quit } from '#core/session';
+import { expandSide, quit } from '#core/session';
 
 const app = defineFeature({
   id: 'app',
   commands: [
     { id: 'app.palette', run: openPalette },
     { id: 'app.toggleSidebar', run: toggleSidebar },
-    { id: 'app.focusList', run: () => refs.list?.focus() },
+    { id: 'app.focusList', run: () => { expandSide(); queueMicrotask(() => refs.list?.focus()); } },
     { id: 'app.about', label: 'About CodeBär', run: () => void about() },
     { id: 'app.quit', label: 'Quit CodeBär', run: () => void quit() },
   ],

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptText, blameText, buildQueue, buildTree, decideRefresh, pinDefaultBranches, rejectSpecialCase,
-  rowKey, treeStatus, unstageText, visibleFiles,
+  acceptText, ago, blameShort, blameText, buildQueue, buildTree, decideRefresh, pinDefaultBranches,
+  rejectSpecialCase, rowKey, treeStatus, unstageText, visibleFiles,
 } from './model';
 import type { Branch, FileEntry, Status } from '#ipc/git';
 
@@ -156,5 +156,30 @@ describe('blameText', () => {
       oid: '0'.repeat(40), author: 'External file (--contents)', time: 0, summary: 'from standard input',
     }))
       .toBe('uncommitted');
+  });
+});
+
+describe('blameShort', () => {
+  const b = { oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173, summary: 'x' };
+  const at = (secs: number): number => (b.time + secs) * 1000;
+
+  it('shows the author and how long ago, and collapses the zero oid', () => {
+    expect(blameShort(b, at(3 * 86400 + 5))).toBe('Ada · 3d ago');
+    expect(blameShort({ ...b, author: '' }, at(7200))).toBe('2h ago');
+    expect(blameShort({ ...b, oid: '0'.repeat(40) }, at(0))).toBe('uncommitted');
+  });
+
+  it('counts in the largest whole unit', () => {
+    expect(ago(59)).toBe('just now');
+    expect(ago(-600)).toBe('just now');
+    expect(ago(60)).toBe('1m ago');
+    expect(ago(3599)).toBe('59m ago');
+    expect(ago(3600)).toBe('1h ago');
+    expect(ago(86399)).toBe('23h ago');
+    expect(ago(29 * 86400)).toBe('29d ago');
+    expect(ago(30 * 86400)).toBe('1mo ago');
+    expect(ago(364 * 86400)).toBe('12mo ago');
+    expect(ago(365 * 86400)).toBe('1y ago');
+    expect(ago(800 * 86400)).toBe('2y ago');
   });
 });

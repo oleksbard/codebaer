@@ -1,5 +1,6 @@
 import type {
-  AppError, BlameLine, Blob, Branch, DiffStat, Eol, FileEntry, FileText, Listing, StageResult, Stash, StashKind, Status,
+  AppError, BlameLine, Blob, Branch, Commit, DiffStat, Eol, FileEntry, FileText, Listing, Outgoing, StageResult, Stash,
+  StashKind, Status,
 } from '#ipc/git';
 
 export type Version = { text: string; eol: Eol };
@@ -35,11 +36,15 @@ export type Snapshot = {
   files: Record<string, { head: string | null; index: string | null; work: string | null }>;
   /** Newest first, with the paths each one holds. */
   stash: { message: string; branch: string | null; paths: string[] }[];
+  /** The summaries of the commits a push would send, newest first. */
+  outgoing: string[];
 };
 
 /** A stashed path. `base` is what the stash counts from: HEAD, or the index for a stash of the unstaged changes. */
 type Stashed = { base: Version | null; index: Version | null; work: Version | null };
 type StashEntry = Omit<Stash, 'index'> & { files: Map<string, Stashed> };
+/** A commit made in this session: `before` is what HEAD held, for the paths it changed, before it. */
+type Made = { message: string; author: string; time: number; before: Map<string, Version | null> };
 
 /** A stand-in for a git object id: 40 hex digits that change with the content. */
 export function oidOf(s: string): string {
@@ -78,6 +83,8 @@ function lineStat(a: string[], b: string[]): DiffStat {
 }
 
 const ZERO = '0'.repeat(40);
+/** `OUTGOING` in git.rs. */
+const OUTGOING = 100;
 const AUTHORS = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds'];
 const EPOCH = 1_789_000_000;
 
@@ -105,7 +112,12 @@ export function createRepo(seed: RepoSeed) {
   let { branch, upstream, ahead, behind } = seed;
   const branches: Branch[] = [...seed.branches];
   const log = [...seed.log];
-  let head: string | null = log.length ? oidOf(log.join('\n')) : null;
+  /** The oid of the commit at `log[i]`, HEAD for 0. */
+  const oidAt = (i: number): string | null => (i < log.length ? oidOf(log.slice(i).join('\n')) : null);
+  let head = oidAt(0);
+  /** How many of the newest commits no remote holds; the seed's are the ones past its upstream. */
+  let unpushed = seed.ahead;
+  const made = new Map<string, Made>();
   const stash: StashEntry[] = [];
   let stashes = 0;
   /** Commits on the remote that no fetch has brought in yet, keyed by upstream. */
@@ -158,6 +170,14 @@ export function createRepo(seed: RepoSeed) {
     return { text: e.work.text, eol: e.work.eol, exists: true };
   };
   const indexOid = (e: Entry | undefined): string | null => (e?.index ? oidOfVersion(e.index) : null);
+  const remotes = (): string[] => [...new Set(branches.flatMap((b) => (b.kind === 'remote' ? [b.remote] : [])))];
+  const outgoing = (): Commit[] => log.slice(0, unpushed).map((summary, i) => {
+    const oid = oidAt(i)!;
+    const m = made.get(oid);
+    return {
+      oid, summary, author: m?.author ?? AUTHORS[i % AUTHORS.length]!, time: m?.time ?? EPOCH - i * 86_400,
+    };
+  });
   const untracked = (): string[] => [...files].filter(([, e]) => !e.index && e.work).map(([p]) => p).sort();
 
   return {
@@ -247,13 +267,37 @@ export function createRepo(seed: RepoSeed) {
         gitError('error: Committing is not possible because you have unmerged files.');
       }
       if ([...files.values()].every((e) => same(e.head, e.index))) gitError('no changes added to commit');
+      const before = new Map<string, Version | null>();
       for (const [p, e] of files) {
+        if (!same(e.head, e.index)) before.set(p, e.head);
         e.head = e.index;
         if (!e.head && !e.work) files.delete(p);
       }
       log.unshift(message.split('\n')[0] ?? message);
-      head = oidOf(log.join('\n'));
+      head = oidAt(0);
+      made.set(head!, { message, author: AUTHORS[0]!, time: Math.floor(Date.now() / 1000), before });
       if (upstream) ahead += 1;
+      if (remotes().length) unpushed += 1;
+    },
+
+    outgoing(): Outgoing {
+      const all = outgoing();
+      return { commits: all.slice(0, OUTGOING), more: all.length > OUTGOING };
+    },
+
+    /** `undo_commit_impl`: a soft reset, so the index keeps what the commit held. A seeded commit changed no file
+     *  the mock knows of. */
+    undoCommit(oid: string): string {
+      if (oid !== head) gitError('The last commit changed. Look at the commits again.');
+      if (!unpushed) gitError('That commit is on a remote already, so it was not reverted.');
+      const m = made.get(oid);
+      const summary = log.shift()!;
+      for (const [p, v] of m?.before ?? []) entry(p).head = v;
+      made.delete(oid);
+      head = oidAt(0);
+      unpushed -= 1;
+      if (upstream) ahead = Math.max(0, ahead - 1);
+      return m?.message ?? summary;
     },
 
     branches: (): Branch[] => [...branches],
@@ -275,8 +319,10 @@ export function createRepo(seed: RepoSeed) {
         branch = b.branch;
         upstream = `${b.remote}/${b.branch}`;
       }
+      // the log is one history for every branch, and the one switched to reads as pushed
       ahead = 0;
       behind = 0;
+      unpushed = 0;
     },
 
     createBranch(name: string): void {
@@ -361,16 +407,17 @@ export function createRepo(seed: RepoSeed) {
     push(): void {
       if (!upstream) {
         if (!branch) gitError('fatal: You are not currently on a branch.');
-        const remotes = [...new Set(branches.flatMap((b) => (b.kind === 'remote' ? [b.remote] : [])))];
-        if (!remotes.length) gitError('this repository has no remote to push to');
-        const target = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0]! : null;
-        if (!target) gitError(`no default push remote; set remote.pushDefault (remotes: ${remotes.join(', ')})`);
+        const all = remotes();
+        if (!all.length) gitError('this repository has no remote to push to');
+        const target = all.includes('origin') ? 'origin' : all.length === 1 ? all[0]! : null;
+        if (!target) gitError(`no default push remote; set remote.pushDefault (remotes: ${all.join(', ')})`);
         if (!branches.some((b) => b.kind === 'remote' && b.remote === target && b.branch === branch)) {
           branches.push({ kind: 'remote', remote: target, branch });
         }
         upstream = `${target}/${branch}`;
       }
       ahead = 0;
+      unpushed = 0;
     },
 
     pull(): void {
@@ -407,7 +454,9 @@ export function createRepo(seed: RepoSeed) {
       }
       const stashed = stash.map((st) =>
         ({ message: st.message, branch: st.branch, paths: [...st.files.keys()].sort() }));
-      return { branch, upstream, ahead, behind, head, files: out, stash: stashed };
+      return {
+        branch, upstream, ahead, behind, head, files: out, stash: stashed, outgoing: outgoing().map((c) => c.summary),
+      };
     },
   };
 }

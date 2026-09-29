@@ -52,14 +52,18 @@ function CommandPalette({ req }: { req: DeepReadonly<PaletteRequest> }) {
     else if (e.key === 'Enter') { e.preventDefault(); close(shown[cur]?.value ?? null); }
   };
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) close(null); }} title={req.placeholder} className="pal">
+    <Dialog open onOpenChange={(open) => { if (!open) close(null); }} title={req.placeholder}
+      className={req.wide ? 'pal wide' : 'pal'}>
       <input type="text" autoComplete="off" spellCheck={false} placeholder={req.placeholder} value={q}
         onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKeyDown} />
       <ul ref={listRef}>
         {shown.length
           ? shown.map((it, i) => (
               <li key={i} className={i === cur ? 'on' : ''} onClick={() => close(it.value)}>
-                <span>{it.label}{it.detail ? <> <span className="desc">{it.detail}</span></> : null}</span>
+                <span className="lbl">
+                  {it.label}{it.detail ? <> <span className="desc">{it.detail}</span></> : null}
+                  {it.sub ? <span className="sub">{it.sub}</span> : null}
+                </span>
                 {it.hint ? <Kbd>{it.hint}</Kbd> : it.note ? <span className="note">{it.note}</span> : null}
               </li>
             ))
@@ -74,7 +78,8 @@ function PromptDialog({ req }: { req: DeepReadonly<PromptRequest> }) {
   const name = value.trim();
   const close = (v: string | null) => closePrompt(req, v);
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) close(null); }} title={req.placeholder} className="prompt">
+    <Dialog open onOpenChange={(open) => { if (!open) close(null); }} title={req.placeholder}
+      className={req.wide ? 'prompt wide' : 'prompt'}>
       <input autoFocus type="text" autoComplete="off" spellCheck={false} placeholder={req.placeholder} value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (name) close(name); } }} />

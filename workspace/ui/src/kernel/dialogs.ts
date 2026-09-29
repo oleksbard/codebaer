@@ -44,10 +44,11 @@ export function errorDialog(message: string): Promise<void> {
   });
 }
 
-export function promptDialog(placeholder: string): Promise<string | null> {
+/** `wide` is for a value that runs long, such as a branch name made from an issue title. */
+export function promptDialog(placeholder: string, wide = false): Promise<string | null> {
   S.prompt?.resolve(null);
   return new Promise((resolve) => {
-    S.prompt = { placeholder, resolve };
+    S.prompt = { placeholder, wide, resolve };
     notify();
   });
 }

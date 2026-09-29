@@ -961,6 +961,133 @@ pub fn create_branch_impl(root: &Path, name: &str) -> Result<(), AppError> {
     run_locked(root, &["switch", "-c", name], None, Some(LOCAL)).map(|_| ())
 }
 
+/// `summary` is the subject line; `time` is the author date, in seconds.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Commit {
+    pub oid: String,
+    pub summary: String,
+    pub author: String,
+    pub time: i64,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Outgoing {
+    /// Newest first, at most `OUTGOING` of them.
+    pub commits: Vec<Commit>,
+    /// There are more than these.
+    pub more: bool,
+}
+
+/// The cap matters for a remote with no branches yet, where every commit is one to push.
+pub const OUTGOING: usize = 100;
+
+/// Which commits a push would send, following `push_args`: past the upstream, or on no remote-tracking ref for a
+/// branch without one or tracking a local branch. None without a remote, and none for an upstream with no
+/// remote-tracking ref (gone from the remote, or never stored by a single-branch clone): nothing says what the
+/// remote holds then.
+fn outgoing_range(root: &Path) -> Result<Option<&'static [&'static str]>, AppError> {
+    let head = run_raw(root, &["symbolic-ref", "--quiet", "--short", "HEAD"], None, Some(LOCAL), None)?;
+    let remote = if head.code == 0 {
+        let key = format!("branch.{}.remote", line_of(head));
+        line_of(run_raw(root, &["config", "--get", &key], None, Some(LOCAL), None)?)
+    } else {
+        String::new()
+    };
+    if !remote.is_empty() && remote != "." {
+        let tracked = run_raw(root, &["rev-parse", "-q", "--verify", "@{upstream}"], None, Some(LOCAL), None)?.code == 0;
+        return Ok(tracked.then_some(&["@{upstream}..HEAD"][..]));
+    }
+    if run(root, &["remote"], None, Some(LOCAL))?.stdout.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(&["HEAD", "--not", "--remotes"][..]))
+}
+
+pub fn outgoing_impl(root: &Path) -> Result<Outgoing, AppError> {
+    let none = Outgoing { commits: Vec::new(), more: false };
+    if run_raw(root, &["rev-parse", "-q", "--verify", "HEAD"], None, Some(LOCAL), None)?.code != 0 {
+        return Ok(none);
+    }
+    let Some(range) = outgoing_range(root)? else { return Ok(none) };
+    let max = format!("--max-count={}", OUTGOING + 1);
+    let mut args = vec!["log", "--no-show-signature", &max, "--format=%H%x00%at%x00%an%x00%s"];
+    args.extend(range);
+    args.push("--");
+    let out = run(root, &args, None, Some(LOCAL))?;
+    let mut commits = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let mut f = line.splitn(4, '\0');
+        let (Some(oid), Some(time), Some(author), Some(summary)) = (f.next(), f.next(), f.next(), f.next()) else { continue };
+        commits.push(Commit { oid: oid.into(), summary: summary.into(), author: author.into(), time: time.parse().unwrap_or(0) });
+    }
+    let more = commits.len() > OUTGOING;
+    commits.truncate(OUTGOING);
+    Ok(Outgoing { commits, more })
+}
+
+fn busy_with(root: &Path) -> Result<Option<&'static str>, AppError> {
+    for (head, what) in [("MERGE_HEAD", "A merge"), ("CHERRY_PICK_HEAD", "A cherry-pick"), ("REVERT_HEAD", "A revert")] {
+        if run_raw(root, &["rev-parse", "-q", "--verify", head], None, Some(LOCAL), None)?.code == 0 {
+            return Ok(Some(what));
+        }
+    }
+    for dir in ["rebase-merge", "rebase-apply"] {
+        if root.join(line_of(run(root, &["rev-parse", "--git-path", dir], None, Some(LOCAL))?)).exists() {
+            return Ok(Some("A rebase"));
+        }
+    }
+    Ok(None)
+}
+
+/// Moves the branch to the commit's parent as `reset --soft` would, compared and swapped so a commit landing
+/// meanwhile is not dropped: the changes stay staged and the working tree is left alone. Returns the commit's
+/// message. Refused unless `oid` is HEAD and the newest commit `outgoing_impl` lists, and no remote-tracking ref
+/// holds it; a pushed commit that the repository keeps no remote-tracking ref for cannot be told from an unpushed
+/// one. Undoing the first commit leaves the branch unborn with everything staged.
+pub fn undo_commit_impl(root: &Path, oid: &str) -> Result<String, AppError> {
+    let head = run_raw(root, &["rev-parse", "-q", "--verify", "HEAD"], None, Some(LOCAL), None)?;
+    // past this check `oid` is a hex object id, safe to pass where an option could be read
+    if head.code != 0 || line_of(head) != oid {
+        return Err(AppError::Git("The last commit changed. Look at the commits again.".into()));
+    }
+    if let Some(what) = busy_with(root)? {
+        return Err(AppError::Git(format!("{what} is in progress. Finish or abort it first.")));
+    }
+    let listed = outgoing_impl(root)?.commits.first().is_some_and(|c| c.oid == oid);
+    let pushed = run(root, &["for-each-ref", "--count=1", "--contains", oid, "refs/remotes"], None, Some(LOCAL))?;
+    if !listed || !pushed.stdout.is_empty() {
+        return Err(AppError::Git("That commit is not one waiting to be pushed, so it was not reverted.".into()));
+    }
+    let second = format!("{oid}^2");
+    if run_raw(root, &["rev-parse", "-q", "--verify", &second], None, Some(LOCAL), None)?.code == 0 {
+        return Err(AppError::Git("A merge commit is not reverted here: committing it again would lose what it merged.".into()));
+    }
+    let body = run(root, &["log", "-1", "--no-show-signature", "--format=%B", oid], None, Some(LOCAL))?;
+    let message = String::from_utf8_lossy(&body.stdout).trim_end().to_string();
+    let first = format!("{oid}^");
+    let parent = run_raw(root, &["rev-parse", "-q", "--verify", &first], None, Some(LOCAL), None)?;
+    if parent.code == 0 {
+        let parent = line_of(parent);
+        run_locked(root, &["update-ref", "-m", "reset: moving to HEAD~1", "HEAD", &parent, oid], None, Some(LOCAL))?;
+    } else {
+        // on a detached HEAD, `update-ref -d HEAD` would delete HEAD itself
+        if run_raw(root, &["symbolic-ref", "-q", "HEAD"], None, Some(LOCAL), None)?.code != 0 {
+            return Err(AppError::Git("The first commit of a detached HEAD cannot be reverted.".into()));
+        }
+        run_locked(root, &["update-ref", "-d", "HEAD", oid], None, Some(LOCAL))?;
+    }
+    Ok(message)
+}
+
+/// Holds `net_lock` throughout: a push sends the commit before it moves the remote-tracking ref the undo checks,
+/// and a pull moves HEAD.
+pub fn undo_commit_guarded(state: &AppState, oid: &str) -> Result<String, AppError> {
+    let root = state.root()?;
+    let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    let _net = take_net(state)?;
+    undo_commit_impl(&root, oid)
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StashKind {
@@ -1355,6 +1482,16 @@ pub fn stash_pop(state: State<AppState>, index: u32, oid: String) -> Result<(), 
 }
 
 #[tauri::command(async)]
+pub fn outgoing(state: State<AppState>) -> Result<Outgoing, AppError> {
+    outgoing_impl(&state.root()?)
+}
+
+#[tauri::command(async)]
+pub fn undo_commit(state: State<AppState>, oid: String) -> Result<String, AppError> {
+    undo_commit_guarded(&state, &oid)
+}
+
+#[tauri::command(async)]
 pub fn list_files(state: State<AppState>) -> Result<Listing, AppError> {
     list_files_impl(&state.root()?)
 }
@@ -1404,21 +1541,24 @@ pub fn push_args(root: &Path) -> Result<Vec<String>, AppError> {
     Ok(vec!["push".to_string(), "--set-upstream".to_string(), target, branch])
 }
 
-pub fn run_net(state: &AppState, args: &[&str]) -> Result<(), AppError> {
-    let _net_guard = match state.net_lock.try_lock() {
-        Ok(g) => g,
-        Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+/// `net_lock`, taken over from the background fetch when that is what holds it.
+fn take_net(state: &AppState) -> Result<std::sync::MutexGuard<'_, ()>, AppError> {
+    match state.net_lock.try_lock() {
+        Ok(g) => Ok(g),
+        Err(std::sync::TryLockError::Poisoned(p)) => Ok(p.into_inner()),
         Err(std::sync::TryLockError::WouldBlock) if state.net_background.swap(false, Ordering::SeqCst) => {
             state.cancelled.store(false, Ordering::SeqCst);
             state.net_waiting.store(true, Ordering::SeqCst);
             let g = take_from_background(state);
             state.net_waiting.store(false, Ordering::SeqCst);
-            g?
+            g
         }
-        Err(std::sync::TryLockError::WouldBlock) => {
-            return Err(AppError::Git("a push or pull is already running".to_string()))
-        }
-    };
+        Err(std::sync::TryLockError::WouldBlock) => Err(AppError::Git("a push or pull is already running".to_string())),
+    }
+}
+
+pub fn run_net(state: &AppState, args: &[&str]) -> Result<(), AppError> {
+    let _net_guard = take_net(state)?;
     let root = state.root()?;
     state.cancelled.store(false, Ordering::SeqCst);
     let out = run_raw(&root, args, None, None, Some(&state.net_pid))?;

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from '#test-setup';
 import { g, mountApp, status } from '#test-app';
 
@@ -101,3 +101,45 @@ describe('sidebar resize', () => {
   });
 });
 
+
+describe('sidebar handle', () => {
+  const handle = () => document.querySelector<HTMLButtonElement>('.side-handle')!;
+  afterEach(async () => {
+    const { notify } = await import('#kernel/store');
+    S.sideCollapsed = false;
+    localStorage.removeItem('codebaer.sideCollapsed');
+    notify();
+    await tick();
+  });
+
+  it('collapses the sidebar and expands it again, and stores the choice', async () => {
+    const shell = document.getElementById('shell')!;
+    handle().click();
+    await tick();
+    expect(shell.classList).toContain('sidecollapsed');
+    expect(handle().getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(handle().getAttribute('aria-expanded')).toBe('false');
+    expect(localStorage.getItem('codebaer.sideCollapsed')).toBe('true');
+
+    handle().click();
+    await tick();
+    expect(shell.classList).not.toContain('sidecollapsed');
+    expect(handle().getAttribute('aria-label')).toBe('Collapse sidebar');
+    expect(localStorage.getItem('codebaer.sideCollapsed')).toBe('false');
+  });
+
+  it('expands before a command focuses the list or the commit box inside it', async () => {
+    const { run } = await import('#kernel/registry');
+    const { refs } = await import('#kernel/store');
+    const cases = [['app.focusList', () => refs.list], ['git.focusCommit', () => refs.commit]] as const;
+    for (const [command, target] of cases) {
+      handle().click();
+      await tick();
+      expect(S.sideCollapsed).toBe(true);
+      run(command);
+      await tick();
+      expect(S.sideCollapsed).toBe(false);
+      expect(document.activeElement).toBe(target());
+    }
+  });
+});
