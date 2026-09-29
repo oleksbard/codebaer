@@ -8,7 +8,7 @@ import type { Branch, FileEntry, Status } from '#ipc/git';
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
 const status = (files: FileEntry[]): Status =>
-  ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files });
+  ({ head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0, files });
 
 describe('buildTree', () => {
   it('nests every path segment, keeps root files at the top level, and orders both by name', () => {

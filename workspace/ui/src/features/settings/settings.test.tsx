@@ -137,7 +137,8 @@ describe('settings dialog', () => {
     info.focus();
     await tick();
     expect([...document.querySelectorAll('.tip li')].map((li) => li.textContent)).toEqual([
-      'Writes the commit message from the staged diff', 'Picks an icon for each repository in the switcher',
+      'Writes the commit message from the staged diff', 'Describes what each stash holds',
+      'Picks an icon for each repository in the switcher',
       'Picks an icon for each command in the command menu',
     ]);
   });

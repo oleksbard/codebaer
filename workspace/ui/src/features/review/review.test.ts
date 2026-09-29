@@ -4,7 +4,7 @@ import { getOriginalDoc } from '#editor/editor';
 import type { BlameLine, Blob, Status } from '#ipc/git';
 import { confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
-import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
+import { blob, file, g, headerItem, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
 import { accept, acceptFile, discardAll, reject, rejectFile, unstageHunk } from './hunks';
 
@@ -156,15 +156,16 @@ describe('discard all', () => {
   });
 });
 
-describe('section header buttons', () => {
-  it('Stage all runs stage_all; Unstage all is disabled while nothing is staged', async () => {
+describe('section header menus', () => {
+  const headerButtons = (sec: 'unstaged' | 'staged') =>
+    document.querySelectorAll(`details[data-sec="${sec}"] summary [data-all]`).length;
+
+  it('Stage all runs stage_all; the Staged header offers nothing while nothing is staged', async () => {
     g.status!.mockResolvedValue(S.status);
     await refresh();
     await tick();
-    const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
-    const unstageAll = document.querySelector<HTMLButtonElement>('[data-all="unstage"]')!;
-    expect(stageAll.disabled).toBe(false);
-    expect(unstageAll.disabled).toBe(true);
+    expect(headerButtons('staged')).toBe(0);
+    const stageAll = await headerItem('unstaged', 'stage');
 
     stageAll.click();
 
@@ -172,15 +173,13 @@ describe('section header buttons', () => {
     expect(g.unstageAll!).not.toHaveBeenCalled();
   });
 
-  it('Unstage all runs unstage_all once something is staged, and Stage all is then disabled', async () => {
+  it('Unstage all runs unstage_all once something is staged, and the Changes header then offers nothing', async () => {
     S.status = status('a.txt', 'M', '.');
     g.status!.mockResolvedValue(S.status);
     await refresh();
     await tick();
-    const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
-    const unstageAll = document.querySelector<HTMLButtonElement>('[data-all="unstage"]')!;
-    expect(stageAll.disabled).toBe(true);
-    expect(unstageAll.disabled).toBe(false);
+    expect(headerButtons('unstaged')).toBe(0);
+    const unstageAll = await headerItem('staged', 'unstage');
 
     unstageAll.click();
 
@@ -188,7 +187,7 @@ describe('section header buttons', () => {
     expect(g.stageAll!).not.toHaveBeenCalled();
   });
 
-  it('Enter on a focused header button does not also activate the selected row', async () => {
+  it('Enter on a focused header menu button does not also activate the selected row', async () => {
     g.status!.mockResolvedValue(S.status);
     await refresh();
     await tick();
@@ -196,12 +195,14 @@ describe('section header buttons', () => {
     row.click();
     await vi.waitFor(() => expect(S.open?.path).toBe('a.txt'));
     g.readBlob!.mockClear();
-    const stageAll = document.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
+    const menu = document.querySelector<HTMLButtonElement>('details[data-sec="unstaged"] [data-all="menu"]')!;
 
-    stageAll.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await tick();
 
     expect(g.readBlob!).not.toHaveBeenCalled();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
   });
 });
 

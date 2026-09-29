@@ -2,7 +2,8 @@ import { expect, row, test } from './fixtures';
 
 test('the All changes page stacks every file and stages a hunk from it', async ({ page, open }) => {
   const mock = await open();
-  await page.getByRole('button', { name: 'Review all changes' }).click();
+  await page.getByRole('button', { name: 'Changes actions' }).click();
+  await page.getByRole('menuitem', { name: 'Review all changes' }).click();
   await mock.idle();
   const cart = page.locator('.fsec[data-path="src/cart.ts"]');
   await expect(page.locator('.fsec')).toHaveCount(6);

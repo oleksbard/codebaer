@@ -49,7 +49,7 @@ const DISK = 'one\nTWO\nthree\nfour\n';
 const blob = (text: string): Blob => ({ text, eol: 'lf', oid: 'oid1', exists: true });
 const file = (text: string): FileText => ({ text, eol: 'lf', exists: true });
 const status = (): Status => ({
-  head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+  head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0,
   files: [{ path: 'a.ts', indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false }],
 });
 const session = (id: number, title: string, cwd = ROOT): Info =>

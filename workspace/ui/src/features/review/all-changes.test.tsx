@@ -5,7 +5,7 @@ import type { Blob, FileEntry, FileText, Status } from '#ipc/git';
 import { confirmDialog } from '#kernel/dialogs';
 import { run } from '#kernel/registry';
 import { notify, S } from '#kernel/store';
-import { blob, file, g, mountApp } from '#test-app';
+import { blob, file, g, headerItem, mountApp } from '#test-app';
 import { tick } from '#test-setup';
 import { checkCwd } from '#ipc/terminal';
 import { dropPage, LARGE, LARGE_TEXT, rethemeAllChanges } from './all-changes';
@@ -70,7 +70,7 @@ let status: Status;
 function seed(files: Record<string, Seed>): void {
   repo = files;
   status = {
-    head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+    head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0,
     files: Object.entries(files).map(([path, f]) => ({
       path, indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false, ...f.entry,
     })),
@@ -82,12 +82,11 @@ const editorOf = (path: string): EditorView | null => {
   const el = sec(path)?.querySelector<HTMLElement>('.cm-editor');
   return el ? EditorView.findFromDOM(el) : null;
 };
-const showButton = () => document.querySelector<HTMLButtonElement>('[data-all="show"]')!;
 
 async function openPage(): Promise<void> {
   await refresh();
   await tick();
-  showButton().click();
+  (await headerItem('unstaged', 'show')).click();
   await vi.waitFor(() => expect(document.querySelector('.stack')).not.toBe(null));
 }
 
@@ -126,7 +125,8 @@ beforeEach(async () => {
 describe('the All changes page', () => {
   it('opens from the Changes header with a section per unstaged file, each read as it nears the screen', async () => {
     await openPage();
-    expect(showButton().getAttribute('aria-pressed')).toBe('true');
+    expect((await headerItem('unstaged', 'show')).textContent).toMatch(/^Close all changes/);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect([...document.querySelectorAll<HTMLElement>('.fsec')].map((s) => s.dataset.path)).toEqual(['a.txt', 'b.txt']);
     expect(g.readFile!).not.toHaveBeenCalled();
 
@@ -138,15 +138,15 @@ describe('the All changes page', () => {
     expect(editorOf('a.txt')!.state.readOnly).toBe(true);
   });
 
-  it('the toggle is off with nothing to review, and pressing it again leaves for the file on the page', async () => {
+  it('the toggle is gone with nothing to review, and pressing it again leaves for the file on the page', async () => {
     seed({});
     await refresh();
     await tick();
-    expect(showButton().disabled).toBe(true);
+    expect(document.querySelector('details[data-sec="unstaged"] summary [data-all]')).toBe(null);
 
     seed({ 'a.txt': { index: blob('one\n', 'ia'), disk: file('ONE\n') } });
     await openPage();
-    showButton().click();
+    (await headerItem('unstaged', 'show')).click();
 
     await vi.waitFor(() => expect(S.open?.path).toBe('a.txt'));
     expect(document.querySelector('.stack')).toBe(null);

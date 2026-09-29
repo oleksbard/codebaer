@@ -1,10 +1,11 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withBusy } from '#core/session';
 import { choiceDialog, confirmDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
+import type { Stash } from '#ipc/git';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
 import { tick } from '#test-setup';
-import { commit, network, stashPush } from './git-ops';
+import { age, commit, network, stash, unstash } from './git-ops';
 import { gitOps } from './index';
 
 vi.mock('#ipc/git', async () => {
@@ -23,6 +24,7 @@ vi.mock('#ipc/terminal', async () => {
   return { ...actual, checkCwd: vi.fn() };
 });
 
+const ROOT = '/repo/a';
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
 const choiceMock = choiceDialog as unknown as ReturnType<typeof vi.fn>;
 
@@ -30,12 +32,16 @@ beforeAll(mountApp);
 
 beforeEach(() => {
   for (const fn of Object.values(g)) fn.mockReset().mockResolvedValue(undefined);
+  // an icon ask started while a test had the AI on can finish in a later test
+  g.aiCommandIcons!.mockResolvedValue([]);
+  g.aiRepoIcons!.mockResolvedValue([]);
   confirmMock.mockReset().mockResolvedValue(false);
   choiceMock.mockReset().mockResolvedValue(null);
   S.open = null;
   S.selected = null;
   S.flushing = null;
   S.status = status('a.txt');
+  S.root = ROOT;
 });
 
 describe('the open file with unsaved changes', () => {
@@ -45,22 +51,29 @@ describe('the open file with unsaved changes', () => {
   });
 
   it('is offered a save before a stash, which Cancel skips altogether', async () => {
-    await stashPush();
+    await stash('unstaged');
     expect(choiceMock).toHaveBeenCalledWith(expect.stringMatching(/^a\.txt has unsaved changes\n/),
       'Save & Stash', 'Stash Anyway');
     expect(g.stashPush!).not.toHaveBeenCalled();
   });
 
+  it('is not asked about for a stash of the staged changes, which takes only the index', async () => {
+    await stash('staged');
+    expect(choiceMock).not.toHaveBeenCalled();
+    expect(g.stashPush!).toHaveBeenCalledExactlyOnceWith(ROOT, 'staged', null);
+    expect(S.open!.dirty).toBe(true);
+  });
+
   it('is saved before the stash on Save & Stash, and left unsaved on Stash Anyway', async () => {
     choiceMock.mockResolvedValue('ok');
-    await stashPush();
+    await stash('unstaged');
     expect(g.writeFile!).toHaveBeenCalledWith('a.txt', 'mine\n', 'lf', 'disk\n');
     expect(g.stashPush!).toHaveBeenCalledOnce();
 
     type('more\n');
     g.writeFile!.mockClear();
     choiceMock.mockResolvedValue('alt');
-    await stashPush();
+    await stash('unstaged');
     expect(g.writeFile!).not.toHaveBeenCalled();
     expect(g.stashPush!).toHaveBeenCalledTimes(2);
     expect(S.open!.dirty).toBe(true);
@@ -164,14 +177,108 @@ describe('the branch row', () => {
 
 describe('the stash commands', () => {
   const shown = () =>
-    gitOps.commands.filter((c) => c.id.startsWith('git.stash') && (!('when' in c) || c.when())).length;
+    gitOps.commands.filter((c) => /^git\.(un)?stash/.test(c.id) && (!('when' in c) || c.when())).length;
 
-  it('are offered only on a repo with a commit, and not with no repo open', () => {
+  it('are offered only on a repo with a commit and no conflict, and not with no repo open', () => {
     S.status = status('a.txt');
-    expect(shown()).toBe(2);
+    expect(shown()).toBe(4);
+    S.status = status('a.txt', 'U', 'U', false, true);
+    expect(shown()).toBe(0);
     S.status = { ...status('a.txt'), head: null };
     expect(shown()).toBe(0);
     S.status = null;
     expect(shown()).toBe(0);
+  });
+});
+
+describe('stashing', () => {
+  const setAi = (provider: 'claude' | 'off') => {
+    S.settings = { ...S.settings, 'general.headless-ai-provider': provider };
+  };
+  beforeEach(() => { S.toasts = []; });
+  afterEach(() => { setAi('off'); });
+
+  it('asks the AI to describe the stash and stores its answer as the message', async () => {
+    setAi('claude');
+    g.aiStashDescription!.mockResolvedValue('Adds a thing. It helps.');
+    await stash('staged');
+    expect(g.aiStashDescription!).toHaveBeenCalledWith('staged');
+    expect(g.stashPush!).toHaveBeenCalledExactlyOnceWith(ROOT, 'staged', 'Adds a thing. It helps.');
+  });
+
+  it('stashes without a description when the AI fails, and warns', async () => {
+    setAi('claude');
+    g.aiStashDescription!.mockRejectedValue({ kind: 'Ai', detail: 'claude took too long and was stopped' });
+    await stash('unstaged');
+    expect(g.stashPush!).toHaveBeenCalledExactlyOnceWith(ROOT, 'unstaged', null);
+    expect(S.toasts.map((t) => [t.kind, t.message]))
+      .toContainEqual(['warn', 'Stashing without a description\nclaude took too long and was stopped']);
+  });
+
+  it('does not ask the AI while it is off', async () => {
+    setAi('off');
+    g.stashPush!.mockResolvedValue(true);
+    await stash('all');
+    expect(g.aiStashDescription!).not.toHaveBeenCalled();
+    expect(g.stashPush!).toHaveBeenCalledExactlyOnceWith(ROOT, 'all', null);
+    expect(S.toasts).toEqual([]);
+  });
+
+  it('says so when there was nothing to stash', async () => {
+    setAi('off');
+    g.stashPush!.mockResolvedValue(false);
+    await stash('unstaged');
+    expect(S.toasts.map((t) => t.message)).toEqual(['No local changes to save']);
+  });
+
+  it('stashes nothing when another repo was opened while the AI wrote, and runs one stash at a time', async () => {
+    setAi('claude');
+    let answer: (text: string) => void = () => {};
+    g.aiStashDescription!.mockReturnValue(new Promise((r) => { answer = r; }));
+    const first = stash('unstaged');
+    await vi.waitFor(() => expect(g.aiStashDescription!).toHaveBeenCalledOnce());
+    await stash('unstaged');
+    expect(g.aiStashDescription!).toHaveBeenCalledOnce();
+    S.root = '/repo/b';
+    answer('Describes repo a.');
+    await first;
+    expect(g.stashPush!).not.toHaveBeenCalled();
+    expect(S.toasts.map((t) => t.message)).toEqual(['Nothing was stashed: another repository was opened']);
+  });
+});
+
+describe('unstashing', () => {
+  const now = Date.now();
+  const entry = (index: number, extra: Partial<Stash>): Stash => ({
+    index, oid: `oid${index}`, branch: 'main', message: 'm', wip: false, time: Math.floor(now / 1000) - 300, ...extra,
+  });
+  beforeEach(() => { S.toasts = []; S.palette = null; });
+
+  it('says so when there is nothing to restore', async () => {
+    g.stashList!.mockResolvedValue([]);
+    await unstash();
+    expect(S.palette).toBeNull();
+    expect(S.toasts.map((t) => t.message)).toEqual(['No stashes to restore']);
+  });
+
+  it('lists each stash with its branch and age, and pops the one picked by its index and oid', async () => {
+    g.stashList!.mockResolvedValue([
+      entry(0, { message: 'Adds a thing.' }),
+      entry(1, { message: '1a2b3c4 init', wip: true, branch: null }),
+    ]);
+    const done = unstash();
+    await vi.waitFor(() => expect(S.palette).not.toBeNull());
+    expect(S.palette!.items.map((i) => [i.label, i.note])).toEqual([
+      ['Adds a thing.', 'main · 5 minutes ago'], ['WIP on 1a2b3c4 init', '5 minutes ago'],
+    ]);
+    S.palette!.resolve(S.palette!.items[1]!.value);
+    await done;
+    expect(g.stashPop!).toHaveBeenCalledExactlyOnceWith(1, 'oid1');
+  });
+
+  it('tells the age in the largest unit that fits', () => {
+    const at = (s: number) => age(Math.floor(now / 1000) - s, now);
+    expect([at(5), at(90), at(7200), at(86_400 * 1.5), at(86_400 * 3), at(86_400 * 400)])
+      .toEqual(['just now', '1 minute ago', '2 hours ago', 'yesterday', '3 days ago', 'last year']);
   });
 });

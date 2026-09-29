@@ -47,10 +47,14 @@ test('with no file open the view counts the lines left to review and follows the
 test('the Discard all button asks first and then discards every unstaged change', async ({ page, open }) => {
   const mock = await open();
   const before = await mock.state();
-  const discard = page.locator('[data-all="discard"]');
+  const header = page.locator('details[data-sec="unstaged"] summary');
+  const discard = async () => {
+    await header.locator('[data-all="menu"]').click();
+    await page.locator('.queue-menu [data-all="discard"]').click();
+  };
   const dialog = page.getByRole('alertdialog');
 
-  await discard.click();
+  await discard();
   await expect(dialog.getByText('Discard unstaged changes in 6 files?')).toBeVisible();
   await expect(dialog.getByText('1 untracked file is deleted and cannot be recovered.')).toBeVisible();
   await expect(dialog.getByText('src/utils/money.ts')).toHaveCount(0);
@@ -58,11 +62,11 @@ test('the Discard all button asks first and then discards every unstaged change'
   await mock.idle();
   expect(await mock.state()).toEqual(before);
 
-  await discard.click();
+  await discard();
   await dialog.getByRole('button', { name: 'OK' }).click();
   await mock.idle();
   await expect(page.getByText('Nothing left to review')).toBeVisible();
-  await expect(discard).toBeDisabled();
+  await expect(header.locator('[data-all]')).toHaveCount(0);
   await expect(row(page, 'staged', 'src/checkout.ts')).toBeVisible();
   for (const f of Object.values((await mock.state()).files)) expect(f.work).toBe(f.index);
 });

@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Recent,
-  RepoItem, Rev, Scripts, StageResult, Status } from '#ipc/git';
+  RepoItem, Rev, Scripts, StageResult, Stash, StashKind, Status } from '#ipc/git';
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
@@ -71,8 +71,8 @@ const AI_ICONS_OFF: AppError = { kind: 'Ai', detail: 'AI icons are off. Turn the
 const NEEDS_REPO = new Set([
   'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'blame', 'stage_content', 'stage_path',
   'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit', 'branches',
-  'switch_branch', 'create_branch', 'stash_push', 'stash_pop', 'list_files', 'list_dir', 'push', 'pull', 'fetch',
-  'fetch_background', 'ai_commit_message', 'package_scripts', 'task_run',
+  'switch_branch', 'create_branch', 'stash_push', 'stash_list', 'stash_pop', 'list_files', 'list_dir', 'push', 'pull',
+  'fetch', 'fetch_background', 'ai_commit_message', 'ai_stash_description', 'package_scripts', 'task_run',
 ]);
 
 function wordIcon(words: Record<string, string>, text: string, sets: IconSet[]): string | null {
@@ -250,8 +250,14 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     branches: (): Branch[] => repo.branches(),
     switch_branch: ({ branch }: { branch: Branch }) => mutate(() => repo.switchBranch(branch)),
     create_branch: ({ name: n }: { name: string }) => mutate(() => repo.createBranch(n)),
-    stash_push: () => mutate(() => repo.stashPush()),
-    stash_pop: () => mutate(() => repo.stashPop()),
+    stash_push: ({ root, kind, message }: { root: string; kind: StashKind; message: string | null }): boolean => {
+      if (root !== sc.root) {
+        throw { kind: 'Git', detail: 'Another repository was opened, so nothing was stashed.' } satisfies AppError;
+      }
+      return mutate(() => repo.stashPush(kind, message));
+    },
+    stash_list: (): Stash[] => repo.stashList(),
+    stash_pop: ({ index, oid }: { index: number; oid: string }) => mutate(() => repo.stashPop(index, oid)),
     list_files: (): Listing => repo.listFiles(),
     list_dir: ({ path }: { path: string }): string[] => repo.listDir(path),
     push: () => net(() => repo.push()),
@@ -273,6 +279,16 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       await sleep(opts.slow);
       const what = staged.length === 1 ? basename(staged[0]!) : `${basename(staged[0]!)} and ${staged.length - 1} more`;
       return `Update ${what}\n\nWritten by browser mode from the staged paths, not by an AI.`;
+    },
+    ai_stash_description: async ({ kind }: { kind: StashKind }): Promise<string | null> => {
+      if (settings['general.headless-ai-provider'] === 'off') {
+        throw { kind: 'Ai', detail: 'AI stash descriptions are off. Turn them on in Settings.' } satisfies AppError;
+      }
+      const paths = repo.stashPaths(kind);
+      if (!paths.length) return null;
+      await sleep(opts.slow);
+      const what = paths.length === 1 ? basename(paths[0]!) : `${basename(paths[0]!)} and ${paths.length - 1} more`;
+      return `Changes ${what}. Written by browser mode from the stashed paths, not by an AI.`;
     },
     settings_get: (): Settings => ({ ...settings }),
     settings_set: ({ settings: s }: { settings: Settings }) => { settings = { ...s }; },

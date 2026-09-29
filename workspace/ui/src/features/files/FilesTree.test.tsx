@@ -78,7 +78,7 @@ describe('row layout', () => {
 
   it('Files tab shows each changed file\'s git letter and a roll-up dot on the folders above it', async () => {
     S.status = {
-      head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+      head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0,
       files: [
         { path: 'src/app/a.ts', indexStatus: '.', worktreeStatus: 'M', untracked: false, conflicted: false },
         { path: 'README.md', indexStatus: 'A', worktreeStatus: '.', untracked: false, conflicted: false },

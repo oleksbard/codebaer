@@ -3,6 +3,7 @@ use crate::eol::Eol;
 use crate::error::AppError;
 use crate::status::{self, Status};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
@@ -355,7 +356,7 @@ pub fn discover(path: &Path) -> Result<Repo, AppError> {
 }
 
 pub fn status_impl(root: &Path) -> Result<Status, AppError> {
-    let out = run_locked(root, &["status", "--porcelain=v2", "--branch", "-uall", "-z"], None, Some(LOCAL))?;
+    let out = run_locked(root, &["status", "--porcelain=v2", "--branch", "--show-stash", "-uall", "-z"], None, Some(LOCAL))?;
     Ok(status::parse(&out.stdout))
 }
 
@@ -960,12 +961,290 @@ pub fn create_branch_impl(root: &Path, name: &str) -> Result<(), AppError> {
     run_locked(root, &["switch", "-c", name], None, Some(LOCAL)).map(|_| ())
 }
 
-pub fn stash_push_impl(root: &Path) -> Result<(), AppError> {
-    run_locked(root, &["stash", "push", "--include-untracked"], None, Some(LOCAL)).map(|_| ())
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum StashKind {
+    /// Staged, unstaged and untracked changes.
+    All,
+    Staged,
+    /// Unstaged and untracked changes; the index stays as it is.
+    Unstaged,
 }
 
-pub fn stash_pop_impl(root: &Path) -> Result<(), AppError> {
-    run_locked(root, &["stash", "pop", "--index"], None, Some(LOCAL)).map(|_| ())
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Stash {
+    /// The n of `stash@{n}`.
+    pub index: u32,
+    pub oid: String,
+    /// None for a stash made on a detached HEAD, or one whose message git did not write.
+    pub branch: Option<String>,
+    pub message: String,
+    /// The message is git's own `WIP on <branch>: <commit>`, which says only where the stash was made.
+    pub wip: bool,
+    pub time: i64,
+}
+
+fn line_of(out: Out) -> String {
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn run_with_index(root: &Path, index: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<Out, AppError> {
+    let mut cmd = git_command(root, args);
+    cmd.env("GIT_INDEX_FILE", index);
+    let out = run_child(cmd, stdin, Some(LOCAL), None)?;
+    if out.code != 0 {
+        return Err(AppError::Git(out.stderr));
+    }
+    Ok(out)
+}
+
+/// `git stash` commits under a stand-in name when the user set none; `user.useConfigOnly` does not stop it either.
+const FALLBACK_IDENT: [(&str, &str); 4] = [
+    ("GIT_AUTHOR_NAME", "git stash"),
+    ("GIT_AUTHOR_EMAIL", "git@stash"),
+    ("GIT_COMMITTER_NAME", "git stash"),
+    ("GIT_COMMITTER_EMAIL", "git@stash"),
+];
+
+fn commit_tree(root: &Path, ident: &[(&str, &str)], tree: &str, parents: &[String], message: &str) -> Result<String, AppError> {
+    let mut args = vec!["commit-tree", tree];
+    for p in parents {
+        args.extend(["-p", p.as_str()]);
+    }
+    args.extend(["-F", "-"]);
+    let mut cmd = git_command(root, &args);
+    cmd.envs(ident.iter().copied());
+    let out = run_child(cmd, Some(message.as_bytes()), Some(LOCAL), None)?;
+    if out.code != 0 {
+        return Err(AppError::Git(out.stderr));
+    }
+    Ok(line_of(out))
+}
+
+/// Deletes the file, then each parent folder it leaves empty, as `git clean -d` would.
+fn remove_untracked(root: &Path, rel: &str) -> Result<(), AppError> {
+    let full = root.join(rel);
+    match std::fs::remove_file(&full) {
+        Err(e) if !matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => return Err(e.into()),
+        _ => {}
+    }
+    for dir in full.ancestors().skip(1).take_while(|d| *d != root) {
+        if std::fs::remove_dir(dir).is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// The listed paths that `index` no longer matches on disk. Changes inside a submodule do not count: no stash holds
+/// them, so they are left where they are.
+fn changed_since(root: &Path, index: &Path, paths: &HashSet<String>) -> Result<Vec<String>, AppError> {
+    let out = run_with_index(root, index, &["diff-files", "--ignore-submodules=dirty", "--name-only", "-z"], None)?;
+    Ok(nul_separated(&out.stdout).into_iter().filter(|p| paths.contains(p)).collect())
+}
+
+/// `diff-files --raw -z`: each changed path with its status letter.
+fn raw_changes(out: &[u8]) -> Vec<(u8, &[u8])> {
+    let mut parts = out.split(|&b| b == 0);
+    let mut changes = Vec::new();
+    while let (Some(meta), Some(path)) = (parts.next(), parts.next()) {
+        if let (Some(&status), false) = (meta.last(), path.is_empty()) {
+            changes.push((status, path));
+        }
+    }
+    changes
+}
+
+/// The first file under `dir` that is not listed: an ignored file, one made since the listing, or a nested
+/// repository's. The folder itself when it cannot be read.
+fn unlisted_file(root: &Path, dir: &Path, listed: &HashSet<String>) -> Option<String> {
+    let Ok(entries) = std::fs::read_dir(root.join(dir)) else { return Some(dir.to_string_lossy().into_owned()) };
+    for e in entries {
+        let Ok(e) = e else { return Some(dir.to_string_lossy().into_owned()) };
+        let rel = dir.join(e.file_name());
+        let found = match e.file_type() {
+            Ok(t) if t.is_dir() => unlisted_file(root, &rel, listed),
+            _ => Some(rel.to_string_lossy().into_owned()).filter(|r| !listed.contains(r)),
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+/// git has no flag for this: `--keep-index` puts the staged changes in the stash too, and popping it later brings
+/// them back as unstaged ones. So the stash is built by hand with the index, not HEAD, as its base, and `stash pop
+/// --index` then puts back only the unstaged changes and leaves the index alone. False when there was nothing to
+/// stash.
+fn stash_unstaged(root: &Path, message: Option<&str>) -> Result<bool, AppError> {
+    if !run(root, &["ls-files", "-u"], None, Some(LOCAL))?.stdout.is_empty() {
+        return Err(AppError::Conflicted);
+    }
+    // a file only touched would otherwise be listed as changed, and git's own stash refreshes first too
+    run_raw(root, &["update-index", "-q", "--refresh"], None, Some(LOCAL), None)?;
+    let raw = run(root, &["diff-files", "--raw", "-z"], None, Some(LOCAL))?.stdout;
+    let changes = raw_changes(&raw);
+    // a nested repository is listed as its folder with a trailing slash; git's own stash leaves it in place too
+    let untracked: Vec<String> = nul_separated(&run(root, &["ls-files", "-o", "--exclude-standard", "-z"], None, Some(LOCAL))?.stdout)
+        .into_iter()
+        .filter(|p| !p.ends_with('/'))
+        .collect();
+    if changes.is_empty() && untracked.is_empty() {
+        return Ok(false);
+    }
+    let head = run(root, &["rev-parse", "-q", "--verify", "HEAD"], None, Some(LOCAL))
+        .map_err(|_| AppError::Git("You do not have the initial commit yet".into()))
+        .map(line_of)?;
+    let index_tree = line_of(run_locked(root, &["write-tree"], None, Some(LOCAL))?);
+
+    // `write-tree` leaves out a file added with `add -N`, so checking it out afterwards would write it empty; git
+    // refuses too. One whose file is gone reads like any deleted file, except that the tree lacks it.
+    let deleted: Vec<&[u8]> = changes.iter().filter(|c| c.0 == b'D').map(|c| c.1).collect();
+    let in_tree: HashSet<Vec<u8>> = if deleted.is_empty() {
+        HashSet::new()
+    } else {
+        let out = run(root, &["ls-tree", "-r", "-z", "--name-only", &index_tree], None, Some(LOCAL))?.stdout;
+        out.split(|&b| b == 0).map(<[u8]>::to_vec).collect()
+    };
+    let intent = changes.iter().find(|(st, p)| *st == b'A' || (*st == b'D' && !in_tree.contains(*p)));
+    if let Some((_, p)) = intent {
+        let p = String::from_utf8_lossy(p);
+        return Err(AppError::Git(format!("{p} was added with git add -N. Stage it or unstage it, then stash again.")));
+    }
+    // Some(true) for a folder, Some(false) for anything else, None for nothing
+    let kind_at = |p: &[u8]| std::fs::symlink_metadata(root.join(OsStr::from_bytes(p))).ok().map(|m| m.is_dir());
+    // putting a deleted file back replaces a folder at its path whole, and the stash holds only the listed files
+    let listed: HashSet<String> = untracked.iter().cloned().collect();
+    for p in &deleted {
+        let rel = Path::new(OsStr::from_bytes(p));
+        if kind_at(p) == Some(true) {
+            if let Some(f) = unlisted_file(root, rel, &listed) {
+                let p = rel.display();
+                return Err(AppError::Git(format!("{f} is in {p}, where a tracked file was deleted, and a stash cannot take it. Move it, then stash again.")));
+            }
+        }
+    }
+
+    let branch = run_raw(root, &["symbolic-ref", "--short", "-q", "HEAD"], None, Some(LOCAL), None)?;
+    let branch = if branch.code == 0 { line_of(branch) } else { "(no branch)".to_string() };
+    let on = format!("{branch}: {}", line_of(run(root, &["log", "-1", "--format=%h %s", "HEAD"], None, Some(LOCAL))?));
+    let has_ident = run_raw(root, &["var", "GIT_COMMITTER_IDENT"], None, Some(LOCAL), None)?.code == 0;
+    let ident: &[(&str, &str)] = if has_ident { &[] } else { &FALLBACK_IDENT };
+    let changed: Vec<u8> = changes.iter().flat_map(|c| c.1.iter().copied().chain([0])).collect();
+
+    let tmp = tempfile::tempdir()?;
+    let work_index = tmp.path().join("work");
+    run_with_index(root, &work_index, &["read-tree", &index_tree], None)?;
+    run_with_index(root, &work_index, &["update-index", "--add", "--remove", "-z", "--stdin"], Some(&changed))?;
+    let work_tree = line_of(run_with_index(root, &work_index, &["write-tree"], None)?);
+    // a submodule with changes inside it is listed, but a stash cannot hold them
+    if work_tree == index_tree && untracked.is_empty() {
+        return Ok(false);
+    }
+    let base = commit_tree(root, ident, &index_tree, &[head], &format!("index on {on}"))?;
+    let index = commit_tree(root, ident, &index_tree, std::slice::from_ref(&base), &format!("index on {on}"))?;
+    let mut parents = vec![base, index];
+    let untracked_index = tmp.path().join("untracked");
+    if !untracked.is_empty() {
+        let list: Vec<u8> = untracked.iter().flat_map(|p| p.bytes().chain([0])).collect();
+        run_with_index(root, &untracked_index, &["update-index", "--add", "-z", "--stdin"], Some(&list))?;
+        let tree = line_of(run_with_index(root, &untracked_index, &["write-tree"], None)?);
+        parents.push(commit_tree(root, ident, &tree, &[], &format!("untracked files on {on}"))?);
+    }
+    let subject = match message {
+        Some(m) => format!("On {branch}: {m}"),
+        None => format!("WIP on {on}"),
+    };
+    let stash = commit_tree(root, ident, &work_tree, &parents, &subject)?;
+    run_locked(root, &["stash", "store", "-m", &subject, &stash], None, Some(LOCAL))?;
+
+    // checked as late as can be: the cleanup below would drop an edit an agent made after its file was read
+    let changed_set: HashSet<String> = changes.iter().map(|c| String::from_utf8_lossy(c.1).into_owned()).collect();
+    let mut moved = changed_since(root, &work_index, &changed_set)?;
+    moved.extend(deleted.iter().filter(|p| kind_at(p) == Some(false)).map(|p| String::from_utf8_lossy(p).into_owned()));
+    if !untracked.is_empty() {
+        moved.extend(changed_since(root, &untracked_index, &listed)?);
+    }
+    if let Some(p) = moved.first() {
+        let top = run_raw(root, &["rev-parse", "-q", "--verify", "stash@{0}"], None, Some(LOCAL), None)?;
+        let ours = top.code == 0 && line_of(top) == stash;
+        let dropped = ours && run_locked(root, &["stash", "drop", "-q", "stash@{0}"], None, Some(LOCAL)).is_ok();
+        let what = if dropped { "Nothing was stashed; try again." } else { "The stash was kept, and nothing was removed." };
+        return Err(AppError::Git(format!("{p} changed while it was being stashed. {what}")));
+    }
+
+    // untracked files first: one can stand where a tracked file comes back, or inside a folder that becomes one
+    for p in &untracked {
+        remove_untracked(root, p)?;
+    }
+    // a folder still there holds a file made since the check, and checking the deleted file out would remove it
+    let checkout: Vec<u8> = changes
+        .iter()
+        .filter(|(st, p)| *st != b'D' || kind_at(p) != Some(true))
+        .flat_map(|c| c.1.iter().copied().chain([0]))
+        .collect();
+    // without -u it needs no index.lock, which an agent's commit may hold; the next status refreshes the stat data
+    if !checkout.is_empty() {
+        run(root, &["checkout-index", "-f", "-q", "-z", "--stdin"], Some(&checkout), Some(LOCAL))?;
+    }
+    Ok(true)
+}
+
+/// `message` becomes the stash's message on one line; without one git writes its own. False when there was nothing
+/// to stash.
+pub fn stash_push_impl(root: &Path, kind: StashKind, message: Option<&str>) -> Result<bool, AppError> {
+    let message = message.map(|m| m.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|m| !m.is_empty());
+    if kind == StashKind::Unstaged {
+        return stash_unstaged(root, message.as_deref());
+    }
+    // with unstaged changes but nothing staged, `--staged` fails rather than saying there is nothing to save
+    if kind == StashKind::Staged && run_raw(root, &["diff", "--cached", "--quiet"], None, Some(LOCAL), None)?.code == 0 {
+        return Ok(false);
+    }
+    let flag = message.map(|m| format!("--message={m}"));
+    let mut args = vec!["stash", "push", if kind == StashKind::All { "--include-untracked" } else { "--staged" }];
+    args.extend(flag.as_deref());
+    let out = run_locked(root, &args, None, Some(LOCAL))?;
+    Ok(!String::from_utf8_lossy(&out.stdout).contains("No local changes to save"))
+}
+
+/// `On <branch>: <message>` when a message was given, `WIP on <branch>: <commit>` when git wrote it.
+fn parse_stash_subject(subject: &str) -> (Option<String>, String, bool) {
+    let (rest, wip) = match (subject.strip_prefix("WIP on "), subject.strip_prefix("On ")) {
+        (Some(r), _) => (r, true),
+        (None, Some(r)) => (r, false),
+        (None, None) => return (None, subject.to_string(), false),
+    };
+    // a branch name cannot hold a colon
+    match rest.split_once(": ") {
+        Some((b, m)) => ((b != "(no branch)").then(|| b.to_string()), m.to_string(), wip),
+        None => (None, subject.to_string(), false),
+    }
+}
+
+pub fn stash_list_impl(root: &Path) -> Result<Vec<Stash>, AppError> {
+    let out = run(root, &["stash", "list", "--format=%H%x00%ct%x00%gs"], None, Some(LOCAL))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut stashes = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        let mut fields = line.splitn(3, '\0');
+        let (Some(oid), Some(time), Some(subject)) = (fields.next(), fields.next(), fields.next()) else { continue };
+        let (branch, message, wip) = parse_stash_subject(subject);
+        stashes.push(Stash { index: n as u32, oid: oid.to_string(), branch, message, wip, time: time.parse().unwrap_or(0) });
+    }
+    Ok(stashes)
+}
+
+/// `oid` is what `stash@{index}` was when the list was read: another stash made or dropped since then moves the
+/// numbers, and the pop must not take a different one.
+pub fn stash_pop_impl(root: &Path, index: u32, oid: &str) -> Result<(), AppError> {
+    let at = format!("stash@{{{index}}}");
+    let now = run_raw(root, &["rev-parse", "-q", "--verify", &at], None, Some(LOCAL), None)?;
+    if now.code != 0 || line_of(now) != oid {
+        return Err(AppError::Git("The list of stashes changed. Pick the stash again.".into()));
+    }
+    run_locked(root, &["stash", "pop", "--index", &at], None, Some(LOCAL)).map(|_| ())
 }
 
 /// `ignored` carries a trailing slash on a wholly ignored directory, which is how the tree tells
@@ -1050,8 +1329,30 @@ pub fn create_branch(state: State<AppState>, name: String) -> Result<(), AppErro
     create_branch_impl(&root, &name)
 }
 
-locked_cmd!(stash_push, stash_push_impl, ());
-locked_cmd!(stash_pop, stash_pop_impl, ());
+/// `root` is the repo the stash was asked for: the AI's description can take a minute, and another repo opened
+/// meanwhile must not be stashed.
+#[tauri::command(async)]
+pub fn stash_push(state: State<AppState>, root: String, kind: StashKind, message: Option<String>) -> Result<bool, AppError> {
+    let open = state.root()?;
+    if open != Path::new(&root) {
+        return Err(AppError::Git("Another repository was opened, so nothing was stashed.".into()));
+    }
+    let root = open;
+    let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    stash_push_impl(&root, kind, message.as_deref())
+}
+
+#[tauri::command(async)]
+pub fn stash_list(state: State<AppState>) -> Result<Vec<Stash>, AppError> {
+    stash_list_impl(&state.root()?)
+}
+
+#[tauri::command(async)]
+pub fn stash_pop(state: State<AppState>, index: u32, oid: String) -> Result<(), AppError> {
+    let root = state.root()?;
+    let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+    stash_pop_impl(&root, index, &oid)
+}
 
 #[tauri::command(async)]
 pub fn list_files(state: State<AppState>) -> Result<Listing, AppError> {
@@ -1276,6 +1577,32 @@ pub fn blame(state: State<AppState>, path: String, line: u32, contents: String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_edited_after_it_was_read_into_an_index_is_caught() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        run(r, &["init", "-q"], None, Some(LOCAL)).unwrap();
+        std::fs::write(r.join("a.txt"), "a\n").unwrap();
+        std::fs::write(r.join("b.txt"), "b\n").unwrap();
+        let index = r.join(".git/scratch-index");
+        run_with_index(r, &index, &["update-index", "--add", "-z", "--stdin"], Some(b"a.txt\0b.txt\0")).unwrap();
+        let listed: HashSet<String> = ["a.txt".to_string()].into();
+        assert_eq!(changed_since(r, &index, &listed).unwrap(), Vec::<String>::new());
+        std::fs::write(r.join("a.txt"), "agent\n").unwrap();
+        std::fs::write(r.join("b.txt"), "not listed\n").unwrap();
+        assert_eq!(changed_since(r, &index, &listed).unwrap(), ["a.txt"]);
+    }
+
+    #[test]
+    fn a_stash_subject_yields_its_branch_and_message() {
+        let p = parse_stash_subject;
+        assert_eq!(p("On main: Adds a thing: really"), (Some("main".into()), "Adds a thing: really".into(), false));
+        assert_eq!(p("WIP on feat/x: 1a2b3c4 Fix it"), (Some("feat/x".into()), "1a2b3c4 Fix it".into(), true));
+        assert_eq!(p("On (no branch): Detached"), (None, "Detached".into(), false));
+        assert_eq!(p("hand-made entry"), (None, "hand-made entry".into(), false));
+        assert_eq!(p("On nothing"), (None, "On nothing".into(), false));
+    }
 
     #[test]
     fn repo_title_prefers_the_readme_heading_over_the_package_name() {

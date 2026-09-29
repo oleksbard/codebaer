@@ -57,7 +57,7 @@ export async function loadFiles(): Promise<void> {
 export async function quickOpen(): Promise<void> {
   try {
     const files = visibleFiles((await git.listFiles()).files,
-      S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, files: [] });
+      S.status ?? { head: null, branch: null, upstream: null, ahead: 0, behind: 0, stash: 0, files: [] });
     const p = await pick(files.map((f) => ({ label: f, value: f })), 'Search files by name');
     if (p) await openPlain(p);
   } catch (e) {

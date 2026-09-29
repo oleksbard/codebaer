@@ -45,7 +45,7 @@ function statusFor(unstaged: Row[], staged: Row[]): Status {
     else f.worktreeStatus = r.letter;
   }
   for (const r of staged) get(r.path).indexStatus = r.letter;
-  return { head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files: [...files.values()] };
+  return { head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0, files: [...files.values()] };
 }
 
 let root: Root;

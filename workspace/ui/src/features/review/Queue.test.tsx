@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { tick } from '#test-setup';
+import { headerItem } from '#test-app';
 import type { FileEntry, Status } from '#ipc/git';
 import type { Row } from '#core/model';
 
@@ -10,6 +11,9 @@ vi.mock('./hunks', async () => ({
   ...(await vi.importActual<object>('./hunks')),
   acceptFile: vi.fn(), rejectFile: vi.fn(), unstageFile: vi.fn(), stageAll: vi.fn(), unstageAll: vi.fn(),
   discardAll: vi.fn(),
+}));
+vi.mock('#features/git-ops', async () => ({
+  ...(await vi.importActual<object>('#features/git-ops')), stash: vi.fn(), unstash: vi.fn(),
 }));
 vi.mock('#kernel/clipboard', () => {
   const copyPath = vi.fn();
@@ -22,10 +26,11 @@ const { S, notify } = await import('#kernel/store');
 const { Sidebar } = await import('#app/Sidebar');
 const session = await import('#core/session');
 const hunks = await import('./hunks');
+const ops = await import('#features/git-ops');
 const h = {
   openRow: session.openRow, openPlain: session.openPlain, acceptFile: hunks.acceptFile, rejectFile: hunks.rejectFile,
   unstageFile: hunks.unstageFile, stageAll: hunks.stageAll, unstageAll: hunks.unstageAll, discardAll: hunks.discardAll,
-  copyPath: (await import('#kernel/clipboard')).copyPath,
+  copyPath: (await import('#kernel/clipboard')).copyPath, stash: ops.stash, unstash: ops.unstash,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const row = (path: string, letter: string, section: Row['section'] = 'unstaged', extra: Partial<Row> = {}): Row =>
@@ -43,7 +48,7 @@ function statusFor(unstaged: Row[], staged: Row[]): Status {
     else f.worktreeStatus = r.letter;
   }
   for (const r of staged) get(r.path).indexStatus = r.letter;
-  return { head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, files: [...files.values()] };
+  return { head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0, files: [...files.values()] };
 }
 
 let root: Root;
@@ -140,13 +145,19 @@ describe('row layout', () => {
 });
 
 describe('sections', () => {
-  it('renders both sections open with counts', async () => {
-    await render([row('a', 'M')], [row('b', 'M', 'staged')]);
+  it('renders both sections open with the count right after the label', async () => {
+    await render([row('a', 'M'), row('c', 'M')], [row('b', 'M', 'staged')]);
     const secs = [...side.querySelectorAll<HTMLDetailsElement>('details[data-sec]')];
     expect(secs.map((d) => d.dataset.sec)).toEqual(['unstaged', 'staged']);
     expect(secs.map((d) => d.open)).toEqual([true, true]);
-    expect([...side.querySelectorAll('summary.sec .n')].map((n) => n.textContent)).toEqual(['1', '1']);
-    expect(side.querySelector('summary.sec .l')!.textContent).toBe('Changes');
+    expect([...side.querySelectorAll('summary.sec .l')].map((l) => l.textContent)).toEqual(['Changes2', 'Staged1']);
+    expect(side.querySelector('summary.sec .l > .n')!.textContent).toBe('2');
+  });
+
+  it('shows no count for an empty section', async () => {
+    await render([row('a', 'M')], []);
+    expect(details('unstaged').querySelector('summary .n')!.textContent).toBe('1');
+    expect(details('staged').querySelector('summary .n')).toBe(null);
   });
 
   it('keeps a collapsed section collapsed across re-renders and a Files tab visit', async () => {
@@ -161,27 +172,89 @@ describe('sections', () => {
     expect(details('staged').open).toBe(false);
   });
 
-  it('the stage-all button runs its handler and cancels the click default', async () => {
-    await render([row('a', 'M')]);
-    const btn = side.querySelector<HTMLButtonElement>('[data-all="stage"]')!;
+  const withStashes = async (n: number) => {
+    S.status = { ...S.status!, stash: n };
+    notify();
+    await tick();
+  };
+  const menuItems = () => [...document.querySelectorAll('.queue-menu > *')]
+    .map((i) => (i.classList.contains('menu-sep') ? '-' : i.textContent));
+  /** The header's buttons: the menu's or the one action's own, then Stage all's. */
+  const headerButtons = (sec: 'unstaged' | 'staged') =>
+    [...details(sec).querySelectorAll<HTMLElement>('summary [data-all]')].map((b) => b.dataset.all);
+
+  it('lists the available header actions in a menu, whose button does not fold the section', async () => {
+    await render([row('a', 'M')], [row('b', 'M', 'staged')]);
+    await withStashes(2);
     const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
-    btn.dispatchEvent(ev);
-    expect(h.stageAll).toHaveBeenCalledTimes(1);
+    details('unstaged').querySelector('[data-all="menu"]')!.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+    await headerItem('unstaged', 'show');
+    expect(menuItems()).toEqual(['Review all changes⌘⇧A', 'Discard all changes', '-', 'Stash changes', 'Unstash…']);
+    await headerItem('staged', 'unstage');
+    expect(menuItems()).toEqual(['Unstage all changes', 'Stash staged changes']);
   });
 
-  it('the discard-all button runs its handler, and is disabled with nothing to review or a conflict', async () => {
+  it('keeps Stage all out of the menu, as a button after it while there is something to stage', async () => {
     await render([row('a', 'M')]);
-    const btn = () => side.querySelector<HTMLButtonElement>('[data-all="discard"]')!;
+    expect(headerButtons('unstaged')).toEqual(['menu', 'stage']);
+    const stage = details('unstaged').querySelector<HTMLElement>('[data-all="stage"]')!;
+    expect(stage.title).toBe('Stage all changes (⌘⌥Y)');
     const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
-    btn().dispatchEvent(ev);
-    expect(h.discardAll).toHaveBeenCalledTimes(1);
+    stage.dispatchEvent(ev);
+    expect(h.stageAll).toHaveBeenCalledOnce();
     expect(ev.defaultPrevented).toBe(true);
-
     await render([], [row('b', 'M', 'staged')]);
-    expect(btn().disabled).toBe(true);
-    await render([row('a', 'M'), row('c', '!', 'unstaged', { conflicted: true })]);
-    expect(btn().disabled).toBe(true);
+    expect(headerButtons('unstaged')).toEqual([]);
+  });
+
+  it('the menu items run their handlers', async () => {
+    await render([row('a', 'M')], [row('b', 'M', 'staged')]);
+    await withStashes(1);
+    (await headerItem('unstaged', 'discard')).click();
+    (await headerItem('unstaged', 'stash')).click();
+    (await headerItem('unstaged', 'unstash')).click();
+    (await headerItem('staged', 'unstage')).click();
+    (await headerItem('staged', 'stash-staged')).click();
+    expect([h.discardAll, h.unstash, h.unstageAll].map((f) => f!.mock.calls.length)).toEqual([1, 1, 1]);
+    expect(h.stash!.mock.calls).toEqual([['unstaged'], ['staged']]);
+  });
+
+  it('leaves out Unstash with no stash, and Discard, the stashes and Unstash with a conflict', async () => {
+    await render([row('a', 'M')]);
+    await headerItem('unstaged', 'show');
+    expect(menuItems()).toEqual(['Review all changes⌘⇧A', 'Discard all changes', '-', 'Stash changes']);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    await render([row('a', 'M'), row('c', '!', 'unstaged', { conflicted: true })], [row('b', 'M', 'staged')]);
+    await withStashes(1);
+    expect(headerButtons('unstaged')).toEqual(['show', 'stage']);
+    expect(headerButtons('staged')).toEqual(['unstage']);
+  });
+
+  it('shows the one available action as its own button, and nothing when none is', async () => {
+    await render([], []);
+    expect(headerButtons('unstaged')).toEqual([]);
+    expect(headerButtons('staged')).toEqual([]);
+    await withStashes(1);
+    expect(headerButtons('unstaged')).toEqual(['unstash']);
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    details('unstaged').querySelector('[data-all="unstash"]')!.dispatchEvent(ev);
+    expect(h.unstash).toHaveBeenCalledOnce();
+    expect(ev.defaultPrevented).toBe(true);
+    expect(details('unstaged').querySelector('[data-all="unstash"]')!.getAttribute('aria-label')).toBe('Unstash…');
+  });
+
+  it('offers no stash action without a commit', async () => {
+    await render([row('a', 'M')], [row('b', 'M', 'staged')]);
+    S.status = { ...S.status!, head: null, stash: 1 };
+    notify();
+    await tick();
+    await headerItem('unstaged', 'show');
+    expect(menuItems()).toEqual(['Review all changes⌘⇧A', 'Discard all changes']);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    expect(headerButtons('staged')).toEqual(['unstage']);
   });
 
   it('arrow keys skip rows inside a collapsed section', async () => {
@@ -218,7 +291,7 @@ describe('sections', () => {
 
   it('Enter on a focused header button does not reach the list handler', async () => {
     await render([row('a', 'M')], [], 'unstaged:a');
-    side.querySelector<HTMLButtonElement>('[data-all="stage"]')!
+    side.querySelector<HTMLButtonElement>('[data-all="menu"]')!
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(h.openRow).not.toHaveBeenCalled();
   });

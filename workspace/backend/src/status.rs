@@ -7,6 +7,8 @@ pub struct Status {
     pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
+    /// Stash entries; git before 2.35 does not report them in this format, and they read as none.
+    pub stash: u32,
     pub files: Vec<FileEntry>,
 }
 
@@ -37,6 +39,7 @@ pub fn parse(bytes: &[u8]) -> Status {
                 "branch.oid" => st.head = (v != "(initial)").then(|| v.to_string()),
                 "branch.head" => st.branch = (v != "(detached)").then(|| v.to_string()),
                 "branch.upstream" => st.upstream = Some(v.to_string()),
+                "stash" => st.stash = v.parse().unwrap_or(0),
                 "branch.ab" => {
                     for part in v.split(' ') {
                         if let Some(n) = part.strip_prefix('+') {
@@ -141,8 +144,9 @@ mod tests {
     #[test]
     fn parses_branch_headers() {
         let s = parse(&z(&["# branch.oid 1234567890123456789012345678901234567890", "# branch.head main",
-                          "# branch.upstream origin/main", "# branch.ab +2 -1"]));
+                          "# branch.upstream origin/main", "# branch.ab +2 -1", "# stash 3"]));
         assert_eq!(s.head.as_deref(), Some("1234567890123456789012345678901234567890"));
+        assert_eq!(s.stash, 3);
         assert_eq!(s.branch.as_deref(), Some("main"));
         assert_eq!(s.upstream.as_deref(), Some("origin/main"));
         assert_eq!((s.ahead, s.behind), (2, 1));

@@ -4,7 +4,9 @@
   font-size: var(--fs-2);
 }
 
-/* the All changes toggle while the page is open */
-summary.sec .ico[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-/* the pressed rule outranks .ico:hover, so the toggle needs its own hover state to keep one */
-summary.sec .ico[aria-pressed="true"]:hover { background: var(--accent); color: var(--panel); }
+.queue-menu .menu-item {
+  align-items: center;
+  gap: 8px;
+
+  svg { flex: none; color: var(--muted); }
+}

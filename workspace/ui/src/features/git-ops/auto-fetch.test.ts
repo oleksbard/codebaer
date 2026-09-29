@@ -20,7 +20,7 @@ vi.mock('#ipc/log', async () => {
 });
 
 const tracking = (branch: string, upstream: string | null = `origin/${branch}`): Status =>
-  ({ head: 'abc', branch, upstream, ahead: 0, behind: 0, files: [] });
+  ({ head: 'abc', branch, upstream, ahead: 0, behind: 0, stash: 0, files: [] });
 
 async function read(st: Status): Promise<void> {
   S.status = st;

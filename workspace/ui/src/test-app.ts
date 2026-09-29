@@ -12,7 +12,7 @@ export const blob = (text: string, oid: string | null = 'oid1'): Blob =>
   ({ text, eol: 'lf', oid, exists: oid !== null });
 export const file = (text: string, exists = true): FileText => ({ text, eol: 'lf', exists });
 export const status = (path: string, x = '.', y = 'M', untracked = false, conflicted = false): Status => ({
-  head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0,
+  head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0,
   files: [{ path, indexStatus: x, worktreeStatus: y, untracked, conflicted }],
 });
 
@@ -47,4 +47,21 @@ export async function openUnstaged(path: string, index: Blob, disk: FileText): P
 
 export function type(text: string): void {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+}
+
+/** The action `id` (its `data-all`) of a section header in the change queue: its own button when it has one, else
+ *  its item in the header menu, which this opens. */
+export async function headerItem(sec: 'unstaged' | 'staged', id: string): Promise<HTMLElement> {
+  // an open menu is modal, so one left open by the test before is closed first
+  if (document.querySelector('.queue-menu')) {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+  }
+  const header = `details[data-sec="${sec}"] summary`;
+  const own = document.querySelector<HTMLElement>(`${header} [data-all="${id}"]`);
+  if (own) return own;
+  document.querySelector<HTMLElement>(`${header} [data-all="menu"]`)!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await tick();
+  return document.querySelector<HTMLElement>(`.queue-menu [data-all="${id}"]`)!;
 }

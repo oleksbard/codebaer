@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::git::{self, AppState};
+use crate::git::{self, AppState, StashKind};
 use crate::pty::{client::executable, daemon::login_shell};
 use crate::settings::{self, AiProvider};
 use serde::Deserialize;
@@ -13,6 +13,7 @@ use std::time::Duration;
 use tauri::{AppHandle, State};
 
 const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 sentences with the reason or the key consequence. Write the body as one paragraph on a single line, however long it gets; never break a sentence across lines. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
+const STASH_SYSTEM: &str = "You describe uncommitted code changes that a developer puts aside in a git stash, so that later they can tell what the stash holds without opening it. Describe what the changes do and what they are for, not the individual edits. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Write 2 or 3 sentences as one paragraph on a single line. Never list files or functions. Output only the description: no quotes, no markdown, no commentary.";
 const ICON_SYSTEM: &str = "You pick one icon for each command in a developer tool's command menu. Each command has a name and the shell line it runs. Pick the icon a developer recognises fastest as that command's purpose. For an action such as test, build, lint, format or deploy, pick an icon for the action, not the logo of the tool that runs it. Pick a brand logo only when the command is about that product itself, such as opening Chrome or starting Docker. Answer with ids from the given lists, exactly as written. Give two commands the same icon only when they do the same thing.";
 const REPO_ICON_SYSTEM: &str = "You pick one icon for each software project in a developer tool's project switcher, where the icon stands in for the project's name. Each project has the name the switcher shows, its folder name and, when it has one, a line from its README or manifest. Pick the icon a developer recognises fastest as that project: what the product is or what it does, not the language or the tools it is built with. Pick a brand logo only when the project is about that product itself, such as a VS Code extension or a Docker setup. Answer with ids from the given lists, exactly as written. Give two projects the same icon only when they are the same kind of thing.";
 const ICON_SCHEMA: &str = r#"{"type":"object","properties":{"icons":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"},"icon":{"type":"string"}},"required":["n","icon"],"additionalProperties":false}}},"required":["icons"],"additionalProperties":false}"#;
@@ -279,6 +280,61 @@ pub fn commit_message_impl(root: &Path, provider: AiProvider) -> Result<String, 
 pub async fn ai_commit_message(app: AppHandle, state: State<'_, AppState>) -> Result<String, AppError> {
     let root = state.root()?;
     tauri::async_runtime::spawn_blocking(move || commit_message_impl(&root, settings::load(&app).headless_ai_provider))
+        .await
+        .map_err(|e| AppError::Ai(e.to_string()))?
+}
+
+/// What a stash of `kind` would hold, as a diff cut at `MAX_DIFF`, with the untracked files named. Their contents
+/// stay out: an untracked file can be a secret that nobody has ignored yet.
+pub fn stash_input(root: &Path, kind: StashKind) -> Result<String, AppError> {
+    let args: &[&str] = match kind {
+        StashKind::All => &["diff", "HEAD", "--no-color", "--no-ext-diff"],
+        StashKind::Staged => &["diff", "--cached", "--no-color", "--no-ext-diff"],
+        StashKind::Unstaged => &["diff", "--no-color", "--no-ext-diff"],
+    };
+    let mut input = git::run(root, args, None, Some(git::LOCAL))?.stdout;
+    if kind != StashKind::Staged {
+        let listed = git::run(root, &["ls-files", "-o", "--exclude-standard", "-z"], None, Some(git::LOCAL))?.stdout;
+        for rel in listed.split(|&b| b == 0).filter(|p| !p.is_empty() && !p.ends_with(b"/")) {
+            input.extend_from_slice(b"New untracked file ");
+            input.extend_from_slice(rel);
+            input.push(b'\n');
+            if input.len() >= MAX_DIFF {
+                break;
+            }
+        }
+    }
+    input.truncate(MAX_DIFF);
+    Ok(String::from_utf8_lossy(&input).into_owned())
+}
+
+/// None when there is nothing to stash.
+pub fn stash_description_impl(root: &Path, provider: AiProvider, kind: StashKind) -> Result<Option<String>, AppError> {
+    let Some(c) = cli(provider) else {
+        return Err(AppError::Ai("AI stash descriptions are off. Turn them on in Settings.".into()));
+    };
+    let input = stash_input(root, kind)?;
+    if input.is_empty() {
+        return Ok(None);
+    }
+    let a = Ask {
+        system: STASH_SYSTEM,
+        instruction: "Describe the changes in this stash:",
+        input: &input,
+        claude_model: "sonnet",
+        schema: None,
+    };
+    let text = ask(provider, &a)?.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        return Err(AppError::Ai(format!("{} returned an empty description", c.bin)));
+    }
+    Ok(Some(text))
+}
+
+#[tauri::command]
+pub async fn ai_stash_description(app: AppHandle, state: State<'_, AppState>, kind: StashKind) -> Result<Option<String>, AppError> {
+    let root = state.root()?;
+    tauri::async_runtime::spawn_blocking(move || stash_description_impl(&root, settings::load(&app).headless_ai_provider, kind))
         .await
         .map_err(|e| AppError::Ai(e.to_string()))?
 }

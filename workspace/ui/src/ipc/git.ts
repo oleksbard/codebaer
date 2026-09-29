@@ -26,6 +26,8 @@ export type Status = {
   upstream: string | null;
   ahead: number;
   behind: number;
+  /** Stash entries; git before 2.35 reports none. */
+  stash: number;
   files: FileEntry[];
 };
 /** The review queue's size in lines: index to working tree, untracked files counted whole. */
@@ -38,6 +40,13 @@ export type IconSet = { prefix: string; title: string; names: string[] };
 /** `name` is the one the switcher shows; the backend adds the folder name and a line from the README. */
 export type RepoItem = { path: string; name: string };
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
+/** `unstaged` takes the untracked files too and leaves the index; `all` takes everything. */
+export type StashKind = 'all' | 'staged' | 'unstaged';
+/** `index` is the n of `stash@{n}`; `wip` marks git's own `WIP on <branch>: <commit>` message; `time` is in
+ *  seconds. */
+export type Stash = {
+  index: number; oid: string; branch: string | null; message: string; wip: boolean; time: number;
+};
 
 export type AppError =
   | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
@@ -104,6 +113,8 @@ export const git = {
   discardAll: () => invoke<void>('discard_all'),
   commit: (message: string) => invoke<void>('commit', { message }),
   aiCommitMessage: () => invoke<string>('ai_commit_message'),
+  /** null when there is nothing to stash. */
+  aiStashDescription: (kind: StashKind) => invoke<string | null>('ai_stash_description', { kind }),
   settings: () => invoke<Settings>('settings_get'),
   saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
   commands: () => invoke<CustomCommand[]>('commands_get'),
@@ -131,8 +142,14 @@ export const git = {
   /** Skips, and resolves, while a push, pull or fetch runs or the setting is off. */
   fetchBackground: () => invoke<void>('fetch_background'),
   cancel: () => invoke<void>('cancel'),
-  stashPush: () => invoke<void>('stash_push'),
-  stashPop: () => invoke<void>('stash_pop'),
+  /** Refused unless `root` is still the open repo. Without a message git writes its own. False when there was
+   *  nothing to stash. */
+  stashPush: (root: string, kind: StashKind, message: string | null) =>
+    invoke<boolean>('stash_push', { root, kind, message }),
+  /** Newest first. */
+  stashList: () => invoke<Stash[]>('stash_list'),
+  /** `oid` is the stash as listed: the pop fails when `stash@{index}` is another one by now. */
+  stashPop: (index: number, oid: string) => invoke<void>('stash_pop', { index, oid }),
   listFiles: () => invoke<Listing>('list_files'),
   listDir: (path: string) => invoke<string[]>('list_dir', { path }),
 };

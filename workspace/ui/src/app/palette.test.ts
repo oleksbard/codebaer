@@ -11,7 +11,7 @@ const { openPalette } = await import('#kernel/registry');
 await import('./bootstrap');
 
 const status = (head: string | null): Status =>
-  ({ head, branch: 'main', upstream: null, ahead: 0, behind: 0, files: [] });
+  ({ head, branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0, files: [] });
 
 async function shown(): Promise<[string, string][]> {
   const open = openPalette();
@@ -32,7 +32,8 @@ describe('the command palette', () => {
     S.termMenu = { shells: [{ path: '/bin/zsh', name: 'zsh' }], default: '/bin/zsh', commands: ['claude'] };
     expect(await shown()).toEqual([
       ['File: Save', '⌘S'], ['Git: Commit', '⌘↩'], ['Git: Push', ''], ['Git: Pull', ''], ['Git: Fetch', ''],
-      ['Git: Checkout to…', ''], ['Git: Create Branch…', ''], ['Git: Stash', ''], ['Git: Pop Stash', ''],
+      ['Git: Checkout to…', ''], ['Git: Create Branch…', ''], ['Git: Stash All', ''], ['Git: Stash Changes', ''],
+      ['Git: Stash Staged', ''], ['Git: Unstash…', ''],
       ['Git: Stage All Changes', '⌘⌥Y'], ['Git: Unstage All Changes', ''], ['Git: Discard All Changes', ''],
       ['Git: Stage File', '⌘⇧Y'], ['Git: Discard File', '⌘⇧N'], ['Git: Unstage File', ''],
       ['Show All Changes', '⌘⇧A'],
@@ -52,8 +53,7 @@ describe('the command palette', () => {
     S.comments = [];
     S.termMenu = null;
     const labels = (await shown()).map(([l]) => l);
-    expect(labels).not.toContain('Git: Stash');
-    expect(labels).not.toContain('Git: Pop Stash');
+    expect(labels.filter((l) => /stash/i.test(l))).toEqual([]);
     expect(labels).not.toContain('Send Pending Comments…');
     expect(labels).toContain('Git: Create Branch…');
   });

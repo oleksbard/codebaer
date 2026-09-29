@@ -1,7 +1,8 @@
 use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
-use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, stash_pop_impl, stash_push_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{stash_list_impl, stash_pop_impl, stash_push_impl, StashKind};
 use codebaer_lib::git::{cancel_impl, diff_stat_impl, fetch_background_impl, push_args, run_net, AppState, DiffStat};
 use codebaer_lib::settings::AiProvider;
 use codebaer_lib::AppError;
@@ -838,11 +839,219 @@ fn stash_round_trips_partial_stage_and_untracked() {
     fs::write(r.join("a.txt"), "A\nb\nc\nD\n").unwrap();
     stage_content_impl(r, "a.txt", Some("A\nb\nc\nd\n"), Eol::Lf, index_oid(r, "a.txt").as_deref()).unwrap();
     fs::write(r.join("u.txt"), "u\n").unwrap();
-    stash_push_impl(r).unwrap();
+    stash_push_impl(r, StashKind::All, None).unwrap();
     assert!(!r.join("u.txt").exists());
-    stash_pop_impl(r).unwrap();
+    let top = &stash_list_impl(r).unwrap()[0];
+    stash_pop_impl(r, 0, &top.oid).unwrap();
     assert!(sh(r, &["status", "--porcelain=v2"]).contains("1 MM "));
     assert!(r.join("u.txt").exists());
+}
+
+/// a.txt staged on line 1 and changed again on line 4, b.txt deleted, and an untracked file in a new folder.
+fn half_staged(r: &Path) {
+    fs::write(r.join("b.txt"), "b\n").unwrap();
+    sh(r, &["add", "b.txt"]);
+    sh(r, &["commit", "-qm", "b"]);
+    fs::write(r.join("a.txt"), "A\nb\nc\nd\n").unwrap();
+    sh(r, &["add", "a.txt"]);
+    fs::write(r.join("a.txt"), "A\nb\nc\nD\n").unwrap();
+    fs::remove_file(r.join("b.txt")).unwrap();
+    fs::create_dir(r.join("new")).unwrap();
+    fs::write(r.join("new/u.txt"), "u\n").unwrap();
+}
+
+#[test]
+fn stashing_unstaged_changes_keeps_the_index_and_pops_back_to_the_same_state() {
+    let d = repo();
+    let r = d.path();
+    half_staged(r);
+    let before = sh(r, &["status", "--porcelain=v2", "-uall"]);
+    assert!(stash_push_impl(r, StashKind::Unstaged, Some("Loud\n  line   four.")).unwrap());
+    assert_eq!(sh(r, &["status", "--porcelain"]), "M  a.txt\n");
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "A\nb\nc\nd\n");
+    assert!(!r.join("new").exists());
+    assert_eq!(sh(r, &["stash", "list"]), "stash@{0}: On main: Loud line four.\n");
+    let shown = sh(r, &["stash", "show", "-p", "--include-untracked"]);
+    assert!(shown.contains("-d\n+D") && shown.contains("+u") && shown.contains("deleted file"), "{shown}");
+    assert!(!shown.contains("+A"), "the staged change is not in the stash: {shown}");
+
+    let top = &stash_list_impl(r).unwrap()[0];
+    stash_pop_impl(r, 0, &top.oid).unwrap();
+    assert_eq!(sh(r, &["status", "--porcelain=v2", "-uall"]), before);
+    assert_eq!(sh(r, &["stash", "list"]), "");
+}
+
+#[test]
+fn an_unstaged_stash_pops_onto_a_commit_of_what_was_staged() {
+    let d = repo();
+    let r = d.path();
+    half_staged(r);
+    stash_push_impl(r, StashKind::Unstaged, None).unwrap();
+    sh(r, &["commit", "-qm", "staged part"]);
+    let top = &stash_list_impl(r).unwrap()[0];
+    assert!(top.wip && top.message.ends_with(" b"), "{top:?}");
+    stash_pop_impl(r, 0, &top.oid).unwrap();
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "A\nb\nc\nD\n");
+    assert_eq!(sh(r, &["status", "--porcelain", "-uall"]), " M a.txt\n D b.txt\n?? new/u.txt\n");
+}
+
+#[test]
+fn stashing_unstaged_changes_refuses_a_conflict_and_does_nothing_without_changes() {
+    let d = repo();
+    let r = d.path();
+    assert!(!stash_push_impl(r, StashKind::Unstaged, None).unwrap());
+    assert!(!stash_push_impl(r, StashKind::All, None).unwrap());
+    // newer mtime, same content
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    fs::write(r.join("a.txt"), "a\nb\nc\nd\n").unwrap();
+    assert!(!stash_push_impl(r, StashKind::Unstaged, None).unwrap());
+    fs::write(r.join("a.txt"), "A\nb\nc\nd\n").unwrap();
+    sh(r, &["add", "a.txt"]);
+    assert!(!stash_push_impl(r, StashKind::Unstaged, None).unwrap(), "only a staged change, so nothing unstaged");
+    assert_eq!(sh(r, &["stash", "list"]), "");
+
+    let d = conflicted_repo();
+    assert!(matches!(stash_push_impl(d.path(), StashKind::Unstaged, None), Err(AppError::Conflicted)));
+}
+
+#[test]
+fn stashing_unstaged_changes_refuses_a_file_added_with_intent_to_add() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("n.txt"), "new\n").unwrap();
+    sh(r, &["add", "-N", "n.txt"]);
+    let res = stash_push_impl(r, StashKind::Unstaged, None);
+    assert!(matches!(res, Err(AppError::Git(ref m)) if m.contains("n.txt") && m.contains("add -N")), "{res:?}");
+    assert_eq!(fs::read_to_string(r.join("n.txt")).unwrap(), "new\n");
+    // gone from disk it reads like a deleted file, but the index tree lacks it
+    fs::remove_file(r.join("n.txt")).unwrap();
+    fs::write(r.join("a.txt"), "changed\n").unwrap();
+    let res = stash_push_impl(r, StashKind::Unstaged, None);
+    assert!(matches!(res, Err(AppError::Git(ref m)) if m.contains("n.txt")), "{res:?}");
+    assert!(!r.join("n.txt").exists());
+    assert_eq!(sh(r, &["stash", "list"]), "");
+}
+
+#[test]
+fn stashing_unstaged_changes_refuses_a_folder_on_a_deleted_path_that_holds_a_file_it_cannot_take() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join(".gitignore"), ".env\n").unwrap();
+    fs::write(r.join("cfg"), "tracked\n").unwrap();
+    sh(r, &["add", ".gitignore", "cfg"]);
+    sh(r, &["commit", "-qm", "cfg"]);
+    fs::remove_file(r.join("cfg")).unwrap();
+    fs::create_dir(r.join("cfg")).unwrap();
+    fs::write(r.join("cfg/one"), "untracked\n").unwrap();
+    fs::write(r.join("cfg/.env"), "TOKEN=1\n").unwrap();
+    let res = stash_push_impl(r, StashKind::Unstaged, None);
+    assert!(matches!(res, Err(AppError::Git(ref m)) if m.starts_with("cfg/.env is in cfg,")), "{res:?}");
+    assert_eq!(fs::read_to_string(r.join("cfg/.env")).unwrap(), "TOKEN=1\n");
+    assert!(r.join("cfg/one").exists());
+    assert_eq!(sh(r, &["stash", "list"]), "");
+
+    fs::remove_file(r.join("cfg/.env")).unwrap();
+    assert!(stash_push_impl(r, StashKind::Unstaged, None).unwrap());
+    assert_eq!(fs::read_to_string(r.join("cfg")).unwrap(), "tracked\n");
+}
+
+#[test]
+fn stashing_unstaged_changes_takes_a_file_turned_into_a_folder_and_back() {
+    let d = repo();
+    let r = d.path();
+    fs::create_dir(r.join("d")).unwrap();
+    fs::write(r.join("d/f"), "f\n").unwrap();
+    sh(r, &["add", "d/f"]);
+    sh(r, &["commit", "-qm", "d"]);
+    // a.txt becomes a folder, d a file
+    fs::remove_file(r.join("a.txt")).unwrap();
+    fs::create_dir(r.join("a.txt")).unwrap();
+    fs::write(r.join("a.txt/in.txt"), "in\n").unwrap();
+    fs::remove_dir_all(r.join("d")).unwrap();
+    fs::write(r.join("d"), "now a file\n").unwrap();
+    fs::write(r.join("zz.txt"), "z\n").unwrap();
+    let before = sh(r, &["status", "--porcelain=v2", "-uall"]);
+    assert!(stash_push_impl(r, StashKind::Unstaged, None).unwrap());
+    assert_eq!(sh(r, &["status", "--porcelain", "-uall"]), "");
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "a\nb\nc\nd\n");
+    let top = &stash_list_impl(r).unwrap()[0];
+    stash_pop_impl(r, 0, &top.oid).unwrap();
+    assert_eq!(sh(r, &["status", "--porcelain=v2", "-uall"]), before);
+}
+
+#[test]
+fn stashing_unstaged_changes_works_without_a_git_identity() {
+    let d = repo();
+    let r = d.path();
+    // an empty name in the repo's config hides any the user set elsewhere
+    sh(r, &["config", "user.name", ""]);
+    sh(r, &["config", "user.useConfigOnly", "true"]);
+    fs::write(r.join("a.txt"), "changed\n").unwrap();
+    assert!(stash_push_impl(r, StashKind::Unstaged, None).unwrap());
+    assert_eq!(sh(r, &["log", "-1", "--format=%an <%ae>", "stash@{0}"]), "git stash <git@stash>\n");
+}
+
+#[test]
+fn stashing_staged_changes_leaves_the_unstaged_ones() {
+    let d = repo();
+    let r = d.path();
+    half_staged(r);
+    assert!(stash_push_impl(r, StashKind::Staged, Some("First line")).unwrap());
+    assert!(!stash_push_impl(r, StashKind::Staged, None).unwrap(), "nothing staged, only unstaged changes");
+    assert_eq!(sh(r, &["status", "--porcelain", "-uall"]), " M a.txt\n D b.txt\n?? new/u.txt\n");
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "a\nb\nc\nD\n");
+    let top = &stash_list_impl(r).unwrap()[0];
+    assert_eq!((top.branch.as_deref(), top.message.as_str(), top.wip), (Some("main"), "First line", false));
+}
+
+#[test]
+fn the_stash_list_is_newest_first_and_a_pop_refuses_a_stash_that_moved() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "one\n").unwrap();
+    stash_push_impl(r, StashKind::All, Some("First")).unwrap();
+    sh(r, &["switch", "-qc", "topic"]);
+    fs::write(r.join("a.txt"), "two\n").unwrap();
+    stash_push_impl(r, StashKind::All, None).unwrap();
+    let list = stash_list_impl(r).unwrap();
+    assert_eq!(list.iter().map(|s| (s.index, s.branch.as_deref(), s.wip)).collect::<Vec<_>>(),
+        [(0, Some("topic"), true), (1, Some("main"), false)]);
+    assert_eq!(list[1].message, "First");
+    assert!(list[0].time > 0);
+    assert_eq!(status_impl(r).unwrap().stash, 2);
+
+    assert!(matches!(stash_pop_impl(r, 0, &list[1].oid), Err(AppError::Git(ref m)) if m.contains("changed")));
+    assert!(matches!(stash_pop_impl(r, 5, &list[1].oid), Err(AppError::Git(ref m)) if m.contains("changed")));
+    stash_pop_impl(r, 1, &list[1].oid).unwrap();
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "one\n");
+    assert_eq!(stash_list_impl(r).unwrap().len(), 1);
+}
+
+#[test]
+fn a_stash_description_reads_what_that_stash_would_hold() {
+    use codebaer_lib::ai::stash_input;
+    let d = repo();
+    let r = d.path();
+    half_staged(r);
+    fs::write(r.join("new/secret.env"), "TOKEN=hunter2\n").unwrap();
+    let staged = stash_input(r, StashKind::Staged).unwrap();
+    assert!(staged.contains("+A") && !staged.contains("+D") && !staged.contains("untracked"), "{staged}");
+    let unstaged = stash_input(r, StashKind::Unstaged).unwrap();
+    assert!(!unstaged.contains("+A") && unstaged.contains("+D") && unstaged.contains("deleted file"), "{unstaged}");
+    assert!(unstaged.contains("New untracked file new/secret.env\nNew untracked file new/u.txt\n"), "{unstaged}");
+    assert!(!unstaged.contains("hunter2"), "an untracked file's contents stay out: {unstaged}");
+    let all = stash_input(r, StashKind::All).unwrap();
+    assert!(all.contains("+A") && all.contains("+D") && all.contains("new/u.txt"), "{all}");
+}
+
+#[test]
+fn a_stash_description_is_none_with_nothing_to_stash_and_refused_while_the_provider_is_off() {
+    use codebaer_lib::ai::stash_description_impl;
+    let d = repo();
+    assert_eq!(stash_description_impl(d.path(), AiProvider::Claude, StashKind::Unstaged).unwrap(), None);
+    fs::write(d.path().join("a.txt"), "changed\n").unwrap();
+    let off = stash_description_impl(d.path(), AiProvider::Off, StashKind::Unstaged);
+    assert!(matches!(off, Err(AppError::Ai(ref s)) if s.contains("Settings")), "{off:?}");
 }
 
 #[test]

@@ -1,5 +1,5 @@
 import type {
-  AppError, BlameLine, Blob, Branch, DiffStat, Eol, FileEntry, FileText, Listing, StageResult, Status,
+  AppError, BlameLine, Blob, Branch, DiffStat, Eol, FileEntry, FileText, Listing, StageResult, Stash, StashKind, Status,
 } from '#ipc/git';
 
 export type Version = { text: string; eol: Eol };
@@ -33,7 +33,13 @@ export type RepoSeed = {
 export type Snapshot = {
   branch: string | null; upstream: string | null; ahead: number; behind: number; head: string | null;
   files: Record<string, { head: string | null; index: string | null; work: string | null }>;
+  /** Newest first, with the paths each one holds. */
+  stash: { message: string; branch: string | null; paths: string[] }[];
 };
+
+/** A stashed path. `base` is what the stash counts from: HEAD, or the index for a stash of the unstaged changes. */
+type Stashed = { base: Version | null; index: Version | null; work: Version | null };
+type StashEntry = Omit<Stash, 'index'> & { files: Map<string, Stashed> };
 
 /** A stand-in for a git object id: 40 hex digits that change with the content. */
 export function oidOf(s: string): string {
@@ -100,7 +106,8 @@ export function createRepo(seed: RepoSeed) {
   const branches: Branch[] = [...seed.branches];
   const log = [...seed.log];
   let head: string | null = log.length ? oidOf(log.join('\n')) : null;
-  const stash: Map<string, Entry>[] = [];
+  const stash: StashEntry[] = [];
+  let stashes = 0;
   /** Commits on the remote that no fetch has brought in yet, keyed by upstream. */
   const unfetched = new Map<string, number>();
 
@@ -132,6 +139,18 @@ export function createRepo(seed: RepoSeed) {
     if (x === '.' && y === '.') return null;
     return { path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false };
   };
+  /** What a stash of `kind` takes from each path. */
+  const stashable = (kind: StashKind): Map<string, Stashed> => {
+    const saved = new Map<string, Stashed>();
+    for (const [p, e] of files) {
+      const staged = !same(e.head, e.index);
+      const unstaged = !same(e.index, e.work);
+      if (kind === 'all' && (staged || unstaged)) saved.set(p, { base: e.head, index: e.index, work: e.work });
+      if (kind === 'staged' && staged) saved.set(p, { base: e.head, index: e.index, work: e.index });
+      if (kind === 'unstaged' && unstaged) saved.set(p, { base: e.index, index: e.index, work: e.work });
+    }
+    return saved;
+  };
   const readFile = (path: string): FileText => {
     const e = files.get(path);
     if (!e?.work) return { text: '', eol: 'lf', exists: false };
@@ -144,7 +163,8 @@ export function createRepo(seed: RepoSeed) {
   return {
     status(): Status {
       const list = [...files].sort(([a], [b]) => (a < b ? -1 : 1)).map(([p, e]) => entryStatus(p, e));
-      return { head, branch, upstream, ahead, behind, files: list.filter((f): f is FileEntry => f !== null) };
+      const listed = list.filter((f): f is FileEntry => f !== null);
+      return { head, branch, upstream, ahead, behind, stash: stash.length, files: listed };
     },
 
     readFile,
@@ -271,30 +291,48 @@ export function createRepo(seed: RepoSeed) {
       behind = 0;
     },
 
-    /** `stash push --include-untracked`: index and worktree both go back to HEAD. */
-    stashPush(): void {
-      const saved = new Map<string, Entry>();
-      for (const [p, e] of files) {
-        if (!same(e.head, e.index) || !same(e.index, e.work)) saved.set(p, { ...e });
-      }
-      if (!saved.size) return;
+    /** `stash_push_impl`. For `staged` a file changed again after staging keeps its working-tree text, where git
+     *  would take the staged change out of it. */
+    stashPush(kind: StashKind, message: string | null): boolean {
+      const saved = stashable(kind);
+      if (!saved.size) return false;
       noConflicts();
-      stash.unshift(saved);
-      for (const [p, e] of saved) {
-        const back = files.get(p)!;
-        back.index = e.head;
-        back.work = e.head;
+      if (!head) gitError('You do not have the initial commit yet');
+      for (const [p, st] of saved) {
+        const e = files.get(p)!;
+        if (kind === 'unstaged') e.work = e.index;
+        else {
+          if (kind === 'all' || same(e.work, st.index)) e.work = e.head;
+          e.index = e.head;
+        }
       }
+      const text = message?.split(/\s+/).filter(Boolean).join(' ') || null;
+      stash.unshift({
+        oid: oidOf(`stash ${stashes++}`), branch, message: text ?? `${head.slice(0, 7)} ${log[0] ?? ''}`, wip: !text,
+        time: Math.floor(Date.now() / 1000), files: saved,
+      });
+      return true;
     },
 
-    stashPop(): void {
-      const saved = stash.shift();
-      if (!saved) gitError('No stash entries found.');
-      for (const [p, e] of saved) {
-        const back = entry(p);
-        back.index = e.index;
-        back.work = e.work;
+    stashList: (): Stash[] => stash.map(({ oid, branch: b, message, wip, time }, index) =>
+      ({ index, oid, branch: b, message, wip, time })),
+
+    /** `stash pop --index`: refused, and the stash kept, when a file it holds was changed since. */
+    stashPop(index: number, oid: string): void {
+      const s = stash[index];
+      if (s?.oid !== oid) gitError('The list of stashes changed. Pick the stash again.');
+      for (const [p, st] of s.files) {
+        const work = files.get(p)?.work ?? null;
+        if (!same(work, st.base) && !same(work, st.work)) {
+          gitError(`error: Your local changes to the following files would be overwritten by merge:\n\t${p}`);
+        }
       }
+      for (const [p, st] of s.files) {
+        const e = entry(p);
+        if (!same(st.index, st.base)) e.index = st.index;
+        e.work = st.work;
+      }
+      stash.splice(index, 1);
     },
 
     listFiles(): Listing {
@@ -354,6 +392,7 @@ export function createRepo(seed: RepoSeed) {
       unfetched.set(to, (unfetched.get(to) ?? 0) + n);
     },
 
+    stashPaths: (kind: StashKind): string[] => [...stashable(kind).keys()].sort(),
     stagedPaths: (): string[] => [...files].filter(([, e]) => !same(e.head, e.index)).map(([p]) => p).sort(),
 
     /** What an agent does: rewrites a file on disk, or deletes it for null. */
@@ -366,7 +405,9 @@ export function createRepo(seed: RepoSeed) {
       for (const [p, e] of files) {
         out[p] = { head: e.head?.text ?? null, index: e.index?.text ?? null, work: e.work?.text ?? null };
       }
-      return { branch, upstream, ahead, behind, head, files: out };
+      const stashed = stash.map((st) =>
+        ({ message: st.message, branch: st.branch, paths: [...st.files.keys()].sort() }));
+      return { branch, upstream, ahead, behind, head, files: out, stash: stashed };
     },
   };
 }
