@@ -1,4 +1,4 @@
-import { expect, row, test } from './fixtures';
+import { expect, FULL_MOTION, row, test } from './fixtures';
 
 const selKeys = (page: import('@playwright/test').Page) => page.evaluate(() =>
   [...document.querySelectorAll('.side .list .row.sel')].map((e) => (e as HTMLElement).dataset.key));
@@ -6,7 +6,7 @@ const selKeys = (page: import('@playwright/test').Page) => page.evaluate(() =>
 test('Enter right after staging the selected file opens the row it moved to, not the stale one', async (
   { page, open },
 ) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   await page.locator('.side .list').focus();
   await page.keyboard.press('ControlOrMeta+Shift+Y'); // stages the open file, src/cart.ts, which moves on
   await page.keyboard.press('Enter');
@@ -19,7 +19,7 @@ test('Enter right after staging the selected file opens the row it moved to, not
 
 test('ArrowDown right after staging the selected file moves on from the row it moved to, not the stale one',
   async ({ page, open }) => {
-    const mock = await open('review', { motion: 'on' });
+    const mock = await open('review', FULL_MOTION);
     await page.locator('.side .list').focus();
     await page.keyboard.press('ControlOrMeta+Shift+Y');
     await page.locator('.side .list').focus();
@@ -31,7 +31,7 @@ test('ArrowDown right after staging the selected file moves on from the row it m
   });
 
 test('ArrowDown while the Staged section fades out does not select a row inside it', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   // src/checkout.ts is the only staged file (also unstaged), so unstaging it drops q.staged to 0 and
   // Reveal starts fading the whole Staged section out
   await row(page, 'unstaged', 'tools/release.cmd').click();

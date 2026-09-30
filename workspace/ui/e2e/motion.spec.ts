@@ -8,8 +8,8 @@ test('linux with motion on gives lite', async ({ page, open }) => {
   expect(await motionOf(page)).toBe('lite');
 });
 
-test('the default platform with motion on gives full', async ({ page, open }) => {
-  await open('review', { motion: 'on' });
+test('macos with motion on gives full', async ({ page, open }) => {
+  await open('review', { platform: 'macos', motion: 'on' });
   expect(await motionOf(page)).toBe('full');
 });
 

@@ -1,9 +1,9 @@
-import { expect, fadedOut, recordFade, row, test } from './fixtures';
+import { expect, fadedOut, FULL_MOTION, recordFade, row, test } from './fixtures';
 
 test('a file moves from Changes to Staged: it lands in Staged, and Changes keeps no duplicate', async (
   { page, open },
 ) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   const read = await recordFade(page, '.row[data-key="unstaged:src/cart.ts"]');
   await page.keyboard.press('ControlOrMeta+Shift+Y'); // stages the open file, src/cart.ts
   await mock.idle();
@@ -17,7 +17,7 @@ test('a file moves from Changes to Staged: it lands in Staged, and Changes keeps
 });
 
 test('a partly staged file keeps a row in both sections, even across a reflow', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   await expect(row(page, 'unstaged', 'src/checkout.ts')).toBeVisible();
   await expect(row(page, 'staged', 'src/checkout.ts')).toBeVisible();
   // stages a different file, which reflows the whole queue while checkout.ts stays split across both
@@ -39,7 +39,7 @@ test('a partly staged file keeps a row in both sections, even across a reflow', 
 test('a commit: the staged rows leave, and the new commit row fades in above the existing one', async (
   { page, open },
 ) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   await expect(page.locator('.commit-row')).toHaveCount(1);
   await page.locator('#commit-message').fill('Apply the discount');
   // sampled from before the click: reading the opacity once, right after `mock.idle()`, can just as well
@@ -55,7 +55,7 @@ test('a commit: the staged rows leave, and the new commit row fades in above the
 });
 
 test('closing a terminal from the rail removes its tile and the rest close up', async ({ page, open }) => {
-  const mock = await open('terminals', { motion: 'on' });
+  const mock = await open('terminals', FULL_MOTION);
   const tiles = page.locator('.rail-b:not(.new)');
   const before = await tiles.count();
   const bash = page.locator('.rail-b', { hasText: 'bash' });

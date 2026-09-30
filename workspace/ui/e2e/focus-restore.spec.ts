@@ -70,7 +70,7 @@ test('the palette > Settings restores focus to the editor', async ({ page, open 
   const mock = await open('review', { motion: 'on' });
   const editor = page.locator('.cm-content').first();
   await editor.click();
-  await page.keyboard.press('Meta+Shift+P');
+  await page.keyboard.press('ControlOrMeta+Shift+P');
   await page.keyboard.type('Settings');
   await page.keyboard.press('Enter');
   await mock.idle();

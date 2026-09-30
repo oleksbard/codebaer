@@ -1,4 +1,4 @@
-import { expect, row, test } from './fixtures';
+import { expect, FULL_MOTION, row, test } from './fixtures';
 
 type PopFrame = { exitingPresent: boolean; exitingAbsolute: boolean; afterMoved: boolean };
 
@@ -30,7 +30,7 @@ async function recordPop(
 
 test('popLayout takes the exiting queue row out of flow, so the row below starts sliding up right away, not '
   + 'after the whole fade', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   const cart = row(page, 'unstaged', 'src/cart.ts');
   const checkout = row(page, 'unstaged', 'src/checkout.ts');
   const beforeY = await checkout.evaluate((el) => el.getBoundingClientRect().y);
@@ -51,7 +51,7 @@ test('popLayout takes the exiting queue row out of flow, so the row below starts
 test('popLayout takes a closing rail tile out of flow, so the rest start closing up right away', async (
   { page, open },
 ) => {
-  const mock = await open('terminals', { motion: 'on' });
+  const mock = await open('terminals', FULL_MOTION);
   const tiles = page.locator('.rail-b:not(.new)');
   const bash = page.locator('.rail-b', { hasText: 'bash' });
   // the tile right below bash in the rail's own order, whichever index that is in this scenario

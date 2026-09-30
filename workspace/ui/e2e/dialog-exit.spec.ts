@@ -69,7 +69,7 @@ test('a command works again the instant a dialog closes, without waiting for its
     const read = await recordFade(page, '.dialog.settings');
     await page.keyboard.press('Escape');
     // the palette opens right away, while Settings is still fading out behind it
-    await page.keyboard.press('Meta+Shift+P');
+    await page.keyboard.press('ControlOrMeta+Shift+P');
     await expect(page.locator('.dialog.pal')).toBeVisible();
     await dialog.waitFor({ state: 'detached', timeout: 2000 });
     expect(fadedOut(await read())).toBe(true);

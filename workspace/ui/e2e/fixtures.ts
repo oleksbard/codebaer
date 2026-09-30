@@ -66,6 +66,10 @@ export const test = base.extend<Fixtures>({
 
 export { expect };
 
+/** `open` params for a test of the heavy motion: on a Linux host the default platform is linux, whose `lite`
+ *  level turns that motion off. */
+export const FULL_MOTION = { platform: 'macos', motion: 'on' };
+
 /** The queue row for a path, in the Changes (`unstaged`) or Staged section. */
 export const row = (page: Page, section: 'unstaged' | 'staged', path: string) =>
   page.locator(`.row[data-key="${section}:${path}"]`);

@@ -30,22 +30,24 @@ const closeTo = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1
 
 /** The ghost's own rect, read from the inline style `place()` sets and never rewrites (the Web Animations API
  *  animates the used value, not the style attribute), so this is stable regardless of how far its exit has
- *  played by the time this reads it. */
+ *  played by the time this reads it. Polled in the page on each frame: the ghost lives for one exit only, which
+ *  a slow runner can spend on two round trips from the test. A ghost still in the page matches too, so a caller
+ *  waits for the last one to go first. */
 async function ghostRect(page: Page, selector: string): Promise<Rect> {
-  return page.$eval(selector, (raw) => {
-    const el = raw as HTMLElement;
-    const parent = el.parentElement!.getBoundingClientRect();
+  const handle = await page.waitForFunction((sel) => {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el?.parentElement) return null;
+    const parent = el.parentElement.getBoundingClientRect();
     return { top: parent.top + parseFloat(el.style.top), height: parseFloat(el.style.height) };
-  });
+  }, selector, { polling: 'raf', timeout: 2000 });
+  return (await handle.jsonValue())!;
 }
 
 /** Accepts through `accept`, checks the ghost it leaves against `expected` (captured before the click, since
  *  the accept removes the chunk this measures), and waits for the ghost to be gone. */
 async function acceptAndCheckGhost(page: Page, accept: Locator, selector: string, expected: Rect) {
-  await accept.click();
+  const [box] = await Promise.all([ghostRect(page, selector), accept.click()]);
   const ghost = page.locator(selector).first();
-  await expect(ghost).toBeVisible();
-  const box = await ghostRect(page, selector);
   closeTo(box.top, expected.top);
   closeTo(box.height, expected.height);
   await ghost.waitFor({ state: 'detached', timeout: 1000 });

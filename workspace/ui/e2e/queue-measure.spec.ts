@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, FULL_MOTION, test } from './fixtures';
 
 type Counts = { row: number; commit: number; sec: number };
 
@@ -23,7 +23,7 @@ const read = (page: Page): Promise<Counts> => page.evaluate(() => (window as unk
 
 test('typing in the editor does not re-measure the queue: layoutDependency stops the commit row, the '
   + 'section and the rest of the rows from being dirtied by every notify()', async ({ page, open }) => {
-  await open('review', { motion: 'on' });
+  await open('review', FULL_MOTION);
   await install(page);
   await page.locator('.cm-content').first().click();
   await page.waitForTimeout(300);

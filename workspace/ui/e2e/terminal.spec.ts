@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, FULL_MOTION, test } from './fixtures';
 
 test('a new terminal runs a command and shows its output', async ({ page, open }) => {
   const mock = await open();
@@ -42,7 +42,7 @@ test('the current terminal fills its tile, as the current tab of the activity ba
 test('one shared indicator slides between Changes, Files and every terminal tile, with motion on', async (
   { page, open },
 ) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review', FULL_MOTION);
   const indicator = () => page.locator('.act .rail-ind, .act .tab-ind');
   const tiles = page.locator('.rail-b:not(.new)');
   const changesTab = page.locator('.act .tabs.vert [role="tab"]').nth(0);
