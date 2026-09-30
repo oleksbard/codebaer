@@ -14,7 +14,7 @@ export function RepoAvatar({ path, avatar, favorite = false, large = false }: {
   const style = { '--hue': `var(--hue-${hueOf(path)})` } as CSSProperties;
   return (
     <span className={large ? 'repo-avatar large' : 'repo-avatar'} style={style} aria-hidden="true">
-      {avatar?.icon ? <GlyphSvg g={avatar.icon} /> : avatar?.code}
+      {avatar?.icon ? <GlyphSvg key={avatar.icon.body} g={avatar.icon} className="icon-in" /> : avatar?.code}
       {favorite && <svg className="repo-fav" viewBox="0 0 16 16"><path d={STAR} /></svg>}
     </span>
   );

@@ -70,14 +70,15 @@ const ICON_WORDS: Record<string, string> = {
 };
 const REPO_WORDS: Record<string, string> = { shop: 'lucide:shopping-cart', router: 'lucide:route' };
 const AI_ICONS_OFF: AppError = { kind: 'Ai', detail: 'AI icons are off. Turn them on in Settings.' };
-/** What `AppState::root` fails for after `close_repo`, until the next `open_repo`. */
+/** What `AppState::root` fails for after `close_repo`, until the next `open_repo`, and in a folder with no repo. */
 const NEEDS_REPO = new Set([
   'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'blame', 'stage_content', 'stage_path',
   'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit', 'branches',
   'switch_branch', 'create_branch', 'stash_push', 'stash_list', 'stash_pop', 'outgoing', 'undo_commit', 'list_files',
   'list_dir', 'push', 'pull', 'fetch', 'fetch_background', 'ai_commit_message', 'ai_stash_description',
-  'package_scripts', 'task_run',
 ]);
+/** What `AppState::cwd` fails for: only after `close_repo`. */
+const NEEDS_FOLDER = new Set(['package_scripts', 'task_run']);
 
 function wordIcon(words: Record<string, string>, text: string, sets: IconSet[]): string | null {
   const known = new Set(sets.flatMap((s) => s.names.map((n) => `${s.prefix}:${n}`)));
@@ -102,6 +103,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let icons: Record<string, string> = {};
   const favorites = new Set(sc.favorites);
   let closed = false;
+  /** `find` answers Folder for the scenario's root: until `git_init`, or for good with no git. */
+  let plain = sc.plain || sc.gitMissing;
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
   let unsaved = false;
@@ -236,7 +239,15 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     open_repo: ({ path }: { path: string }): Opened => {
       if (path.replace(/\/+$/, '') !== sc.root) throw { kind: 'NotARepo' } satisfies AppError;
       closed = false;
-      return { root: sc.root, label: label(sc.root), title: title() };
+      return { root: sc.root, label: label(sc.root), title: title(), git: !plain };
+    },
+    git_init: ({ root }: { root: string }) => {
+      if (sc.gitMissing) throw { kind: 'Io', detail: 'git: No such file or directory (os error 2)' } satisfies AppError;
+      if (closed || !plain) throw { kind: 'NotARepo' } satisfies AppError;
+      if (root !== sc.root) {
+        throw { kind: 'Git', detail: 'Another folder was opened, so no repository was made.' } satisfies AppError;
+      }
+      plain = false;
     },
     close_repo: () => { closed = true; },
     status: (): Status => repo.status(),
@@ -357,7 +368,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
         failures.delete(cmd);
         throw injected;
       }
-      if (closed && NEEDS_REPO.has(cmd)) throw { kind: 'NotARepo' } satisfies AppError;
+      if ((closed || plain) && NEEDS_REPO.has(cmd)) throw { kind: 'NotARepo' } satisfies AppError;
+      if (closed && NEEDS_FOLDER.has(cmd)) throw { kind: 'NotARepo' } satisfies AppError;
       const h = handlers[cmd];
       if (!h) {
         console.error(`[mock] no handler for ${cmd}`);

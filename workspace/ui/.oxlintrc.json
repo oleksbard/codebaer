@@ -11,27 +11,49 @@
     "typescript/no-unnecessary-condition": "error",
     "typescript/unbound-method": "off",
     "import/no-cycle": "error",
-    "no-restricted-imports": ["error", { "patterns": [
-      { "group": ["../*", "../**"], "message": "Import across folders through a # key." }
-    ] }]
+    "no-restricted-imports": ["error", {
+      "patterns": [
+        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+        { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+      ],
+      "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+    }]
   },
   "overrides": [
-    { "files": ["src/test-setup.ts"], "rules": { "typescript/no-unnecessary-condition": "off" } },
+    {
+      "files": ["src/test-setup.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "off",
+        "no-restricted-imports": ["error", { "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." }
+        ] }]
+      }
+    },
     {
       "files": ["src/**/*.tsx"],
       "rules": { "no-restricted-imports": ["error", {
-        "patterns": [{ "group": ["../*", "../**"], "message": "Import across folders through a # key." }],
-        "paths": [{ "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." }]
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [
+          { "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." },
+          { "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ]
       }] }
     },
     {
       "files": ["src/**/*.test.tsx"],
-      "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*", "../**"], "message": "Import across folders through a # key." }
-      ] }] }
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
     },
     {
-      "files": ["src/ui/**", "src/editor/**", "src/ipc/**", "src/mock/**"],
+      "files": ["src/ui/**"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
         { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
         { "group": ["#kernel/**", "#core/**", "#features/**", "#app/**"],
@@ -39,42 +61,74 @@
       ] }] }
     },
     {
+      "files": ["src/editor/**", "src/ipc/**", "src/mock/**"],
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#kernel/**", "#core/**", "#features/**", "#app/**"],
+            "message": "ui, editor, ipc and the fake backend sit below the kernel." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
+    },
+    {
       "files": ["src/kernel/**"],
-      "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
-        { "group": ["#core/**", "#features/**", "#app/**"], "message": "The kernel knows nothing of core, features or app." }
-      ] }] }
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#core/**", "#features/**", "#app/**"], "message": "The kernel knows nothing of core, features or app." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
     },
     {
       "files": ["src/core/**"],
-      "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
-        { "group": ["#features/**", "#app/**"], "message": "Core reaches features only through the registry." }
-      ] }] }
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#features/**", "#app/**"], "message": "Core reaches features only through the registry." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
     },
     {
       "files": ["src/features/**"],
-      "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
-        { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." }
-      ] }] }
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
     },
     {
       "files": ["src/features/**/*.tsx"],
       "rules": { "no-restricted-imports": ["error", {
         "patterns": [
           { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
-          { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." }
+          { "group": ["#app/**", "#features/*/*"], "message": "A feature reaches another only through its index, and never app/." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
         ],
-        "paths": [{ "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." }]
+        "paths": [
+          { "name": "#kernel/store", "importNames": ["S"], "message": "Components read state through useApp() and change it through actions." },
+          { "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ]
       }] }
     },
     {
       "files": ["src/features/**/*.test.ts", "src/features/**/*.test.tsx"],
-      "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
-        { "group": ["#features/*/*"], "message": "A feature reaches another only through its index." }
-      ] }] }
+      "rules": { "no-restricted-imports": ["error", {
+        "patterns": [
+          { "group": ["../*", "../**"], "message": "Import across folders through a # key." },
+          { "group": ["#features/*/*"], "message": "A feature reaches another only through its index." },
+          { "group": ["motion/*"], "message": "Motion lives in ui/: use a primitive, or add one there." }
+        ],
+        "paths": [{ "name": "motion", "message": "Motion lives in ui/: use a primitive, or add one there." }]
+      }] }
     },
     {
       "files": ["src/mock/backend.test.ts", "src/app/features.test.ts"],

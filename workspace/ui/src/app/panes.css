@@ -23,6 +23,9 @@
   p { margin: 0; max-width: 38ch; text-wrap: balance; }
   img { width: 120px; height: 120px; margin: 0 auto 10px; display: block; }
 
+  img, h2, p { animation: blank-in var(--dur-3) var(--ease-pop) both; }
+  p { animation-delay: var(--stagger); }
+
   /* the height holds the page still while the line count loads */
   .queue-stat {
     display: flex;
@@ -42,4 +45,16 @@
   .files { gap: 8px; }
   .blk { width: 11px; height: 11px; border-radius: 3px; }
   .blocks { gap: 3px; }
+}
+
+@keyframes blank-in {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blank img, .blank h2, .blank p { animation: blank-fade-in var(--dur-3) var(--ease-std) both; }
+}
+
+@keyframes blank-fade-in {
+  from { opacity: 0; }
 }

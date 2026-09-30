@@ -5,13 +5,16 @@ import { App } from './app/App';
 import { start } from './app/bootstrap';
 import { installErrorLog } from '#ipc/log';
 import { platform } from '#kernel/platform';
+import { initMotion } from './ui/motion';
+import { MotionRoot } from './ui/MotionRoot';
 import { initTheme } from './ui/theme';
 
 installErrorLog();
 document.documentElement.dataset.platform = platform();
+initMotion(platform());
 initTheme();
 export const root = createRoot(document.getElementById('app')!);
-root.render(<App />);
+root.render(<MotionRoot><App /></MotionRoot>);
 
 // vitest imports this module for its side effects and drives the app itself
 if (!import.meta.env.VITEST) void start();

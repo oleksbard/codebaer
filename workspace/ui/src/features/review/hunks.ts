@@ -5,6 +5,7 @@ import {
   acceptChunk, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   replaceDoc, replaceOriginal,
 } from '#editor/editor';
+import { flashLanding, ghostChunk } from '#editor/ghost';
 import { errKind, errText, git, type Eol } from '#ipc/git';
 import { confirmDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
@@ -27,6 +28,7 @@ const unsavedNote = (path?: string): string => {
 /** Stages the hunk under `v`'s cursor. False when git refused it; the editor is then re-diffed against the
  *  index, unless `live()` says another file owns `v` by now. */
 export async function stageChunk(v: EditorView, f: HunkFile, live: () => boolean): Promise<boolean> {
+  ghostChunk(v, 'accept');
   acceptChunk(v);
   const text = acceptText(getOriginalDoc(v.state).toString(), f.baseline);
   try {
@@ -57,7 +59,7 @@ export async function accept(): Promise<void> {
   // the view now, so neither one may move the cursor
   if (!ok || S.open !== o) return;
   // goToNextChunk wraps, so any hunk still in this file wins over moving to the next one
-  if (chunkCount(view.state)) { if (!goToNextChunk(view)) selectChunk(0); notify(); }
+  if (chunkCount(view.state)) { if (!goToNextChunk(view)) selectChunk(0); flashLanding(view); notify(); }
   else nextHunk(1);
 }
 
@@ -84,6 +86,7 @@ export async function reject(): Promise<void> {
     return;
   }
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
+  ghostChunk(view, 'reject');
   rejectChunk(view);
   await flush();
   await refresh();
@@ -93,6 +96,7 @@ export async function unstageHunk(): Promise<void> {
   const o = S.open;
   if (!o || o.view !== 'staged' || o.panel) return;
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
+  ghostChunk(view, 'unstage');
   rejectChunk(view);
   const text = unstageText(view.state.doc.toString(), o.originalExists);
   try {
@@ -140,13 +144,17 @@ export function nextHunk(dir: 1 | -1): void {
   const o = S.open;
   const moved = o && o.view !== 'plain' && !o.panel && !o.conflicted
     && (dir > 0 ? goToNextChunk(view) : goToPreviousChunk(view));
-  if (moved) { notify(); return; }
+  if (moved) { flashLanding(view); notify(); return; }
   const rows = S.status ? buildQueue(S.status).unstaged : [];
   if (!rows.length) { toast('Nothing left to review', 'info'); return; }
   const i = rows.findIndex((r) => rowKey(r) === S.selected);
   const idx = i === -1 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length;
   const next = rows[idx]!;
-  void openRow(next).then(() => { if (dir < 0) selectChunk(chunkCount(view.state) - 1); notify(); });
+  void openRow(next).then(() => {
+    if (dir < 0) selectChunk(chunkCount(view.state) - 1);
+    flashLanding(view);
+    notify();
+  });
 }
 
 export function nextFile(dir: 1 | -1): void {

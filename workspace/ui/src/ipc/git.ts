@@ -7,7 +7,8 @@ export type Rev = 'index' | 'head';
 export type FileText = { text: string; eol: Eol; exists: boolean };
 export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean };
 export type StageResult = { oid: string | null };
-export type Opened = { root: string; label: string; title: string | null };
+/** `git` is false for a folder with no repository, or on a machine with no git. */
+export type Opened = { root: string; label: string; title: string | null; git: boolean };
 export type Recent = { path: string; name: string; label: string; favorite: boolean };
 /** A newer release, downloaded and verified. `keeps_terminals` is false when it cannot carry the running terminal
  *  sessions over, which its restart then ends. */
@@ -105,6 +106,9 @@ export const git = {
   recentRepos: () => invoke<Recent[]>('recent_repos'),
   favoriteRepo: (path: string, favorite: boolean) => invoke<Recent[]>('favorite_repo', { path, favorite }),
   openRepo: (path: string) => invoke<Opened>('open_repo', { path }),
+  /** Runs `git init` in the folder open without a repository, refused unless that is still `root`; it does not
+   *  open the repository. */
+  gitInit: (root: string) => invoke<void>('git_init', { root }),
   /** Stops the watcher; every repo command then fails with NotARepo until the next open. */
   closeRepo: () => invoke<void>('close_repo'),
   status: () => invoke<Status>('status'),
@@ -161,8 +165,9 @@ export const git = {
     invoke<boolean>('stash_push', { root, kind, message }),
   /** Newest first. */
   stashList: () => invoke<Stash[]>('stash_list'),
-  /** `oid` is the stash as listed: the pop fails when `stash@{index}` is another one by now. */
-  stashPop: (index: number, oid: string) => invoke<void>('stash_pop', { index, oid }),
+  /** `oid` is the stash as listed: the pop fails when `stash@{index}` is another one by now. False when the
+   *  stash's staged part came back unstaged: a commit since changed what it was staged against. */
+  stashPop: (index: number, oid: string) => invoke<boolean>('stash_pop', { index, oid }),
   /** Past the upstream, or with no upstream on no remote; none without a remote. */
   outgoing: () => invoke<Outgoing>('outgoing'),
   /** A soft reset of HEAD, which must still be `oid` and on no remote. Resolves to the commit's message. */

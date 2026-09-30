@@ -1,7 +1,7 @@
 import { settleAll } from '#core/session';
 import { errText, git, type Update } from '#ipc/git';
 import { logInfo } from '#ipc/log';
-import { confirmDialog, toast } from '#kernel/dialogs';
+import { confirmDialog, toast, updateToast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
 
 /** After the launch, which has a repo to open. */
@@ -15,7 +15,6 @@ const MARK_MS = 15 * 60_000;
 
 let running: Promise<Update | null> | null = null;
 let lastError = '';
-let installing = false;
 
 /** One at a time: a second would wait on the backend for the first one's download, and find the same. */
 function check(): Promise<Update | null> {
@@ -58,27 +57,28 @@ export async function startUpdates(): Promise<void> {
   setInterval(() => { if (Date.now() - last >= EVERY_MS) auto(); }, TICK_MS);
 }
 
-const ready = (u: Update): void => toast(`CodeBär ${u.version} is out. Install it from the button in the header.`);
+const readyMsg = (u: Update): string => `CodeBär ${u.version} is out. Install it from the button in the header.`;
 
 export async function checkForUpdates(): Promise<void> {
   if (S.update !== null) {
-    ready(S.update);
+    toast(readyMsg(S.update));
     return;
   }
-  toast('Checking for updates…');
+  const id = toast('Checking for updates…');
   try {
     const found = await check();
-    if (found !== null) ready(found);
-    else toast(`CodeBär ${await git.appVersion()} is the newest version`);
+    updateToast(id, found !== null ? readyMsg(found) : `CodeBär ${await git.appVersion()} is the newest version`);
   } catch (e) {
-    toast(`Could not check for updates: ${errText(e)}`, 'err');
+    updateToast(id, `Could not check for updates: ${errText(e)}`, 'err');
   }
 }
 
+let restarting = false;
+
 export async function restartToUpdate(): Promise<void> {
   const u = S.update;
-  if (u === null || installing) return;
-  installing = true;
+  if (u === null || restarting) return;
+  restarting = true;
   try {
     if (!(await settleAll())) return;
     const live = S.terminals.filter((t) => t.state.t !== 'Exited').length;
@@ -87,7 +87,8 @@ export async function restartToUpdate(): Promise<void> {
       const message = `CodeBär ${u.version} cannot take over running terminals, so restarting ends ${which}.`;
       if (!(await confirmDialog(message))) return;
     }
-    toast(`Downloading CodeBär ${u.version}…`);
+    S.installing = true;
+    notify();
     // the new app is started with this one's arguments, whose repo may not be the open one any more
     localStorage.setItem(AFTER_UPDATE, String(Date.now()));
     await git.updateInstall();
@@ -98,7 +99,9 @@ export async function restartToUpdate(): Promise<void> {
     localStorage.removeItem(AFTER_UPDATE);
     toast(`Could not install the update: ${errText(e)}`, 'err');
   } finally {
-    installing = false;
+    restarting = false;
+    S.installing = false;
+    notify();
   }
 }
 

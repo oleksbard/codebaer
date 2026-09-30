@@ -1,9 +1,10 @@
 use codebaer_lib::eol::Eol;
-use codebaer_lib::git::{blame_impl, discover, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
+use codebaer_lib::git::{blame_impl, discover, find, found, init_impl, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{outgoing_impl, undo_commit_guarded, undo_commit_impl, OUTGOING};
 use codebaer_lib::git::{stash_list_impl, stash_pop_impl, stash_push_impl, StashKind};
+use codebaer_lib::git::Found;
 use codebaer_lib::git::{cancel_impl, diff_stat_impl, fetch_background_impl, push_args, run_net, AppState, DiffStat};
 use codebaer_lib::settings::AiProvider;
 use codebaer_lib::AppError;
@@ -843,9 +844,68 @@ fn stash_round_trips_partial_stage_and_untracked() {
     stash_push_impl(r, StashKind::All, None).unwrap();
     assert!(!r.join("u.txt").exists());
     let top = &stash_list_impl(r).unwrap()[0];
-    stash_pop_impl(r, 0, &top.oid).unwrap();
+    assert!(stash_pop_impl(r, 0, &top.oid).unwrap());
     assert!(sh(r, &["status", "--porcelain=v2"]).contains("1 MM "));
     assert!(r.join("u.txt").exists());
+}
+
+#[test]
+fn a_stash_pops_without_the_index_when_a_commit_since_broke_its_staged_patch() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "A\nb\nc\nd\n").unwrap();
+    sh(r, &["add", "a.txt"]);
+    stash_push_impl(r, StashKind::All, None).unwrap();
+    fs::write(r.join("a.txt"), "a\nb\nc\nD\n").unwrap();
+    sh(r, &["commit", "-qam", "line four"]);
+    let top = &stash_list_impl(r).unwrap()[0];
+    // false: the change came back, but unstaged
+    assert!(!stash_pop_impl(r, 0, &top.oid).unwrap());
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "A\nb\nc\nD\n");
+    assert_eq!(sh(r, &["stash", "list"]), "");
+}
+
+#[test]
+fn a_stash_popped_without_its_index_stages_nothing_nobody_reviewed_and_keeps_other_staged_work() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "A\nb\nc\nd\n").unwrap();
+    fs::write(r.join("n.txt"), "v1\n").unwrap();
+    sh(r, &["add", "a.txt", "n.txt"]);
+    fs::write(r.join("n.txt"), "v2\n").unwrap();
+    stash_push_impl(r, StashKind::All, None).unwrap();
+    fs::write(r.join("a.txt"), "a\nb\nc\nD\n").unwrap();
+    sh(r, &["commit", "-qam", "line four"]);
+    // staged in a file the stash does not touch
+    fs::write(r.join("b.txt"), "b\n").unwrap();
+    sh(r, &["add", "b.txt"]);
+    let top = &stash_list_impl(r).unwrap()[0];
+    assert!(!stash_pop_impl(r, 0, &top.oid).unwrap());
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "A\nb\nc\nD\n");
+    // a plain pop would leave n.txt staged at v2, which was never staged
+    assert_eq!(fs::read_to_string(r.join("n.txt")).unwrap(), "v2\n");
+    assert_eq!(sh(r, &["diff", "--cached", "--name-only"]), "b.txt\n");
+    assert_eq!(sh(r, &["stash", "list"]), "");
+}
+
+#[test]
+fn a_stash_whose_staged_patch_conflicts_with_staged_work_leaves_everything_as_it_was() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("a.txt"), "A\nb\nc\nd\n").unwrap();
+    sh(r, &["add", "a.txt"]);
+    stash_push_impl(r, StashKind::All, None).unwrap();
+    fs::write(r.join("a.txt"), "a\nb\nc\nD\n").unwrap();
+    sh(r, &["commit", "-qam", "line four"]);
+    // reviewed work on the line the stash's staged part also changes
+    fs::write(r.join("a.txt"), "X\nb\nc\nD\n").unwrap();
+    sh(r, &["add", "a.txt"]);
+    let top = &stash_list_impl(r).unwrap()[0];
+    assert!(matches!(stash_pop_impl(r, 0, &top.oid), Err(AppError::Git(ref m)) if m.contains("staged now")));
+    assert_eq!(fs::read_to_string(r.join("a.txt")).unwrap(), "X\nb\nc\nD\n");
+    assert_eq!(sh(r, &["show", ":a.txt"]), "X\nb\nc\nD\n");
+    assert!(!sh(r, &["status", "--porcelain=v2"]).contains("\nu "));
+    assert_eq!(stash_list_impl(r).unwrap().len(), 1);
 }
 
 /// a.txt staged on line 1 and changed again on line 4, b.txt deleted, and an untracked file in a new folder.
@@ -1512,4 +1572,109 @@ fn undo_commit_refuses_while_a_cherry_pick_or_revert_is_in_progress() {
         fs::remove_file(&path).unwrap();
     }
     assert_eq!(undo_commit_impl(r, &oid).unwrap(), "one");
+}
+
+#[test]
+fn init_makes_a_plain_folder_a_repo() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(matches!(discover(dir.path()), Err(AppError::NotARepo)));
+    init_impl(dir.path(), None).unwrap();
+    assert!(discover(dir.path()).is_ok());
+}
+
+#[test]
+fn init_refuses_a_missing_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(matches!(init_impl(&dir.path().join("gone"), None), Err(AppError::Io(ref m)) if m.contains("no longer exists")));
+}
+
+#[test]
+fn init_refuses_home_through_a_symlink() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("me");
+    fs::create_dir(&home).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&home, &link).unwrap();
+    assert!(matches!(init_impl(&link, Some(&home.canonicalize().unwrap())), Err(AppError::Git(_))));
+    assert!(!home.join(".git").exists());
+}
+
+#[test]
+fn init_refuses_the_home_folder_and_the_folders_above_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("me");
+    fs::create_dir(&home).unwrap();
+    assert!(matches!(init_impl(&home, Some(&home)), Err(AppError::Git(_))));
+    assert!(matches!(init_impl(dir.path(), Some(&home)), Err(AppError::Git(_))));
+    assert!(!home.join(".git").exists() && !dir.path().join(".git").exists());
+    let project = home.join("project");
+    fs::create_dir(&project).unwrap();
+    init_impl(&project, Some(&home)).unwrap();
+}
+
+#[test]
+fn init_refuses_a_folder_that_holds_a_repo() {
+    let projects = tempfile::tempdir().unwrap();
+    let inner = projects.path().join("shop");
+    fs::create_dir(&inner).unwrap();
+    init_impl(&inner, None).unwrap();
+    fs::create_dir(projects.path().join("notes")).unwrap();
+    assert!(matches!(init_impl(projects.path(), None), Err(AppError::Git(_))));
+    assert!(!projects.path().join(".git").exists());
+}
+
+#[test]
+fn find_opens_a_folder_with_no_repo_as_a_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let Found::Folder(root) = find(dir.path()).unwrap() else { panic!("a repo in a plain folder") };
+    assert_eq!(root, dir.path().canonicalize().unwrap());
+    assert!(matches!(find(&dir.path().join("gone")), Err(AppError::Io(_))));
+}
+
+#[test]
+fn a_git_that_does_not_run_opens_the_folder_without_a_repo() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub = || Err(AppError::Git("xcode-select: note: No developer tools were found, requesting install.".into()));
+    assert!(matches!(found(dir.path(), stub(), || false), Ok(Found::Folder(_))));
+    // a git that runs and still refuses the folder is a repo it will not open, not a folder without one
+    assert!(matches!(found(dir.path(), stub(), || true), Err(AppError::Git(_))));
+    assert!(matches!(found(dir.path(), Err(AppError::Timeout), || true), Err(AppError::Timeout)));
+}
+
+#[test]
+fn find_opens_a_repo_from_its_subfolder() {
+    let d = repo();
+    fs::create_dir(d.path().join("sub")).unwrap();
+    let Found::Repo(r) = find(&d.path().join("sub")).unwrap() else { panic!("a folder inside a repo") };
+    assert_eq!(r.root, d.path().canonicalize().unwrap());
+}
+
+#[test]
+fn a_repo_git_refuses_is_not_a_folder_with_no_repo() {
+    let d = repo();
+    // a bare repo has a git dir and no work tree, so --show-toplevel refuses it
+    let bare = tempfile::tempdir().unwrap();
+    sh(bare.path(), &["clone", "-q", "--bare", &d.path().to_string_lossy(), "."]);
+    assert!(matches!(find(bare.path()), Err(AppError::Git(_))));
+}
+
+#[test]
+fn a_worktree_whose_repo_is_gone_is_not_a_folder_with_no_repo() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join(".git"), format!("gitdir: {}\n", dir.path().join("gone/.git/worktrees/w").display()))
+        .unwrap();
+    assert!(matches!(find(dir.path()), Err(AppError::Git(_))));
+}
+
+#[test]
+fn a_terminal_starts_in_the_repo_or_else_the_folder_open_without_one() {
+    let state = AppState::new();
+    assert!(matches!(state.cwd(), Err(AppError::NotARepo)));
+    let dir = tempfile::tempdir().unwrap();
+    *state.folder.lock().unwrap() = Some(dir.path().to_path_buf());
+    assert_eq!(state.cwd().unwrap(), dir.path());
+    assert!(matches!(state.root(), Err(AppError::NotARepo)));
+    // a folder deleted since the open is named as gone, not as a folder with no repo
+    drop(dir);
+    assert!(matches!(state.cwd(), Err(AppError::Io(ref m)) if m.contains("no longer exists")));
 }

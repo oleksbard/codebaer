@@ -8,10 +8,13 @@
   gap: 6px;
   align-items: center;
   white-space: nowrap;
+  transition: background-color var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std);
 
   &:hover { background: var(--panel2); }
   &:disabled { cursor: default; }
   &:disabled:not(.busy) { background: none; color: var(--faint); }
+  /* the scale property, not transform: this element may already carry a transform of its own */
+  &:active:not(:disabled) { scale: .97; }
 
   &.primary {
     background: var(--accent);
@@ -50,11 +53,13 @@
   place-items: center;
   color: var(--muted);
   font-size: var(--fs-2);
+  transition: background-color var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std);
 
   &:hover { background: var(--line); color: var(--text); }
   &:disabled { opacity: .35; pointer-events: none; }
+  &:active:not(:disabled) { scale: .97; }
   &.busy:disabled { opacity: 1; color: var(--accent); }
-  &.busy svg { animation: spin 1.2s linear infinite; }
+  &.busy svg { animation: spin var(--dur-loop) linear infinite; }
 }
 
 /* the edge comes from the text colour, not --line, so it holds on a hovered or highlighted row as well */
@@ -98,7 +103,7 @@ kbd {
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin .8s linear infinite;
+  animation: spin var(--dur-spin) linear infinite;
 }
 
 .tabs {
@@ -108,13 +113,30 @@ kbd {
 }
 
 .tab {
+  position: relative;
+  /* contains the indicator's negative z-index to this element, so it never paints behind an opaque
+     ancestor (the rail's tile, the settings nav's own chrome) that isn't itself a stacking context */
+  isolation: isolate;
   padding: 8px 10px;
   color: var(--muted);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   font-weight: 500;
+  transition: color var(--dur-1) var(--ease-std);
 
-  &[data-state="active"] { color: var(--text); border-bottom-color: var(--accent); }
+  &[data-state="active"] { color: var(--text); }
+}
+
+/* the active tab's underline, over the transparent border-bottom it shares with every tab */
+.tab-ind {
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  /* spans the same band the old 2px border-bottom did, outside .tab's padding edge */
+  bottom: -2px;
+  height: 2px;
+  background: var(--accent);
 }
 
 .seg {
@@ -128,17 +150,29 @@ kbd {
 }
 
 .seg-item {
+  position: relative;
+  isolation: isolate;
   padding: 3px 12px;
   border-radius: var(--r-2);
   color: var(--muted);
   font-size: var(--fs-2);
   font-weight: 500;
+  transition: color var(--dur-1) var(--ease-std);
 
   &:hover { color: var(--text); }
-  /* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
-     the tint is too close to the track, as in several light themes */
-  &[data-state="on"] { background: var(--accent-soft); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+  &[data-state="on"] { color: var(--text); }
   &:disabled { color: var(--faint); }
+}
+
+/* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
+   the tint is too close to the track, as in several light themes */
+.seg-ind {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: var(--r-2);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .tabs.vert {
@@ -165,11 +199,20 @@ kbd {
 
   > .tile {
     position: relative;
+    isolation: isolate;
     display: grid;
     place-items: center;
     width: 44px;
     height: 44px;
     border-radius: var(--r-5);
+  }
+
+  .rail-ind {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--accent-soft);
   }
 
   > .cap {
@@ -183,8 +226,9 @@ kbd {
   &:hover,
   &:is(.on, [data-state="active"]) { color: var(--text); }
 
-  &:hover > .tile { background: var(--panel); }
-  &:is(.on, [data-state="active"]) > .tile { background: var(--accent-soft); }
+  /* :not the current item, so the .rail-ind fill (shared with the activity bar's Tabs) never has to win
+     a cascade tie against this tint */
+  &:hover:not(:is(.on, [data-state="active"])) > .tile { background: var(--panel); }
 
   /* the rail clips its sides, and a ring round the caption too would read as a box */
   &:focus-visible { outline: 0; }
@@ -196,6 +240,12 @@ kbd {
   inset: 0;
   background: var(--scrim);
   z-index: 20;
+
+  &[data-state="open"] { animation: scrim-in var(--dur-2) var(--ease-std); }
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
 }
 
 .dialog {
@@ -212,12 +262,28 @@ kbd {
   z-index: 21;
   outline: none;
 
+  &[data-state="open"] { animation: dialog-in var(--dur-2) var(--ease-out); }
+  /* the palette answers a keystroke, not a click, so it opens at menu speed rather than dialog speed */
+  &.pal[data-state="open"] { animation-duration: var(--dur-1); }
+
   &.alert {
     width: min(440px, calc(100vw - 32px));
     padding: 16px 18px 14px;
 
     .dialog-title { padding-right: 24px; }
   }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(4px) scale(.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[data-state="open"] { animation: dialog-fade-in var(--dur-2) var(--ease-std); }
+}
+
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
 }
 
 .dialog-x {
@@ -283,6 +349,36 @@ kbd {
   border-radius: var(--r-4);
   box-shadow: var(--shadow);
   z-index: 30;
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin));
+
+  &[data-state="open"] { animation: pop-in var(--dur-1) var(--ease-std); }
+  /* Presence (Radix's own unmount) waits for animationend, so the exit has to be a keyframe, not a transition */
+  &[data-state="closed"] { animation: pop-out var(--dur-1) var(--ease-std); }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; scale: .96; }
+}
+
+@keyframes pop-out {
+  to { opacity: 0; scale: .96; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu[data-state="open"],
+  .tip[data-state="delayed-open"],
+  .tip[data-state="instant-open"] { animation: pop-fade-in var(--dur-1) var(--ease-std); }
+
+  .menu[data-state="closed"],
+  .tip[data-state="closed"] { animation: pop-fade-out var(--dur-1) var(--ease-std); }
+}
+
+@keyframes pop-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes pop-fade-out {
+  to { opacity: 0; }
 }
 
 .menu-item {
@@ -326,6 +422,11 @@ kbd {
   font-size: var(--fs-2);
   line-height: 1.45;
   z-index: 30;
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+
+  &[data-state="delayed-open"],
+  &[data-state="instant-open"] { animation: pop-in var(--dur-1) var(--ease-std); }
+  &[data-state="closed"] { animation: pop-out var(--dur-1) var(--ease-std); }
 
   ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
   li { display: flex; align-items: flex-start; gap: 8px; }
@@ -369,10 +470,10 @@ kbd {
   background: var(--panel);
   font: 500 var(--fs-2) var(--mono);
   font-variant-numeric: tabular-nums;
-  animation: diffstat-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: diffstat-in var(--dur-4) var(--ease-out) both;
 
   .n { display: inline-block; }
-  .bump { animation: diffstat-bump 0.6s ease-out; }
+  .bump { animation: diffstat-bump var(--dur-5) ease-out; }
 }
 
 .diffstat {
@@ -391,7 +492,7 @@ kbd {
     height: 8px;
     border-radius: 2px;
     background: var(--line);
-    animation: diffstat-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--i) * 45ms + 80ms) backwards;
+    animation: diffstat-pop var(--dur-4) var(--ease-pop) calc(var(--i) * var(--stagger) + var(--dur-1)) backwards;
 
     &.add { background: var(--add); box-shadow: 0 0 6px var(--add-bg); }
     &.del { background: var(--del); box-shadow: 0 0 6px var(--del-bg); }
@@ -412,4 +513,29 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .diffstat, .diffstat .bump, .diffstat .blk { animation: none; }
+}
+
+:root[data-motion="lite"] {
+  .diffstat, .diffstat .bump, .diffstat .blk { animation: none; }
+}
+
+/* the task launch and the attention bell both ring it once */
+@keyframes task-ping {
+  from { opacity: 0.9; transform: scale(0.55); }
+  to { opacity: 0; transform: scale(1.4); }
+}
+
+.count {
+  position: relative;
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+
+/* keyed by the icon so a later re-render with the same icon does not replay it */
+.icon-in {
+  animation: icon-in var(--dur-2) var(--ease-std);
+}
+
+@keyframes icon-in {
+  from { opacity: 0; }
 }

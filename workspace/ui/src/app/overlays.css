@@ -66,7 +66,6 @@
   bottom: 36px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   z-index: 30;
   max-width: min(420px,calc(100vw - 32px));
 }
@@ -81,17 +80,24 @@
   font-size: var(--fs-2);
   cursor: pointer;
   white-space: pre-wrap;
+  overflow: hidden;
+
+  /* margin, not the flex `gap`: `layout` can animate a toast's exit collapsing this, and a gap would still
+     leave a blank beat behind once the row is gone */
+  & + & { margin-top: 8px; }
 
   &.err { border-left-color: var(--del); font: var(--fs-2)/1.5 var(--mono); }
   &.warn { border-left-color: var(--warn); }
   &.ok { border-left-color: var(--add); }
 }
 
+/* the entry and exit fade plus rise are `Reveal`'s, in ui/Reveal.tsx */
 .chord {
   position: fixed;
-  left: 50%;
+  inset-inline: 0;
+  margin-inline: auto;
+  width: max-content;
   bottom: 36px;
-  transform: translateX(-50%);
   background: var(--panel);
   border: 1px solid var(--accent);
   border-radius: var(--r-3);

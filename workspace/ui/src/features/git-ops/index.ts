@@ -2,24 +2,27 @@ import { defineFeature } from '#kernel/registry';
 import { S } from '#kernel/store';
 import { onStatus } from './auto-fetch';
 import {
-  checkout, commit, createBranch, focusCommit, loadOutgoing, network, stash, undoCommit, unstash,
+  checkout, commit, createBranch, focusCommit, initRepo, loadOutgoing, network, stash, undoCommit, unstash,
 } from './git-ops';
 import { NO_OUTGOING } from './state';
 
 const hasHead = (): boolean => (S.status?.head ?? null) !== null;
+const hasGit = (): boolean => !S.folderOnly;
+const canInit = (): boolean => S.folderOnly && S.gitMissing === null;
 /** git refuses to stash or unstash while a path is unmerged. */
 const canStash = (): boolean => hasHead() && !S.status?.files.some((f) => f.conflicted);
 
 export const gitOps = defineFeature({
   id: 'git-ops',
   commands: [
-    { id: 'git.focusCommit', label: 'Git: Commit', hintOf: 'git.commit', run: focusCommit },
+    { id: 'git.focusCommit', label: 'Git: Commit', hintOf: 'git.commit', when: hasGit, run: focusCommit },
     { id: 'git.commit', run: commit },
-    { id: 'git.push', label: 'Git: Push', run: () => network('push') },
-    { id: 'git.pull', label: 'Git: Pull', run: () => network('pull') },
-    { id: 'git.fetch', label: 'Git: Fetch', run: () => network('fetch') },
-    { id: 'git.checkout', label: 'Git: Checkout to…', run: checkout },
-    { id: 'git.createBranch', label: 'Git: Create Branch…', run: createBranch },
+    { id: 'git.init', label: 'Git: Init Repository', when: canInit, run: initRepo },
+    { id: 'git.push', label: 'Git: Push', when: hasGit, run: () => network('push') },
+    { id: 'git.pull', label: 'Git: Pull', when: hasGit, run: () => network('pull') },
+    { id: 'git.fetch', label: 'Git: Fetch', when: hasGit, run: () => network('fetch') },
+    { id: 'git.checkout', label: 'Git: Checkout to…', when: hasGit, run: checkout },
+    { id: 'git.createBranch', label: 'Git: Create Branch…', when: hasGit, run: createBranch },
     { id: 'git.stash', label: 'Git: Stash All', when: canStash, run: () => stash('all') },
     { id: 'git.stashChanges', label: 'Git: Stash Changes', when: canStash, run: () => stash('unstaged') },
     { id: 'git.stashStaged', label: 'Git: Stash Staged', when: canStash, run: () => stash('staged') },

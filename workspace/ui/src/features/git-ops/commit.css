@@ -24,12 +24,12 @@
         linear-gradient(var(--bg), var(--bg)) padding-box,
         linear-gradient(90deg, var(--line) 42%, var(--accent) 50%, var(--line) 58%) border-box;
       background-size: 100% 100%, 300% 100%;
-      animation: commit-sweep 1.4s linear infinite;
+      animation: commit-sweep var(--dur-loop) linear infinite;
     }
 
     /* two names for one animation, so a second message restarts it */
-    &.land0 { animation: commit-land-0 0.9s ease-out; }
-    &.land1 { animation: commit-land-1 0.9s ease-out; }
+    &.land0 { animation: commit-land-0 var(--dur-5) ease-out; }
+    &.land1 { animation: commit-land-1 var(--dur-5) ease-out; }
   }
 
   .branch {
@@ -87,10 +87,10 @@
     path {
       transform-box: fill-box;
       transform-origin: center;
-      animation: ai-twinkle 1.2s ease-in-out infinite;
+      animation: ai-twinkle var(--dur-loop) ease-in-out infinite;
     }
 
-    path + path { animation-delay: -0.6s; }
+    path + path { animation-delay: calc(var(--dur-loop) / -2); }
   }
   .ico { width: 26px; height: 26px; }
 }
@@ -124,5 +124,13 @@
   .commit {
     textarea.writing { animation: none; background: var(--bg); border-color: var(--accent); }
     textarea.land0, textarea.land1, .ai-wrap .ico.busy svg path { animation: none; }
+  }
+}
+
+/* the landing flash stays: only the two infinite loops (the AI sweep and twinkle) are heavy under lite */
+:root[data-motion="lite"] {
+  .commit {
+    textarea.writing { animation: none; background: var(--bg); border-color: var(--accent); }
+    .ai-wrap .ico.busy svg path { animation: none; }
   }
 }

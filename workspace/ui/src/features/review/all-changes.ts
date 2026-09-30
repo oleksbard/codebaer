@@ -7,6 +7,7 @@ import { foldToChanges } from '#editor/context-view';
 import {
   buildState, chunkCount, chunkIndexAtCursor, lineStat, rejectChunk, replaceDoc, replaceOriginal,
 } from '#editor/editor';
+import { ghostChunk } from '#editor/ghost';
 import { setEditorDark } from '#editor/editor-theme';
 import { closePane, detachPane, isSideBySide, originalPane, setSideBySide, sideBySide } from '#editor/side-by-side';
 import { errKind, errText, git, staleText } from '#ipc/git';
@@ -405,6 +406,7 @@ async function rejectIn(sec: Section): Promise<void> {
     const before = f.baseline;
     if (!live() || before === null) return;
     if (sec.rev !== rev) { toast(`${f.path} changed and was re-diffed, nothing was rejected`, 'warn'); return; }
+    ghostChunk(v, 'reject');
     rejectChunk(v);
     const text = v.state.doc.toString();
     try {

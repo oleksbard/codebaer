@@ -30,7 +30,10 @@ declare module '#kernel/store' {
     refreshing: boolean;
     refreshAgain: boolean;
     flushing: Promise<boolean> | null;
-    fatal: string | null;
+    /** Why git did not run at launch. Every folder then opens without git, until one opens with it. */
+    gitMissing: string | null;
+    /** The open folder has no repository, or there is no git: only its terminals and tasks work. */
+    folderOnly: boolean;
     busy: boolean;
     changesOnly: boolean;
     /** Folds just the panel; `sidebarHidden` takes the activity bar with it. */
@@ -44,7 +47,7 @@ declare module '#kernel/store' {
 
 export const coreState = () => ({
   root: null, rootLabel: null, title: null, status: null, tab: 'changes' as Tab, open: null, selected: null,
-  refreshing: false, refreshAgain: false, flushing: null, fatal: null, busy: false,
+  refreshing: false, refreshAgain: false, flushing: null, gitMissing: null, folderOnly: false, busy: false,
   changesOnly: localStorage.getItem('codebaer.changesOnly') === 'true',
   sideCollapsed: localStorage.getItem('codebaer.sideCollapsed') === 'true',
   filesOpen: new Set<string>(),

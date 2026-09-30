@@ -4,6 +4,7 @@ import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
 import { CHECK, StrokeIcon } from '#ui/Icon';
 import { Spinner } from '#ui/Spinner';
+import { useLatest } from '#ui/useLatest';
 import { checkAgain, closeAiTools, copyInstall, openGuide } from './actions';
 import { TOOLS, type Tool } from './catalog';
 import type { AiTools } from './state';
@@ -87,7 +88,9 @@ function Placeholder() {
 
 export function AiToolsOverlay() {
   const s = useApp();
-  return s.aiTools ? <AiToolsDialog tools={s.aiTools} /> : null;
+  // the store field is already null while this exits: the last check it had is what it fades out showing
+  const tools = useLatest(s.aiTools);
+  return tools ? <AiToolsDialog tools={tools} /> : null;
 }
 
 function AiToolsDialog({ tools: { installed, checking, failed } }: { tools: DeepReadonly<AiTools> }) {

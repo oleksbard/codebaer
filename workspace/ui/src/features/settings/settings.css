@@ -31,6 +31,9 @@
 }
 
 .settings-tab {
+  position: relative;
+  /* contains the indicator's negative z-index here, so it never paints behind the nav's own chrome fill */
+  isolation: isolate;
   padding: 5px 8px;
   border-radius: var(--r-3);
   color: var(--muted);
@@ -38,7 +41,15 @@
   text-align: left;
 
   &:hover { color: var(--text); }
-  &[data-state="active"] { background: var(--accent-soft); color: var(--text); }
+  &[data-state="active"] { color: var(--text); }
+}
+
+.settings-ind {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent-soft);
 }
 
 /* the title row stays put, with the dialog's close button centred in it; only the options scroll */
@@ -151,7 +162,7 @@
   padding: 2px;
   border-radius: calc(var(--r-4) + 3px);
   box-shadow: 0 0 0 1px transparent;
-  transition: box-shadow 120ms ease;
+  transition: box-shadow var(--dur-2) ease;
 
   .theme-card:hover & { box-shadow: 0 0 0 1px var(--faint); }
   .theme-card[data-state="checked"] & { box-shadow: 0 0 0 2px var(--accent); }

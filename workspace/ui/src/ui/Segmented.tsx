@@ -1,4 +1,6 @@
+import { useId } from 'react';
 import { ToggleGroup as TG } from 'radix-ui';
+import { TabIndicator } from './Tabs';
 
 /** A disabled segment shows its `title` on hover, to say why. */
 export type Segment<V extends string> = { value: V; label: string; disabled?: boolean; title?: string | undefined };
@@ -11,11 +13,13 @@ export function Segmented<V extends string>({ value, onValueChange, items, ...ar
   'aria-labelledby'?: string;
   'aria-describedby'?: string;
 }) {
+  const id = useId();
   return (
     <TG.Root type="single" className="seg" value={value} {...aria}
       onValueChange={(v) => { const it = items.find((i) => i.value === v); if (it) onValueChange(it.value); }}>
       {items.map((i) => (
         <TG.Item key={i.value} className="seg-item" value={i.value} disabled={i.disabled ?? false} title={i.title}>
+          {i.value === value && <TabIndicator id={id} value={value} className="seg-ind" />}
           {i.label}
         </TG.Item>
       ))}

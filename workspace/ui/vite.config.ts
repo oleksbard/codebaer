@@ -12,7 +12,9 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     // Playwright's; its default include would take e2e/*.spec.ts too
     exclude: [...configDefaults.exclude, 'e2e/**'],
-    // Vitest blanks every CSS import it does not process, `?raw` included; theme.test.ts reads these
-    css: { include: [/\/src\/ui\/(themes|tokens)/] },
+    // Vitest blanks every CSS import it does not process, `?raw` included; theme.test.ts and motion.test.ts
+    // read these. No component imports a stylesheet as a module (styles.css only reaches index.html
+    // through a <link>), so widening this to the whole tree costs nothing.
+    css: { include: [/\/src\/.*\.css/] },
   },
 });

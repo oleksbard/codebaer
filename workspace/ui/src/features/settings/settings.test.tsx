@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { setValue, tick } from '#test-setup';
+import { exitTick, setValue, tick } from '#test-setup';
 import type { CustomCommand, HiddenScripts, Settings } from '#ipc/settings';
 
 vi.mock('#ipc/git', async () => {
@@ -220,6 +220,7 @@ describe('settings dialog', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await tick();
     expect(S.settingsOpen).toBe(false);
+    await exitTick();
     expect(dialog()).toBeNull();
   });
 
@@ -572,7 +573,7 @@ describe('commands', () => {
     setValue(document.querySelector<HTMLInputElement>('.icon-panel input')!, 'hammer');
     await tick();
     button('lucide:hammer').click();
-    await tick();
+    await exitTick();
     expect(document.querySelector('.icon-panel')).toBeNull();
     expect(document.querySelector('.icon-pick-b')!.textContent).toBe('hammer');
     button('Save').click();
@@ -625,6 +626,8 @@ describe('commands', () => {
     await tick();
     expect(button('Show test')).toBeDefined();
     closeSettings();
+    // lets the exit finish, or a reopen this fast reuses the still-exiting CommandsPane and its old fetch
+    await exitTick();
     vi.mocked(git.packageScripts).mockResolvedValue(null);
     await openSettings('commands');
     await tick();

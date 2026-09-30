@@ -12,6 +12,7 @@ import { keyLabel } from '#kernel/keymap';
 import { run } from '#kernel/registry';
 import { useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
+import { Count } from '#ui/Count';
 import { DiffStat } from '#ui/DiffStat';
 import { FileIcon } from '#ui/FileIcon';
 import { StrokeIcon } from '#ui/Icon';
@@ -116,7 +117,7 @@ function TitleBar() {
   const chunks = chunkCount(view.state);
   const at = chunkIndexAtCursor(view.state);
   const pos = o.view === 'plain' ? 'working tree'
-    : chunks ? `hunk ${Math.max(at, 0) + 1} of ${chunks}`
+    : chunks ? <>hunk <Count value={Math.max(at, 0) + 1} /> of {chunks}</>
       : o.view === 'staged' ? 'nothing staged' : 'no unstaged changes';
   const btns = o.view === 'unstaged' && chunks
     ? <><Button onClick={() => void rejectFile(o.path)}>

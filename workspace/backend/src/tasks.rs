@@ -95,13 +95,13 @@ fn plan(task: &Task, root: &Path, saved: &[CustomCommand]) -> Result<(String, St
 
 #[tauri::command(async)]
 pub fn package_scripts(git: State<'_, AppState>) -> Result<Option<Scripts>, AppError> {
-    scripts_at(&git.root()?)
+    scripts_at(&git.cwd()?)
 }
 
-/// Runs in the repository root, like a terminal; the reply is the spawn's `req`, as for `term_spawn`.
+/// Runs where a terminal starts; the reply is the spawn's `req`, as for `term_spawn`.
 #[tauri::command(async)]
 pub fn task_run(app: AppHandle, git: State<'_, AppState>, task: Task, cols: u16, rows: u16) -> Result<u32, AppError> {
-    let root = git.root()?;
+    let root = git.cwd()?;
     let (line, title) = plan(&task, &root, &settings::load_commands(&app))?;
     request_spawn(&app, SpawnKind::Task { line, title }, root.to_string_lossy().into_owned(), cols, rows)
 }

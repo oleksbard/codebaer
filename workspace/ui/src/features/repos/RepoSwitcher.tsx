@@ -4,6 +4,7 @@ import { closeRepo, openRepo, pickRepo } from '#core/session';
 import { git, type Recent } from '#ipc/git';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
+import { inertOnClose, keepFocus } from '#ui/focus';
 import { Kbd } from '#ui/Kbd';
 import { openRepoPrefs, repoName } from './actions';
 import { avatars, forgetAvatars, type Avatar } from './avatar';
@@ -56,7 +57,8 @@ export function RepoSwitcher() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4}>
+        <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4} ref={inertOnClose}
+          onCloseAutoFocus={keepFocus}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void pickRepo()}>
             Open Folder…<span className="detail"><Kbd>{keyLabel('repos.pick')}</Kbd></span>
           </DropdownMenu.Item>

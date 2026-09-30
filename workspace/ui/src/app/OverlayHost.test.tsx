@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { setValue, tick } from '#test-setup';
+import { exitTick, setValue, tick } from '#test-setup';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -108,7 +108,7 @@ describe('confirm dialog', () => {
     expect(document.querySelector('.dialog-body')!.textContent).toBe('Its content is not in git.');
     document.querySelector<HTMLButtonElement>('.dialog-actions .btn.primary')!.click();
     await expect(p).resolves.toBe(true);
-    await tick();
+    await exitTick();
     expect(document.querySelector('.dialog')).toBeNull();
   });
 
@@ -130,7 +130,9 @@ describe('confirm dialog', () => {
 });
 
 describe('choice dialog', () => {
-  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.dialog-actions button')];
+  // the live dialog's: the one an answer closed may still be in the DOM, inert, for its exit
+  const buttons = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('.dialog:not([inert]) .dialog-actions button')];
 
   it("puts the second answer first, then Cancel and the primary one, focused on Cancel", async () => {
     const p = choiceDialog('Save a.txt?\nYour changes will be lost.', 'Save', "Don't Save");
@@ -146,11 +148,17 @@ describe('choice dialog', () => {
     await tick();
     buttons()[0]!.click();
     await expect(p).resolves.toBe('alt');
+    // the answered dialog's unmount changes Radix's layer list, and the next dialog reads a stale place in it (so
+    // ignores Escape) until Radix has re-rendered it
+    await exitTick();
+    await tick();
 
     p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
     await tick();
     buttons()[1]!.click();
     await expect(p).resolves.toBe(null);
+    await exitTick();
+    await tick();
 
     p = choiceDialog('Save a.txt?', 'Save', "Don't Save");
     await tick();
@@ -180,7 +188,7 @@ describe('error dialog', () => {
     expect(close.textContent).toBe('Close');
     close.click();
     await expect(p).resolves.toBeUndefined();
-    await tick();
+    await exitTick();
     expect(document.querySelector('.dialog')).toBeNull();
   });
 });
@@ -197,7 +205,7 @@ describe('prompt dialog', () => {
     await tick();
     create().click();
     await expect(p).resolves.toBe('feat/x');
-    await tick();
+    await exitTick();
     expect(document.querySelector('.prompt')).toBeNull();
   });
 
@@ -231,7 +239,7 @@ describe('toasts and chord hint', () => {
     const el = document.querySelector<HTMLElement>('.toasts .toast.ok')!;
     expect(el.textContent).toBe('Committed');
     el.click();
-    await tick();
+    await exitTick();
     expect(document.querySelector('.toast')).toBeNull();
   });
 

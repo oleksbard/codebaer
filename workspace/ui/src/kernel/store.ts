@@ -7,11 +7,13 @@ export type Toast = { id: number; message: string; kind: ToastKind };
 export type PaletteRequest = {
   id: number; items: Item<unknown>[]; placeholder: string; wide: boolean; resolve(v: unknown): void;
 };
-/** `ok` and `alt` relabel OK and add a second answer beside it, which `resolve` reports as 'alt'. */
+/** `ok` and `alt` relabel OK and add a second answer beside it, which `resolve` reports as 'alt'. `id` keys the
+ *  dialog, as it keys the palette: a request that arrives while the last dialog is still in its exit animation
+ *  mounts a dialog of its own, which takes focus, instead of reviving the closing one, which cannot. */
 export type ConfirmRequest = {
-  message: string; error?: boolean; ok?: string; alt?: string; resolve(answer: boolean | 'alt'): void;
+  id: number; message: string; error?: boolean; ok?: string; alt?: string; resolve(answer: boolean | 'alt'): void;
 };
-export type PromptRequest = { placeholder: string; wide: boolean; resolve(value: string | null): void };
+export type PromptRequest = { id: number; placeholder: string; wide: boolean; resolve(value: string | null): void };
 
 /** core/state.ts, each feature's state.ts and app/state.ts add their fields by declaration merging;
  *  app/state.ts sets them all. */

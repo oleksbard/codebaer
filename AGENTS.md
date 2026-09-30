@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`, `terminalWrite`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`). An agent session echoes a bracketed paste, which is how a comment arrives, once as a block and gives the Enter that submits it no answer; `__mock.terminalWrite` prints its reply.
-- `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` or `update` (a newer release that Check for Updates… finds). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome.
+- `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` (no git on the machine), `plain` (a folder with no repository, until Git: Init Repository) or `update` (a newer release that Check for Updates… finds). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome, `&motion=off` turns every animation off (see Motion).
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -63,7 +63,9 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
   test-setup.ts          DOM polyfills jsdom lacks; loads the state and the keymap for every test
   test-app.ts            harness for tests that mount the whole app: mountApp(), fixtures, openUnstaged()
   ui/                    presentational primitives (Radix-based; List.tsx for the queue and the tree), tokens,
-                         themes
+                         themes; the motion level and its tokens (motion.ts), the motion primitives (MotionRoot,
+                         Presence, Reveal, Count, Toasts, Pop, useLatest) and the menu and dialog focus rules
+                         (focus.ts)
   editor/                CodeMirror toolkit: merge view, language loading, theme, changes-only folds and the
                          keepVisible facet; no app state
   ipc/                   every invoke(), Channel and event wrapper: git.ts (git commands, AppError, errText),
@@ -178,10 +180,34 @@ Adding a feature:
 - Adding a variant to `AppError` in `error.rs`: add the matching case to the TS `AppError` union and `KIND_TEXT` in `workspace/ui/src/ipc/git.ts`. Without them the type check misses it and the user sees the raw kind name.
 - Use the design tokens from `workspace/ui/src/ui/tokens.css` and `themes.css` in CSS. Do not hardcode colors.
 
+## Motion
+
+Motion ships with the feature, not in a later pass, and most of it comes from the primitives in `ui/`.
+
+- One level applies to the whole app. `setMotion()` in `ui/motion.ts` puts it on `<html data-motion>`:
+  - `full`: macOS, and browser mode by default.
+  - `lite`: Linux, and browser mode with `&platform=linux`. WebKitGTK is slower, so the heavy motion is off: every Motion layout animation (queue moves, the toast stack, sliding indicators, the rail collapse, `Count`), every height animation, every infinite loop except the busy spinner, animated `filter` and `blur`, staggered lists and the sidebar collapse. `heavyMotion()` is true only at `full`. A heavy CSS rule gets a `:root[data-motion="lite"]` rule next to the reduced-motion rule of its file.
+  - `off`: tests, e2e and `pnpm shot`. No CSS animation, CSS transition or Motion animation runs, so nothing waits on one and a shot shows the end state. `test-setup.ts` sets it. The e2e `open` fixture and `pnpm shot` pass `motion=off`, unless the test passes `motion: 'on'` or the shot `--motion on`. In jsdom an `AnimatePresence` exit still needs `exitTick()` from `#test-setup` before its node is gone.
+- Under `prefers-reduced-motion: reduce`, movement becomes a colour or opacity change. `MotionRoot` covers the Motion components. A new keyframe gets its own reduced-motion block, and a height animation reads `useReducedMotion()`.
+- Durations and curves are the tokens in `ui/tokens.css` (`--dur-*`, `--ease-*`, `--stagger`), and `DUR`, `EASE`, `STAGGER` and `SPRING` (which has no CSS token) in `ui/motion.ts` for JavaScript. `ui/motion.test.ts` fails on a literal time or a `cubic-bezier` in any other CSS file, and on a `DUR`, `EASE` or `STAGGER` value that is not equal to its token.
+- Lint allows a `motion` import only in `src/ui/**` and `test-setup.ts`. `editor/` uses the Web Animations API (`editor/ghost.ts`). A feature animates through the primitives:
+  - a dialog: `Dialog` or `AlertDialog`, in the overlay host's `Presence`, which plays the exit. A registered overlay renders after its store field is null, so it reads its data through `useLatest()`. The palette is the one exception: it has no exit and closes at once.
+  - a menu or a tooltip: the `.menu` and `.tip` classes, and `keepFocus` and `inertOnClose` from `ui/focus.ts` on a menu's content.
+  - UI that appears after an action or a background event: `<Reveal when>`, not `{cond && …}`. Its children take their data from props.
+  - a number that changes: `<Count value>`.
+  - the current item of a group: `Segmented`, `Tabs` or `TabIndicator`.
+  - a list whose rows come and go: `Presence` with stable keys (never the index), `ListRow` and `ListSection` from `ui/List.tsx` with a `layoutDependency`, and `Pop` for a tile.
+  - a message: `toast()`, or `updateToast()` for a result that replaces the toast in place.
+
+  A surface that none of these covers gets a new primitive in `ui/`, not a one-off.
+- An action that changes git shows its result where the user looks: the row moves, a count rolls, the hunk ghost fades, the landing line flashes. A toast is for a result that is not on screen (push, a background task, the end of the queue while the sidebar does not show it).
+- Never delay the action: the git call and the edit run at once, and the animation follows. Use 90 to 140ms for what the user starts, and 240ms at most for a layout move.
+- Do not animate a main-pane swap (the editor and terminal DOM are singletons), a height inside a CodeMirror widget or on the All Changes page, typing, palette filtering, terminal output, or the scroll to a hunk.
+
 ## Versioning and releases
 
 - The version lives only in `workspace/backend/Cargo.toml`; `tauri.conf.json` has none and falls back to it. Never edit it by hand.
-- A change a user can notice includes a bump in the same change: `pnpm bump minor` for a feature, `pnpm bump patch` for a fix. Docs, tests, CI and refactors get none. Never `major`, that is the owner's call.
+- A change a user can notice includes `pnpm bump patch` in the same change, for a feature as well as a fix. Docs, tests, CI and refactors get none. Never `minor` or `major`: the owner bumps those.
 - `scripts/bump.mjs` counts from the last published release, the newest `v*` tag on origin. Repeating a bump within one release cycle changes nothing, and a feature after a fix raises the patch to a minor. It only reads git, fails without changing anything when origin is unreachable, and rewrites `Cargo.toml` and `Cargo.lock`.
 - Never create tags or releases. The owner releases with `pnpm release` (`scripts/release.mjs`): it writes the notes for main's head on origin with Claude Opus through the local `claude` CLI, replaces any draft with a draft of that commit carrying them, and starts `.github/workflows/release.yml`. That workflow waits for main's CI on the commit, attaches the app CI built and smoke-tested there (kept for 30 days), and publishes the draft, which creates the tag. Commits pushed after that are not in the release. `install.sh` is what the README's install one-liner runs.
 - Releases are macOS on Apple Silicon, plus the Linux x86_64 beta's `.deb` and `.rpm` when `linux.yml` passed on the same commit; without them `release.yml` publishes the macOS app alone and says so. `install.sh` installs on macOS, and on Linux downloads and checks the package and prints the `apt`, `dnf` or `zypper` line. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`. Platform code goes in `workspace/backend/src/sys/`, and the frontend reads the platform from `kernel/platform.ts`; the Linux keymap is `app/keymap/linux.ts`.

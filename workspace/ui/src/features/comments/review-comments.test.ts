@@ -526,7 +526,7 @@ describe('repo switch and copy path', () => {
 
     confirmMock.mockResolvedValue(true);
     vi.mocked(term.checkCwd).mockResolvedValue(undefined);
-    g.openRepo!.mockResolvedValue({ root: ROOT, label: '~/r', title: 'r' });
+    g.openRepo!.mockResolvedValue({ root: ROOT, label: '~/r', title: 'r', git: true });
     await core.openRepo(ROOT);
     expect(S.comments).toEqual([]);
     expect(S.draft).toBeNull();

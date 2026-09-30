@@ -24,6 +24,7 @@ export const repos = defineFeature({
 });
 
 export { avatarOf } from './avatar';
+export { NoGit } from './NoGit';
 export { NoRepo } from './NoRepo';
 export { RepoAvatar } from './RepoAvatar';
 export { RepoSwitcher } from './RepoSwitcher';

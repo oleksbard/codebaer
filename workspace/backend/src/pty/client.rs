@@ -281,7 +281,7 @@ pub fn term_spawn<R: Runtime>(
     if !ok {
         return Err(AppError::InvalidPath(format!("{kind:?}")));
     }
-    let cwd = git.root()?;
+    let cwd = git.cwd()?;
     request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)
 }
 

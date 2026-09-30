@@ -10,6 +10,7 @@ import { Dialog } from '#ui/Dialog';
 import { REFRESH, StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Pill } from '#ui/Pill';
+import { useLatest } from '#ui/useLatest';
 import { closeOrphans, orphanAction, rescan } from './actions';
 
 const ARM_MS = 3000;
@@ -33,7 +34,9 @@ function SessionGlyph({ session }: { session: DeepReadonly<Info> | undefined }) 
 
 export function OrphansOverlay() {
   const s = useApp();
-  return s.orphans ? <OrphansDialog scan={s.orphans} /> : null;
+  // the store field is already null while this exits: the last scan it had is what it fades out showing
+  const scan = useLatest(s.orphans);
+  return scan ? <OrphansDialog scan={scan} /> : null;
 }
 
 export function OrphansDialog({ scan }: { scan: DeepReadonly<OrphanScan> }) {

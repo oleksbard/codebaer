@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { keyLabel, matches } from '#kernel/keymap';
 import { refs, useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
-import { REFRESH, StrokeIcon } from '#ui/Icon';
+import { Count } from '#ui/Count';
+import { CHECK, REFRESH, StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { Spinner } from '#ui/Spinner';
@@ -50,8 +51,8 @@ function BranchBar() {
   const branch = !st ? '…' : st.head === null ? 'no commits' : st.branch ?? st.head.slice(0, 8);
   const ab = !st ? null : st.upstream
     ? <span className="ab">
-        <span className={st.ahead ? 'on' : ''}>↑{st.ahead}</span>
-        <span className={st.behind ? 'on' : ''}>↓{st.behind}</span>
+        <span className={st.ahead ? 'on' : ''}>↑<Count value={st.ahead} /></span>
+        <span className={st.behind ? 'on' : ''}>↓<Count value={st.behind} /></span>
       </span>
     : <span>no upstream</span>;
   return (
@@ -141,9 +142,11 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
             <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={s.aiBusy}
               disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
           </span>
-          <Button variant="primary" id="commit-btn" busy={s.committing}
+          <Button variant="primary" id="commit-btn" busy={s.committing || s.committed}
             disabled={staged === 0 || !message.trim() || s.committing} onClick={() => void commit()}>
-            {s.committing ? <><Spinner />Committing…</> : <>Commit <Kbd>{keyLabel('git.commit')}</Kbd></>}
+            {s.committing ? <><Spinner />Committing…</>
+              : s.committed ? <><StrokeIcon d={CHECK} size={13} />Committed</>
+                : <>Commit <Kbd>{keyLabel('git.commit')}</Kbd></>}
           </Button>
         </span>
       </div>

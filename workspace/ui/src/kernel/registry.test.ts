@@ -67,7 +67,7 @@ describe('the registry', () => {
     register([defineFeature({ id: 'a', events: { later: { run: (p) => got.push(p), idleOnly: true } } })]);
     await listenAll();
     const handler = vi.mocked(listen).mock.calls[0]![1];
-    S.confirm = { message: 'm', resolve() {} };
+    S.confirm = { id: 0, message: 'm', resolve() {} };
     handler('first');
     S.confirm = null;
     handler('second');

@@ -54,7 +54,8 @@ export const test = base.extend<Fixtures>({
 
   open: async ({ page }, use) => {
     await use(async (scenario = 'review', params = {}) => {
-      await page.goto(`/mock.html?${new URLSearchParams({ scenario, slow: '0', ...params })}`);
+      // motion: 'on' in params overrides this default and keeps the scenario's animations.
+      await page.goto(`/mock.html?${new URLSearchParams({ scenario, slow: '0', motion: 'off', ...params })}`);
       await page.waitForSelector('html[data-mock-idle]', { state: 'attached' });
       const mock = mockOf(page);
       await mock.idle();
@@ -68,3 +69,28 @@ export { expect };
 /** The queue row for a path, in the Changes (`unstaged`) or Staged section. */
 export const row = (page: Page, section: 'unstaged' | 'staged', path: string) =>
   page.locator(`.row[data-key="${section}:${path}"]`);
+
+export type FadeFrame = { present: boolean; opacity: number };
+
+/** Starts sampling `selector` on every animation frame, from before the action that may fade or remove it, so
+ *  a check afterward reads what actually happened instead of racing a fixed sleep against the real animation
+ *  (which a slow run can blow through, or a broken, instant implementation can already be done by). Call the
+ *  returned function once the element is gone (or enough time has passed) to get the recorded frames. */
+export async function recordFade(page: Page, selector: string, ms = 1000): Promise<() => Promise<FadeFrame[]>> {
+  await page.evaluate(([sel, duration]) => {
+    const frames: FadeFrame[] = [];
+    (window as unknown as { __fade: FadeFrame[] }).__fade = frames;
+    const t0 = performance.now();
+    const tick = () => {
+      const el = document.querySelector(sel);
+      frames.push({ present: el !== null, opacity: el ? Number(getComputedStyle(el).opacity) : 0 });
+      if (performance.now() - t0 < duration) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [selector, ms] as const);
+  return () => page.evaluate(() => (window as unknown as { __fade: FadeFrame[] }).__fade);
+}
+
+/** True once some sampled frame had the element present with a sub-1 opacity: proof an exit animation ran,
+ *  not an instant removal (which jumps from opacity 1 straight to absent). */
+export const fadedOut = (frames: FadeFrame[]): boolean => frames.some((f) => f.present && f.opacity < 1);

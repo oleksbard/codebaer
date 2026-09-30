@@ -1,4 +1,5 @@
 import { onCursor } from '#editor/editor';
+import { landingFlash } from '#editor/ghost';
 import { sideBySide } from '#editor/side-by-side';
 import { toast } from '#kernel/dialogs';
 import { defineFeature } from '#kernel/registry';
@@ -31,16 +32,21 @@ function onFile(fn: (path: string) => Promise<unknown>): Promise<unknown> | unde
   return undefined;
 }
 
+const hasGit = (): boolean => !S.folderOnly;
+
 export const review = defineFeature({
   id: 'review',
   commands: [
-    { id: 'review.stageAll', label: 'Git: Stage All Changes', run: stageAll },
-    { id: 'review.unstageAll', label: 'Git: Unstage All Changes', run: unstageAll },
-    { id: 'review.discardAll', label: 'Git: Discard All Changes', run: discardAll },
-    { id: 'review.stageFile', label: 'Git: Stage File', run: () => onFile(acceptFile) },
-    { id: 'review.discardFile', label: 'Git: Discard File', run: () => onFile(rejectFile) },
-    { id: 'review.unstageFile', label: 'Git: Unstage File', run: () => S.open && unstageFile(S.open.path) },
-    { id: 'review.allChanges', label: 'Show All Changes', when: () => !onPage(), run: toggleAllChanges },
+    { id: 'review.stageAll', label: 'Git: Stage All Changes', when: hasGit, run: stageAll },
+    { id: 'review.unstageAll', label: 'Git: Unstage All Changes', when: hasGit, run: unstageAll },
+    { id: 'review.discardAll', label: 'Git: Discard All Changes', when: hasGit, run: discardAll },
+    { id: 'review.stageFile', label: 'Git: Stage File', when: hasGit, run: () => onFile(acceptFile) },
+    { id: 'review.discardFile', label: 'Git: Discard File', when: hasGit, run: () => onFile(rejectFile) },
+    {
+      id: 'review.unstageFile', label: 'Git: Unstage File', when: hasGit,
+      run: () => S.open && unstageFile(S.open.path),
+    },
+    { id: 'review.allChanges', label: 'Show All Changes', when: () => hasGit() && !onPage(), run: toggleAllChanges },
     { id: 'review.showChanges', run: showChanges },
     { id: 'review.nextHunk', run: () => (onPage() ? stackHunk(1) : nextHunk(1)) },
     { id: 'review.prevHunk', run: () => (onPage() ? stackHunk(-1) : nextHunk(-1)) },
@@ -50,7 +56,7 @@ export const review = defineFeature({
     { id: 'review.nextFile', run: () => (onPage() ? stackFile(1) : nextFile(1)) },
     { id: 'review.prevFile', run: () => (onPage() ? stackFile(-1) : nextFile(-1)) },
   ],
-  editorExtensions: [sideBySide(false)],
+  editorExtensions: [sideBySide(false), landingFlash],
   onOpen: layoutMain,
   onRefresh: syncAllChanges,
   onRepoChange: { reset: dropPage },

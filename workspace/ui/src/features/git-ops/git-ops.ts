@@ -1,5 +1,5 @@
 import { pinDefaultBranches } from '#core/model';
-import { expandSide, guarded, offerSave, refresh, withBusy } from '#core/session';
+import { expandSide, guarded, offerSave, openRepo, refresh, withBusy } from '#core/session';
 import { errKind, errText, git, type Branch, type Stash, type StashKind } from '#ipc/git';
 import { logError } from '#ipc/log';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
@@ -7,19 +7,42 @@ import { epoch } from '#kernel/epoch';
 import { pick, type Item } from '#kernel/pick';
 import { run } from '#kernel/registry';
 import { notify, refs, S } from '#kernel/store';
+import { DUR } from '#ui/motion';
 import { fetched } from './auto-fetch';
 import { NO_OUTGOING } from './state';
+
+/** The generation `committed` was last set for: a stale timer from a commit a newer one already reset it for
+ *  is a no-op. */
+let committedGen = 0;
+
+let initing = false;
+
+/** Only the folder open without git: the backend inits no other, so the repo lands in the project's own folder. */
+export async function initRepo(): Promise<void> {
+  const root = S.root;
+  if (root === null || !S.folderOnly || initing) return;
+  initing = true;
+  try {
+    const done = await guarded(async () => { await git.gitInit(root); return true; });
+    if (done && S.root === root) await openRepo(root);
+  } finally {
+    initing = false;
+  }
+}
 
 export async function commit(): Promise<void> {
   if (S.committing) return;
   const msg = S.commitMessage.trim();
   if (!msg) { toast('Type a commit message first', 'err'); refs.commit?.focus(); return; }
   S.committing = true;
+  S.committed = false;
   notify();
   try {
     await git.commit(msg);
     S.commitMessage = '';
-    toast('Committed', 'ok');
+    S.committed = true;
+    const gen = ++committedGen;
+    setTimeout(() => { if (gen === committedGen) { S.committed = false; notify(); } }, DUR[5] * 1000);
   } catch (e) {
     void errorDialog(`Commit failed\n${errText(e)}`);
   } finally {
@@ -168,7 +191,11 @@ export async function unstash(): Promise<void> {
     label: stashLabel(s), sub: [s.branch, age(s.time, now)].filter(Boolean).join(' · '), value: s,
   })), 'Select a stash to restore', true);
   if (!picked) return;
-  await guarded(() => git.stashPop(picked.index, picked.oid));
+  const kept = await guarded(() => git.stashPop(picked.index, picked.oid));
+  if (kept === false) {
+    toast('Unstashed, but its staged changes came back unstaged: a commit since changed the lines they were staged '
+      + 'against.', 'warn');
+  }
   const st = await git.status().catch(() => null);
   const conflicts = st?.files.filter((f) => f.conflicted).map((f) => f.path) ?? [];
   if (conflicts.length) toast(`stash pop left conflicts:\n  ${conflicts.join('\n  ')}`, 'warn');

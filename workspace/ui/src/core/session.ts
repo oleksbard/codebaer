@@ -22,6 +22,7 @@ const openEpoch = epoch();
 
 // ---------- refresh ----------
 export async function refresh(): Promise<void> {
+  if (S.folderOnly) return;
   if (S.refreshing) { S.refreshAgain = true; return; }
   S.refreshing = true;
   const root = S.root;
@@ -545,10 +546,13 @@ export const reopenAtLaunch = (): string | null => (localStorage.getItem(LAST_CL
 export async function openRepo(path: string): Promise<void> {
   if (!(await settleAll())) return;
   try {
+    // git installed since the launch, or since the last open
+    if (S.gitMissing !== null) S.gitMissing = await git.gitVersion().then(() => null, (e: unknown) => errText(e));
     const opened = await git.openRepo(path);
     S.root = opened.root;
     S.rootLabel = opened.label;
     S.title = opened.title;
+    S.folderOnly = !opened.git;
     // the root, which the recents list it by
     localStorage.setItem(LAST_REPO, opened.root);
     localStorage.removeItem(LAST_CLOSED);
@@ -556,6 +560,12 @@ export async function openRepo(path: string): Promise<void> {
     S.selected = null;
     S.filesOpen.clear();
     for (const f of features()) f.onRepoChange?.reset();
+    if (!opened.git) {
+      S.status = null;
+      logInfo(`opened ${opened.root}, a folder with no git repository`);
+      notify();
+      return;
+    }
     const before = S.status;
     await refresh();
     // scripts/smoke.sh waits for this line. refresh() leaves S.status as it was when it fails, or when it only
@@ -585,6 +595,7 @@ export async function closeRepo(): Promise<void> {
   S.rootLabel = null;
   S.title = null;
   S.status = null;
+  S.folderOnly = false;
   localStorage.setItem(LAST_CLOSED, 'true');
   S.open = null;
   S.selected = null;
@@ -594,6 +605,6 @@ export async function closeRepo(): Promise<void> {
 }
 
 export async function pickRepo(): Promise<void> {
-  const dir = await pickFolder('Open a git repository');
+  const dir = await pickFolder('Open a project folder');
   if (dir !== null) await openRepo(dir);
 }

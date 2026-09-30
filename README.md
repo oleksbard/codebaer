@@ -14,7 +14,8 @@ Git tools assume you wrote the change yourself. With an agent, someone else is e
 
 ## Install
 
-Apple Silicon Macs, and x86_64 Linux as a beta. `git` has to be on the PATH. To install or update to the latest release:
+Apple Silicon Macs, and x86_64 Linux as a beta. The review needs `git` on the PATH. Without it, or in a folder with no
+repository, CodeBär opens the folder for its terminals and tasks only. To install or update to the latest release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/oleksbard/codebaer/main/install.sh | sh

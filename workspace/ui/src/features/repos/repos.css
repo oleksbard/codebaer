@@ -221,3 +221,14 @@
   .name { font-weight: 600; font-size: var(--fs-3); }
   .path { font: var(--fs-2) var(--mono); color: var(--muted); }
 }
+
+.no-repo-warn { margin-top: 10px; color: var(--warn); }
+
+.no-git .dim { margin-top: 6px; }
+
+.no-git-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}

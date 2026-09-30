@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { GlyphSvg, pickedGlyph } from '#features/command-icons';
 import type { Info } from '#ipc/terminal';
@@ -8,7 +8,12 @@ import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { ContextMenu } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
+import { inertOnClose, keepFocus } from '#ui/focus';
 import { Kbd } from '#ui/Kbd';
+import { heavyMotion } from '#ui/motion';
+import { Pop } from '#ui/Pop';
+import { Presence } from '#ui/Presence';
+import { TabIndicator } from '#ui/Tabs';
 import { ensureTermIcons, iconFor } from './icons';
 import { Away, OutsideBadge } from './OutsideBadge';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './sessions';
@@ -29,7 +34,7 @@ const FRAME_MS = 160;
 
 /** The spinner the agent itself draws while it works: out to the heavy mark and back. */
 function ClaudeMark({ busy }: { busy: boolean }) {
-  const spin = busy && !STILL.matches;
+  const spin = busy && !STILL.matches && heavyMotion();
   const n = useTick(spin, FRAME_MS);
   return <span className="mark" aria-hidden="true">{(spin ? FRAMES[n % FRAMES.length] : MARK) ?? MARK}</span>;
 }
@@ -167,8 +172,11 @@ function Dot({ session }: { session: DeepReadonly<Info> }) {
   return <span className={`term-dot ${tone}`} aria-hidden="true" />;
 }
 
-export function TerminalRail() {
+export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
   const app = useApp();
+  // shares the activity bar's Tabs indicator when the caller passes one; falls back to its own otherwise
+  const ownId = useId();
+  const id = indicatorId ?? ownId;
   const active = app.tab === 'terminals' ? app.activeTerm : null;
   const sessions = terminalsOf(app.terminals);
   const names = termLabels(sessions);
@@ -177,47 +185,52 @@ export function TerminalRail() {
     app.settings['general.headless-ai-provider'], ...icons.map((it) => `${it.icon}\n${it.name}\n${it.command}`),
   ].join('\0');
   useEffect(() => { ensureTermIcons(icons); }, [wanted]);
+  // only a session opening or closing changes this, never a keystroke elsewhere
+  const sessionKey = sessions.map((s) => s.id).join(',');
   return (
     <div className="rail">
-      {sessions.map((s) => {
-        const wants = app.termAttention.has(s.id);
-        const home = homeFrom(s.cwd);
-        const away = awayLabel(s, app.root, home);
-        const name = names.get(s.id) ?? s.title;
-        // the number and the glyph are both decorative once the label carries the same words
-        const label = `${name} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
-          + `${wants ? ' · wants attention' : ''}`;
-        return (
-          <ContextMenu
-            key={s.id}
-            items={isExited(s)
-              ? [{ label: 'Close', onSelect: () => void closeTerminal(s.id) }]
-              : [
-                { label: 'Kill', onSelect: () => void killTerminal(s.id) },
-                // the host's Close kills a live session before dropping it
-                { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
-              ]}
-          >
-            <button
-              type="button"
-              className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`
-                + `${away ? ' outside' : ''}`}
-              aria-current={s.id === active || undefined}
-              aria-label={label}
-              title={label}
-              onClick={() => selectTerminal(s.id)}
+      <Presence mode={heavyMotion() ? 'popLayout' : 'sync'}>
+        {sessions.map((s) => {
+          const wants = app.termAttention.has(s.id);
+          const home = homeFrom(s.cwd);
+          const away = awayLabel(s, app.root, home);
+          const name = names.get(s.id) ?? s.title;
+          // the number and the glyph are both decorative once the label carries the same words
+          const label = `${name} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
+            + `${wants ? ' · wants attention' : ''}`;
+          return (
+            <ContextMenu
+              key={s.id}
+              items={isExited(s)
+                ? [{ label: 'Close', onSelect: () => void closeTerminal(s.id) }]
+                : [
+                  { label: 'Kill', onSelect: () => void killTerminal(s.id) },
+                  // the host's Close kills a live session before dropping it
+                  { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
+                ]}
             >
-              <span className="tile">
-                <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
-                {away && <Away />}
-                <Dot session={s} />
-                {wants && <span className="bell" aria-hidden="true" />}
-              </span>
-              <span className="cap">{name}</span>
-            </button>
-          </ContextMenu>
-        );
-      })}
+              <Pop
+                className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`
+                  + `${away ? ' outside' : ''}`}
+                layoutDependency={sessionKey}
+                aria-current={s.id === active || undefined}
+                aria-label={label}
+                title={label}
+                onClick={() => selectTerminal(s.id)}
+              >
+                <span className="tile">
+                  {s.id === active && <TabIndicator id={id} value={active} className="rail-ind" leaveOnExit />}
+                  <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
+                  {away && <Away />}
+                  <Dot session={s} />
+                  {wants && <span className="bell" aria-hidden="true" />}
+                </span>
+                <span className="cap">{name}</span>
+              </Pop>
+            </ContextMenu>
+          );
+        })}
+      </Presence>
       <NewMenu />
     </div>
   );
@@ -252,7 +265,8 @@ function NewMenu() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu term-menu" side="right" align="end" sideOffset={6}>
+        <DropdownMenu.Content className="menu term-menu" side="right" align="end" sideOffset={6}
+          ref={inertOnClose} onCloseAutoFocus={keepFocus}>
           <div className="menu-label">New terminal</div>
           {(m?.shells ?? []).map((sh) => (
             <DropdownMenu.Item

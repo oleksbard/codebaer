@@ -13,12 +13,11 @@ import { FEATURES } from './features';
 register(FEATURES);
 
 export async function start(): Promise<void> {
+  // without git the app still runs: each folder opens for its terminals and tasks only
   try {
     await git.gitVersion();
   } catch (e) {
-    S.fatal = errText(e);
-    notify();
-    return;
+    S.gitMissing = errText(e);
   }
   loadSettings().catch((e: unknown) => logError(e, 'load settings'));
   installKeys(run, (visible) => { S.chord = visible; notify(); });

@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react';
+import type { MouseEvent, ReactNode, Ref } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { rowKey, split, STATUS_LABEL, type Row, type Section } from '#core/model';
 import { openPlain } from '#core/session';
@@ -10,12 +10,21 @@ import { refs, useApp } from '#kernel/store';
 import { Badge } from '#ui/Badge';
 import { ContextMenu, type MenuItem } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
+import { Count } from '#ui/Count';
+import { inertOnClose, keepFocus } from '#ui/focus';
 import { StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
-import { List } from '#ui/List';
+import { LayoutGroup, List, ListRow, ListSection } from '#ui/List';
+import { heavyMotion } from '#ui/motion';
+import { Presence } from '#ui/Presence';
+import { Reveal } from '#ui/Reveal';
 import { pickRow, toggleAllChanges } from './all-changes';
 import { acceptFile, discardAll, rejectFile, stageAll, unstageAll, unstageFile } from './hunks';
+
+/** Above this many rows, a huge diff skips the queue's layout tracking: `layoutDependency` still limits
+ *  measurement to renders where a row was added, removed or reordered, but not the measurement itself. */
+const ROW_CAP = 150;
 
 const PLUS = 'M8 3v10M3 8h10';
 const STACK = 'M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM2.5 6.25h11M2.5 9.75h11';
@@ -73,23 +82,51 @@ export function QueueList({ q, selected, open, onToggle, allChanges }: {
   const commitActions: HeaderAction[][] = [[
     { id: 'undo', label: 'Revert last commit', icon: UNCOMMIT, available: !s.committing, run: undoCommit },
   ]];
+
+  const heavy = heavyMotion();
+  const all = [...q.unstaged, ...q.staged];
+  const canAnimate = heavy && all.length <= ROW_CAP;
+  // the joined row keys: layoutDependency for every row and section, so typing or a hover change (which
+  // notify() also fires) never makes Motion re-measure the queue, only an add, a remove or a reorder does
+  const layoutKey = all.map(rowKey).join(',');
+  // same idea, for the commits section: only an undo or a new commit changes this, never a keystroke
+  const commitKey = commits.map((c) => c.oid).join(',');
+  const pathCount = new Map<string, number>();
+  for (const r of all) pathCount.set(r.path, (pathCount.get(r.path) ?? 0) + 1);
+  // the path alone when it names one row; a partly staged file has one mounted in each section at once,
+  // and two mounted rows can never share a layoutId
+  const layoutIdFor = (r: Row) => ((pathCount.get(r.path) ?? 0) > 1 ? rowKey(r) : r.path);
+
   return (
-    <List ref={(el) => { refs.list = el; }}>
-      <SectionBlock id="unstaged" label="Changes" count={q.unstaged.length} open={open.unstaged}
-        onToggle={onToggle} actions={changes} pinned={[stageAllAction]}>
-        <FileRows rows={q.unstaged} selected={selected} empty="Nothing left to review" />
-      </SectionBlock>
-      {q.staged.length > 0 &&
-        <SectionBlock id="staged" label="Staged" count={q.staged.length} open={open.staged} onToggle={onToggle}
-          actions={staged}>
-          <FileRows rows={q.staged} selected={selected} />
-        </SectionBlock>}
-      {commits.length > 0 &&
-        <SectionBlock id="commits" label="Commits" count={commits.length} more={more} open={open.commits}
-          onToggle={onToggle} actions={commitActions}>
-          {commits.map((c) => <CommitRow key={c.oid} commit={c} />)}
-        </SectionBlock>}
-    </List>
+    <LayoutGroup>
+      <List ref={(el) => { refs.list = el; }}>
+        <SectionBlock id="unstaged" label="Changes" count={q.unstaged.length} open={open.unstaged}
+          onToggle={onToggle} actions={changes} pinned={[stageAllAction]}
+          animate={canAnimate} layoutDependency={layoutKey}>
+          <FileRows rows={q.unstaged} selected={selected} empty="Nothing left to review"
+            animate={canAnimate && open.unstaged} layoutDependency={layoutKey} layoutIdFor={layoutIdFor} />
+        </SectionBlock>
+        <Reveal when={q.staged.length > 0} kind="fade">
+          {q.staged.length > 0 &&
+            <SectionBlock id="staged" label="Staged" count={q.staged.length} open={open.staged} onToggle={onToggle}
+              actions={staged} animate={canAnimate} layoutDependency={layoutKey}>
+              <FileRows rows={q.staged} selected={selected} animate={canAnimate && open.staged}
+                layoutDependency={layoutKey} layoutIdFor={layoutIdFor} />
+            </SectionBlock>}
+        </Reveal>
+        <Reveal when={commits.length > 0} kind="fade">
+          {commits.length > 0 &&
+            <SectionBlock id="commits" label="Commits" count={commits.length} more={more} open={open.commits}
+              onToggle={onToggle} actions={commitActions}>
+              <Presence mode={heavy ? 'popLayout' : 'sync'}>
+                {commits.map((c) => (
+                  <CommitRow key={c.oid} commit={c} animate={heavy} layoutDependency={commitKey} />
+                ))}
+              </Presence>
+            </SectionBlock>}
+        </Reveal>
+      </List>
+    </LayoutGroup>
   );
 }
 
@@ -118,7 +155,8 @@ function HeaderActions({ section, groups }: { section: string; groups: HeaderAct
           <StrokeIcon d={MORE} size={14} /></IconButton>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu queue-menu" align="end" sideOffset={4}>
+        <DropdownMenu.Content className="menu queue-menu" align="end" sideOffset={4} ref={inertOnClose}
+          onCloseAutoFocus={keepFocus}>
           {shown.map((group, i) => [
             i > 0 && <DropdownMenu.Separator key={`sep${i}`} className="menu-sep" />,
             ...group.map((a) => (
@@ -134,7 +172,9 @@ function HeaderActions({ section, groups }: { section: string; groups: HeaderAct
   );
 }
 
-function SectionBlock({ id, label, count, more = false, actions, pinned = [], open, onToggle, children }: {
+function SectionBlock({
+  id, label, count, more = false, actions, pinned = [], open, onToggle, children, animate = false, layoutDependency,
+}: {
   id: QueueSection;
   label: string;
   count: number;
@@ -146,35 +186,57 @@ function SectionBlock({ id, label, count, more = false, actions, pinned = [], op
   open: boolean;
   onToggle(sec: QueueSection, open: boolean): void;
   children: ReactNode;
+  animate?: boolean;
+  layoutDependency?: unknown;
 }) {
   return (
-    <details data-sec={id} open={open} onToggle={(e) => onToggle(id, e.currentTarget.open)}>
+    <ListSection data-sec={id} open={open} onToggle={(e) => onToggle(id, e.currentTarget.open)}
+      move={animate} layoutDependency={layoutDependency}>
       <summary className="sec">
-        <span className="l">{label}{count > 0 && <span className="n">{count}{more && '+'}</span>}</span>
+        <span className="l">{label}{count > 0 &&
+          <span className="n"><Count value={count} format={(n) => `${n}${more ? '+' : ''}`} /></span>}</span>
         <span className="r">
           <HeaderActions section={label} groups={actions} />
           {pinned.filter((a) => a.available).map((a) => <ActionButton key={a.id} a={a} />)}
         </span>
       </summary>
       {children}
-    </details>
+    </ListSection>
   );
 }
 
-function FileRows({ rows, selected, empty }: { rows: Row[]; selected: string | null; empty?: string }) {
+function FileRows({ rows, selected, empty, animate, layoutDependency, layoutIdFor }: {
+  rows: Row[];
+  selected: string | null;
+  empty?: string;
+  animate: boolean;
+  layoutDependency: unknown;
+  layoutIdFor(r: Row): string;
+}) {
   if (!rows.length) return <div className="empty-sec">{empty}</div>;
-  return rows.map((r) => <QueueRow key={rowKey(r)} row={r} selected={selected === rowKey(r)} />);
+  return (
+    <Presence mode={animate ? 'popLayout' : 'sync'}>
+      {rows.map((r) => (
+        <QueueRow key={rowKey(r)} row={r} selected={selected === rowKey(r)} animate={animate}
+          layoutId={layoutIdFor(r)} layoutDependency={layoutDependency} />
+      ))}
+    </Presence>
+  );
 }
 
-/** Not a `.row`: the list's arrow keys walk the files and pass these by. */
-function CommitRow({ commit: c }: { commit: Commit }) {
+/** Not a `.row`: the list's arrow keys walk the files and pass these by. No `layoutId`: commits never share
+ *  an identity with another mounted row, only their own position among the others. */
+function CommitRow({ ref, commit: c, animate, layoutDependency }: {
+  ref?: Ref<HTMLDivElement>; commit: Commit; animate: boolean; layoutDependency?: unknown;
+}) {
   const short = c.oid.slice(0, 7);
   return (
-    <div className="commit-row" data-oid={c.oid} title={`${c.summary}\n${short} · ${c.author} · ${age(c.time)}`}>
+    <ListRow {...(ref ? { ref } : {})} className="commit-row" move={animate} layoutDependency={layoutDependency}
+      data-oid={c.oid} title={`${c.summary}\n${short} · ${c.author} · ${age(c.time)}`}>
       <StrokeIcon d={COMMIT} size={14} />
       <span className="summary">{c.summary}</span>
       <span className="oid">{short}</span>
-    </div>
+    </ListRow>
   );
 }
 
@@ -194,7 +256,9 @@ function menuFor(r: Row): MenuItem[] {
   ];
 }
 
-function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
+function QueueRow({ ref, row: r, selected, animate, layoutId, layoutDependency }: {
+  ref?: Ref<HTMLElement>; row: Row; selected: boolean; animate: boolean; layoutId: string; layoutDependency: unknown;
+}) {
   const [dirSlash, name] = split(r.path);
   const acts = r.section === 'staged'
     ? <IconButton label="Unstage file" data-act="unstage" onClick={stop(() => unstageFile(r.path))}>
@@ -210,8 +274,9 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
             <StrokeIcon d={PLUS} size={14} /></IconButton>
         </>;
   return (
-    <ContextMenu items={menuFor(r)}>
-      <div className={`row${selected ? ' sel' : ''}`} data-key={rowKey(r)} data-st={r.letter} role="button"
+    <ContextMenu items={menuFor(r)} {...(ref ? { ref } : {})}>
+      <ListRow className={`row${selected ? ' sel' : ''}`} move={animate} layoutId={layoutId}
+        layoutDependency={layoutDependency} data-key={rowKey(r)} data-st={r.letter} role="button"
         title={r.path} onClick={() => void pickRow(r)}>
         <FileIcon name={name} />
         <span className="path"><span className="name">{name}</span>
@@ -221,7 +286,7 @@ function QueueRow({ row: r, selected }: { row: Row; selected: boolean }) {
           <span className="acts">{acts}</span>
           <span className="st" title={STATUS_LABEL[r.letter] ?? r.letter}>{r.letter}</span>
         </span>
-      </div>
+      </ListRow>
     </ContextMenu>
   );
 }

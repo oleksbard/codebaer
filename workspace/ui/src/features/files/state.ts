@@ -7,7 +7,12 @@ declare module '#kernel/store' {
     ignoredBase: string[];
     /** Contents of the ignored directories git collapsed, read on demand and kept across a refresh. */
     ignoredKids: Map<string, string[]>;
+    /** The directory `toggleDir` just opened, so its own children (and no one else's) animate in;
+     *  read once by `FilesTree` and cleared right after. */
+    filesEntering: string | null;
   }
 }
 
-export const filesState = () => ({ files: [], ignored: [], ignoredBase: [], ignoredKids: new Map<string, string[]>() });
+export const filesState = () => ({
+  files: [], ignored: [], ignoredBase: [], ignoredKids: new Map<string, string[]>(), filesEntering: null,
+});

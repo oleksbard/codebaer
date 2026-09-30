@@ -40,18 +40,19 @@ input:focus-visible,
   outline-offset: 1px;
 }
 
-.fatal {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  font-size: var(--fs-4);
-  color: var(--del);
-}
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
 [hidden] {
   display: none !important;
+}
+
+/* tests, e2e and pnpm shot run at this level: Radix then sees no animation name and unmounts a closed
+   menu at once, instead of waiting on an animationend that would never fire */
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
 }

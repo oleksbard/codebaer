@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { openRepo, pickRepo } from '#core/session';
 import type { Recent } from '#ipc/git';
 import { keyLabel } from '#kernel/keymap';
+import { useApp } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Kbd } from '#ui/Kbd';
 import { lastOpened } from './actions';
@@ -10,6 +11,7 @@ import { RepoAvatar } from './RepoAvatar';
 
 /** The main pane while no repo is open: a new folder, or the repo that was open last. */
 export function NoRepo() {
+  const s = useApp();
   const [last, setLast] = useState<Recent | null>(null);
   useEffect(() => {
     let live = true;
@@ -21,7 +23,15 @@ export function NoRepo() {
       <div>
         <img src="/logo.png" alt="" />
         <h2>No repository open</h2>
-        <p>Open a folder with a git repository to review what an agent changed in it.</p>
+        <p>
+          Open a folder with a git repository to review what an agent changed in it.
+          A folder without git opens too, for its terminals and tasks only.
+        </p>
+        {s.gitMissing !== null && (
+          <p className="no-repo-warn">
+            git is not installed on this machine, so every folder opens without the review.
+          </p>
+        )}
         <Button variant="primary" className="no-repo-pick" onClick={() => void pickRepo()}>
           Open Folder…<Kbd>{keyLabel('repos.pick')}</Kbd>
         </Button>

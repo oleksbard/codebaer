@@ -33,7 +33,7 @@
   --side-open: 1;
   /* the terminals layout re-templates the same columns, so the width lives here only */
   grid-template-columns: calc(min(var(--side-w,272px),calc(100% - 400px)) * var(--side-open)) minmax(0,1fr);
-  transition: --side-open 240ms cubic-bezier(.2,0,0,1);
+  transition: --side-open var(--dur-3) var(--ease-std);
   grid-template-rows: minmax(0,1fr);
   grid-template-areas: "side main";
   min-width: 0;
@@ -159,9 +159,15 @@
   > * { width: calc(100% / max(var(--side-open), .01)); }
 }
 
+.side-note {
+  padding: 12px 16px;
+  color: var(--faint);
+  font-size: var(--fs-2);
+}
+
 .app.sidecollapsed {
   .frame { --side-open: 0; }
-  .side { visibility: hidden; transition: visibility 0s 240ms; }
+  .side { visibility: hidden; transition: visibility 0s var(--dur-3); }
   .gutter { visibility: hidden; }
 }
 
@@ -184,5 +190,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .frame, .app.sidecollapsed .side { transition: none; }
+}
+
+:root[data-motion="lite"] {
   .frame, .app.sidecollapsed .side { transition: none; }
 }

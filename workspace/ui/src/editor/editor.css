@@ -18,3 +18,23 @@
 .cm-editor .cm-scroller {
   overflow: auto;
 }
+
+/* placed and animated from editor/ghost.ts, not CSS: its rect comes from lineBlockAt at the moment of the
+   accept or reject, which a class alone cannot reach */
+.cm-ghost {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 5;
+
+  &.accept { background: var(--add-bg); }
+  &.reject { background: var(--del-bg); }
+  &.unstage { background: var(--sel); }
+}
+
+.cm-landingFlash { animation: landing-flash var(--dur-5) var(--ease-std); }
+
+@keyframes landing-flash {
+  from { background-color: var(--accent-soft); }
+}

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { closePalette, fuzzy } from '#kernel/pick';
-import { closeConfirm, closePrompt, removeToast } from '#kernel/dialogs';
+import { closeConfirm, closePrompt, holdToast, removeToast } from '#kernel/dialogs';
 import { AlertDialog } from '#ui/AlertDialog';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
 import { Kbd } from '#ui/Kbd';
+import { Presence } from '#ui/Presence';
+import { Reveal } from '#ui/Reveal';
+import { Toasts } from '#ui/Toasts';
 import { useApp, type ConfirmRequest, type DeepReadonly, type PaletteRequest, type PromptRequest } from '#kernel/store';
 import { chords } from '#kernel/keymap';
 import { features } from '#kernel/registry';
@@ -24,16 +27,15 @@ export function OverlayHost() {
   const s = useApp();
   return (
     <>
+      {/* no exit: it answers a keystroke and must close as fast as it opened */}
       {s.palette && <CommandPalette key={s.palette.id} req={s.palette} />}
-      {s.confirm && <ConfirmDialog req={s.confirm} />}
-      {s.prompt && <PromptDialog req={s.prompt} />}
-      {features().flatMap((f) => f.overlays ?? []).filter((o) => o.isOpen()).map((o) => <o.component key={o.id} />)}
-      <div className="toasts">
-        {s.toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`} onClick={() => removeToast(t.id)}>{t.message}</div>
-        ))}
-      </div>
-      {s.chord && <div className="chord">{chordHint()}</div>}
+      <Presence>
+        {s.confirm && <ConfirmDialog key={`confirm:${s.confirm.id}`} req={s.confirm} />}
+        {s.prompt && <PromptDialog key={`prompt:${s.prompt.id}`} req={s.prompt} />}
+        {features().flatMap((f) => f.overlays ?? []).filter((o) => o.isOpen()).map((o) => <o.component key={o.id} />)}
+      </Presence>
+      <Toasts toasts={s.toasts} onDismiss={removeToast} onHold={holdToast} />
+      <Reveal when={s.chord} className="chord" kind="rise">{chordHint()}</Reveal>
     </>
   );
 }

@@ -90,6 +90,22 @@ describe('the open file with unsaved changes', () => {
   });
 });
 
+describe('a successful commit', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('shows a check on the button instead of a toast, then goes back to normal', async () => {
+    S.toasts = [];
+    S.commitMessage = 'a message';
+    await commit();
+
+    expect(S.toasts).toEqual([]);
+    expect(S.committed).toBe(true);
+    await vi.advanceTimersByTimeAsync(650);
+    expect(S.committed).toBe(false);
+  });
+});
+
 describe('a failed commit', () => {
   it('reports in a dialog rather than a toast, and stops the button spinning', async () => {
     S.toasts = [];
@@ -102,6 +118,7 @@ describe('a failed commit', () => {
     expect(S.confirm?.message).toBe('Commit failed\npre-commit hook failed');
     expect(S.confirm?.error).toBe(true);
     expect(S.committing).toBe(false);
+    expect(S.committed).toBe(false);
     expect(S.commitMessage).toBe('a message');
     S.confirm!.resolve(false);
     S.confirm = null;
@@ -132,14 +149,15 @@ describe('the branch row', () => {
     S.status = tracked(2, 0);
     notify();
     await tick();
-    let counts = [...document.querySelectorAll('.commit .ab span')];
+    // direct children only: Count wraps the number itself in another span
+    let counts = [...document.querySelectorAll('.commit .ab > span')];
     expect(counts.map((c) => c.textContent)).toEqual(['↑2', '↓0']);
     expect(counts.map((c) => c.className)).toEqual(['on', '']);
 
     S.status = tracked(0, 3);
     notify();
     await tick();
-    counts = [...document.querySelectorAll('.commit .ab span')];
+    counts = [...document.querySelectorAll('.commit .ab > span')];
     expect(counts.map((c) => c.textContent)).toEqual(['↑0', '↓3']);
     expect(counts.map((c) => c.className)).toEqual(['', 'on']);
 
@@ -275,6 +293,20 @@ describe('unstashing', () => {
     S.palette!.resolve(S.palette!.items[1]!.value);
     await done;
     expect(g.stashPop!).toHaveBeenCalledExactlyOnceWith(1, 'oid1');
+  });
+
+  it('warns when the staged changes came back unstaged, and only then', async () => {
+    g.stashList!.mockResolvedValue([entry(0, {})]);
+    for (const kept of [true, false]) {
+      S.toasts = [];
+      S.palette = null;
+      g.stashPop!.mockResolvedValue(kept);
+      const done = unstash();
+      await vi.waitFor(() => expect(S.palette).not.toBeNull());
+      S.palette!.resolve(S.palette!.items[0]!.value);
+      await done;
+      expect(S.toasts.some((t) => t.kind === 'warn' && t.message.includes('came back unstaged'))).toBe(!kept);
+    }
   });
 
   it('tells the age in the largest unit that fits', () => {

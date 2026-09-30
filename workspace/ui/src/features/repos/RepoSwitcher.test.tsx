@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { setValue, tick } from '#test-setup';
+import { exitTick, setValue, tick } from '#test-setup';
 
 vi.mock('#core/session', () => ({ pickRepo: vi.fn(), openRepo: vi.fn(), closeRepo: vi.fn(), lastRepo: vi.fn() }));
 vi.mock('#ipc/git', async () => {
@@ -13,10 +13,18 @@ import type { Recent } from '#ipc/git';
 
 const c = await import('#core/session');
 const { git } = await import('#ipc/git');
-const { S, notify } = await import('#kernel/store');
+const { S, notify, useApp } = await import('#kernel/store');
 const { Header } = await import('#app/Shell');
 const { RepoPrefsOverlay } = await import('./RepoPrefsDialog');
 const { NoRepo } = await import('./NoRepo');
+const { Presence } = await import('#ui/Presence');
+
+/** The registered overlay's own presence, the way `app/OverlayHost.tsx` gives it one: `isOpen()` (here
+ *  `S.repoPrefs !== null`) decides whether the element is even in `Presence`'s children this render. */
+function Overlays() {
+  const s = useApp();
+  return <Presence>{s.repoPrefs !== null && <RepoPrefsOverlay key="repo-prefs" />}</Presence>;
+}
 
 let root: Root;
 const head = () => document.querySelector<HTMLElement>('.head')!;
@@ -30,7 +38,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="host"></div>';
   S.root = null; S.rootLabel = null; S.title = null; S.repoPrefs = null;
   root = createRoot(document.getElementById('host')!);
-  flushSync(() => root.render(<><Header /><RepoPrefsOverlay /></>));
+  flushSync(() => root.render(<><Header /><Overlays /></>));
 });
 
 afterEach(() => {
@@ -213,8 +221,9 @@ describe('repository preferences', () => {
     await openPrefs([]);
     button('Done').click();
     await tick();
-    expect(dialog()).toBeNull();
     expect(S.repoPrefs).toBeNull();
+    await exitTick();
+    expect(dialog()).toBeNull();
   });
 });
 

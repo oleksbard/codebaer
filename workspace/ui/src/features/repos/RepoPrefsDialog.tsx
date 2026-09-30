@@ -3,6 +3,7 @@ import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Checkbox } from '#ui/Checkbox';
 import { Dialog } from '#ui/Dialog';
+import { useLatest } from '#ui/useLatest';
 import { closeRepoPrefs, setFavorite, setRepoIcon } from './actions';
 import { avatars, pickedIcon } from './avatar';
 import { RepoAvatar } from './RepoAvatar';
@@ -10,7 +11,9 @@ import type { RepoPrefs } from './state';
 
 export function RepoPrefsOverlay() {
   const s = useApp();
-  return s.repoPrefs ? <RepoPrefsDialog prefs={s.repoPrefs} /> : null;
+  // the store field is already null while this exits: the last prefs it had are what it fades out showing
+  const prefs = useLatest(s.repoPrefs);
+  return prefs ? <RepoPrefsDialog prefs={prefs} /> : null;
 }
 
 function RepoPrefsDialog({ prefs }: { prefs: DeepReadonly<RepoPrefs> }) {

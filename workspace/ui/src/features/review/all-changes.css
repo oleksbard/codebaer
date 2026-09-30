@@ -58,11 +58,16 @@
     border-bottom-width: 0;
     border-top-color: currentColor;
     margin-top: 2px;
+    transition: rotate var(--dur-2) var(--ease-std);
   }
 
   &[aria-expanded="false"]::before { rotate: -90deg; }
   &:hover { background: var(--line); color: var(--text); }
   &:disabled { opacity: .35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold::before { transition: none; }
 }
 
 .fsec.done .fhead {

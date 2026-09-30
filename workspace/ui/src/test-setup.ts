@@ -1,5 +1,9 @@
 import './app/state';
 import './app/keymap';
+import { setMotion } from './ui/motion';
+
+setMotion('off');
+
 // jsdom implements no Range geometry, and CodeMirror measures the document
 // whenever a dispatch asks to scroll a chunk into view
 const rangeProto = Range.prototype as unknown as Record<string, unknown>;
@@ -12,6 +16,31 @@ HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.hasPointerCapture ??= () => false;
 HTMLElement.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
+// nor the Web Animations API. The hunk ghost calls it directly and awaits `finished`; Motion detects
+// WAAPI support from `Element.prototype.animate` alone and then drives its own completion off `onfinish`,
+// so the stub has to call that too, or an AnimatePresence exit never resolves and its node never unmounts.
+Element.prototype.animate ??= function animate(this: Element): Animation {
+  const anim = {
+    currentTime: 0,
+    startTime: 0,
+    playbackRate: 1,
+    playState: 'finished',
+    finished: Promise.resolve(),
+    onfinish: null as (() => void) | null,
+    oncancel: null,
+    play() {},
+    pause() {},
+    finish() { anim.onfinish?.(); },
+    cancel() {},
+    commitStyles() {},
+    updatePlaybackRate() {},
+    persist() {},
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  queueMicrotask(() => anim.onfinish?.());
+  return anim as unknown as Animation;
+} as unknown as typeof Element.prototype.animate;
 globalThis.ResizeObserver ??= class {
   observe(): void {}
   unobserve(): void {}
@@ -33,6 +62,12 @@ globalThis.matchMedia ??= ((media: string) => ({
 
 /** React flushes store-driven renders in a microtask; one macrotask covers it. */
 export const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+/** An `AnimatePresence` exit needs two real animation frames to remove its node, even under
+ *  `MotionGlobalConfig.skipAnimations`: one for the motion value to settle at its final keyframe, another for
+ *  React to commit the unmount `safeToRemove` triggers. `tick` (a macrotask) is not enough. */
+export const exitTick = (): Promise<void> =>
+  new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
 /**
  * React's value tracker swallows an `input` event whose value was set through the

@@ -304,6 +304,18 @@ describe('accept moves on to the next change', () => {
 
     expect(S.open?.path).toBe('b.txt');
   });
+
+  it('says nothing is left once accept has staged the last hunk: the editor stays on the emptied file', async () => {
+    await openUnstaged('a.txt', blob(INDEX), file('A\nb\nc\nd\ne\nf\ng\n'));
+    const empty: Status = { head: 'abc', branch: 'main', upstream: null, ahead: 0, behind: 0, stash: 0, files: [] };
+    g.status!.mockResolvedValue(empty);
+    g.readBlob!.mockResolvedValue(blob('A\nb\nc\nd\ne\nf\ng\n', 'oid2'));
+    S.toasts = [];
+
+    await accept();
+    await tick();
+    expect(S.toasts.map((t) => t.message)).toEqual(['Nothing left to review']);
+  });
 });
 
 describe('accepting the whole file', () => {

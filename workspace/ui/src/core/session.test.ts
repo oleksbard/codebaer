@@ -1,11 +1,12 @@
 import { undo } from '@codemirror/commands';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeFile, closeRepo, flush, lastRepo, openPlain, openRepo, openRow, quit, refresh, reopenAtLaunch, view, viewChanges,
 } from '#core/session';
 import { core } from '#core/feature';
 import type { FileText } from '#ipc/git';
 import { choiceDialog, confirmDialog } from '#kernel/dialogs';
+import { openPalette } from '#kernel/registry';
 import { checkCwd } from '#ipc/terminal';
 import { S } from '#kernel/store';
 import { blob, file, g, mountApp, openUnstaged, status, type } from '#test-app';
@@ -349,11 +350,86 @@ describe('switching repos', () => {
   it('asks the terminal host to re-read every folder against the new root', async () => {
     const check = checkCwd as unknown as ReturnType<typeof vi.fn>;
     check.mockReset().mockResolvedValue(undefined);
-    g.openRepo!.mockResolvedValue({ root: '/Users/me/repos/other', label: '~/repos/other', title: 'other' });
+    g.openRepo!.mockResolvedValue({ root: '/Users/me/repos/other', label: '~/repos/other', title: 'other', git: true });
     await openRepo('/Users/me/repos/other');
     expect(S.root).toBe('/Users/me/repos/other');
     expect(S.rootLabel).toBe('~/repos/other');
     expect(check).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a folder with no repository', () => {
+  const FOLDER = { root: '/Users/me/notes', label: '~/notes', title: null, git: false };
+  const REPO = { ...FOLDER, git: true };
+  const clean = { ...status('a.txt'), files: [] };
+  const inPalette = async (label: string): Promise<boolean> => {
+    const open = openPalette();
+    const found = S.palette?.items.some((i) => i.label === label) ?? false;
+    S.palette?.resolve(null);
+    S.palette = null;
+    await open;
+    return found;
+  };
+  const initButton = () => [...document.querySelectorAll<HTMLButtonElement>('.no-git button')]
+    .find((b) => b.textContent === 'Init Repository');
+
+  beforeEach(() => { S.toasts = []; S.tab = 'changes'; });
+  afterEach(() => { S.folderOnly = false; S.gitMissing = null; });
+
+  it('opens for its terminals, reads no status, and says what needs git without running git init', async () => {
+    g.openRepo!.mockResolvedValue(FOLDER);
+    await openRepo('/Users/me/notes');
+    await tick();
+    expect([S.root, S.folderOnly, S.status]).toEqual(['/Users/me/notes', true, null]);
+    expect(g.status!).not.toHaveBeenCalled();
+    expect(g.gitInit!).not.toHaveBeenCalled();
+    expect(S.toasts).toEqual([]);
+    expect(document.querySelector('.no-git h2')?.textContent).toBe('No git repository');
+    expect(document.querySelector('.side-note')?.textContent).toBe('This folder has no git repository');
+    await refresh();
+    expect(g.status!).not.toHaveBeenCalled();
+  });
+
+  it('becomes a repository only on Git: Init Repository, which inits the open folder and opens it again', async () => {
+    g.openRepo!.mockResolvedValue(FOLDER);
+    await openRepo('/Users/me/notes');
+    expect(await inPalette('Git: Init Repository')).toBe(true);
+    g.openRepo!.mockResolvedValue(REPO);
+    g.status!.mockResolvedValue(clean);
+    initButton()!.click();
+    await vi.waitFor(() => expect(S.folderOnly).toBe(false));
+    expect(g.gitInit!).toHaveBeenCalledWith('/Users/me/notes');
+    expect(g.openRepo!).toHaveBeenLastCalledWith('/Users/me/notes');
+    expect(g.status!).toHaveBeenCalled();
+    expect(await inPalette('Git: Init Repository')).toBe(false);
+  });
+
+  it('stays a folder when git init fails, and says why', async () => {
+    g.openRepo!.mockResolvedValue(FOLDER);
+    await openRepo('/Users/me/notes');
+    g.openRepo!.mockClear();
+    g.gitInit!.mockRejectedValue({ kind: 'Git', detail: 'git init in /Users/me would put every project under it' });
+    initButton()!.click();
+    await vi.waitFor(() => expect(S.toasts).toHaveLength(1));
+    expect(S.folderOnly).toBe(true);
+    expect(g.openRepo!).not.toHaveBeenCalled();
+  });
+
+  it('with no git on the machine, says to install it and offers no git init', async () => {
+    S.gitMissing = 'git: No such file or directory (os error 2)';
+    g.gitVersion!.mockRejectedValue({ kind: 'Io', detail: 'git: No such file or directory (os error 2)' });
+    g.openRepo!.mockResolvedValue(FOLDER);
+    await openRepo('/Users/me/notes');
+    await tick();
+    expect(document.querySelector('.no-git h2')?.textContent).toBe('git is not installed');
+    expect(initButton()).toBeUndefined();
+    expect(await inPalette('Git: Init Repository')).toBe(false);
+    expect(await inPalette('Git: Push')).toBe(false);
+    // installed since: Open Again finds it, and the folder offers git init
+    g.gitVersion!.mockResolvedValue('git version 2.50.1');
+    await openRepo('/Users/me/notes');
+    expect(S.gitMissing).toBeNull();
+    expect(await inPalette('Git: Init Repository')).toBe(true);
   });
 });
 

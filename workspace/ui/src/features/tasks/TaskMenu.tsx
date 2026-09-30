@@ -9,6 +9,8 @@ import type { Info, Task } from '#ipc/terminal';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
+import { inertOnClose, keepFocus } from '#ui/focus';
+import { useLatest } from '#ui/useLatest';
 import { closeTask, openTask, promoteTask, runTask, taskMenu } from './runner';
 import { outcome, withoutSharedPrefix } from './tasks';
 
@@ -63,7 +65,7 @@ export function TaskMenu() {
       found = await taskMenu();
       setListed({ root, scripts: found, error: null });
     } catch (e) {
-      // a folder that is not a repo has no package.json to speak of
+      // with no folder open there is no package.json to read
       setListed({ root, scripts: null, error: errKind(e) === 'NotARepo' ? null : errText(e) });
     }
     const unpicked = app.commands.filter((c) => inMenu(c, root) && c.icon === null);
@@ -90,7 +92,7 @@ export function TaskMenu() {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu term-menu task-menu" side="right" align="start" sideOffset={6}
-          collisionPadding={8}>
+          collisionPadding={8} ref={inertOnClose} onCloseAutoFocus={keepFocus}>
           <div className="task-scroll">
             {tasks.length > 0 && (
               <>
@@ -194,6 +196,8 @@ export function TaskDialog({ session: s }: { session: DeepReadonly<Info> }) {
 
 export function TaskOverlay() {
   const app = useApp();
-  const s = app.terminals.find((t) => t.id === app.taskView);
-  return s && isTask(s) ? <TaskDialog key={s.id} session={s} /> : null;
+  const found = app.terminals.find((t) => t.id === app.taskView);
+  // the store field is already null while this exits: the last session it had is what it fades out showing
+  const s = useLatest(found && isTask(found) ? found : null);
+  return s ? <TaskDialog key={s.id} session={s} /> : null;
 }

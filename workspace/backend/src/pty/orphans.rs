@@ -470,7 +470,7 @@ pub fn term_restore<R: Runtime>(
     let (target, name) = plan_restore(&scan(&app)?.1, current.parent(), &sock, id, pid).map_err(AppError::Io)?;
     let (script, dir) = write_script(&sys::current_exe()?, &sock, &target, &name)?;
     let want = Relay::to(&sock, &target);
-    let cwd = git.root().map(|r| r.to_string_lossy().into_owned()).or_else(|_| std::env::var("HOME")).unwrap_or_else(|_| "/".into());
+    let cwd = git.cwd().map(|r| r.to_string_lossy().into_owned()).or_else(|_| std::env::var("HOME")).unwrap_or_else(|_| "/".into());
     if let Err(e) = client::request_spawn(&app, SpawnKind::Command { argv0: script }, cwd, cols, rows) {
         let _ = std::fs::remove_dir_all(dir);
         return Err(e);

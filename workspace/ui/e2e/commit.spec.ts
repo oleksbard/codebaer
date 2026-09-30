@@ -7,9 +7,19 @@ test('the AI message fills the box, and committing clears what was staged', asyn
   await page.getByRole('button', { name: 'Write the commit message with Claude' }).click();
   await mock.idle();
   await expect(page.getByRole('textbox', { name: 'Commit message' })).toHaveValue(/^Update cart\.ts and 1 more/);
+  // the check lasts 650ms and its timer runs even under motion off: a MutationObserver set up before the
+  // click catches it even on a slow run where it has come and gone before the assertion below gets to look
+  await page.locator('#commit-btn').evaluate((el) => {
+    const has = () => el.textContent.includes('Committed');
+    (window as unknown as { __committed?: boolean }).__committed = has();
+    new MutationObserver(() => {
+      if (has()) (window as unknown as { __committed?: boolean }).__committed = true;
+    }).observe(el, { childList: true, subtree: true, characterData: true });
+  });
   await page.locator('#commit-btn').click();
   await mock.idle();
-  await expect(page.getByText('Committed')).toBeVisible();
+  // the check replaces the toast: it shows on the button itself, where the eye already is
+  expect(await page.evaluate(() => (window as unknown as { __committed?: boolean }).__committed)).toBe(true);
   await expect(page.getByRole('textbox', { name: 'Commit message' })).toHaveValue('');
   await expect(row(page, 'staged', 'src/cart.ts')).toHaveCount(0);
   await expect(page.locator('.branch .ab')).toContainText('↑2');

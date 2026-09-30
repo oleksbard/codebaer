@@ -6,8 +6,11 @@ import { glyph, loadIconSets, pickedGlyph, type Glyph } from './icons';
 
 const PROMPT = 'M3.5 4.75L6.75 8 3.5 11.25M8.75 11.5h3.75';
 
-export function GlyphSvg({ g }: { g: Glyph }) {
-  return <svg viewBox={`0 0 ${g.width} ${g.height}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: g.body }} />;
+export function GlyphSvg({ g, className }: { g: Glyph; className?: string }) {
+  return (
+    <svg viewBox={`0 0 ${g.width} ${g.height}`} aria-hidden="true" className={className}
+      dangerouslySetInnerHTML={{ __html: g.body }} />
+  );
 }
 
 /** Blank until the sets have loaded. */
@@ -21,5 +24,9 @@ export function SetIcon({ id }: { id: string }) {
 /** The user's pick, else the AI's, else a prompt sign, which also stands in while the icon sets load. */
 export function CommandIcon({ name, command, icon }: { name: string; command: string; icon: string | null }) {
   const g = pickedGlyph(useApp().commandIcons, { name, command, icon });
-  return <span className="cicon" aria-hidden="true">{g ? <GlyphSvg g={g} /> : <StrokeIcon d={PROMPT} />}</span>;
+  return (
+    <span className="cicon" aria-hidden="true">
+      {g ? <GlyphSvg key={g.body} g={g} className="icon-in" /> : <StrokeIcon d={PROMPT} />}
+    </span>
+  );
 }

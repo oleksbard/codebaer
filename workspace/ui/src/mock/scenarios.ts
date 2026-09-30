@@ -11,6 +11,8 @@ export type Scenario = {
   /** What the native folder picker answers; null is a cancel. */
   pick: string | null;
   gitMissing: boolean;
+  /** The root has no repository until `git_init` runs; the seed's repo is what the init then finds. */
+  plain: boolean;
   repo: RepoSeed;
   recents: string[];
   favorites: string[];
@@ -198,6 +200,7 @@ function review(): Scenario {
     initial: ROOT,
     pick: ROOT,
     gitMissing: false,
+    plain: false,
     repo: REPO,
     recents: [ROOT, '/Users/dev/projects/website', '/Users/dev/oss/tiny-router'],
     favorites: ['/Users/dev/oss/tiny-router'],
@@ -325,6 +328,7 @@ function video(): Scenario {
     initial: VIDEO_ROOT,
     pick: VIDEO_ROOT,
     gitMissing: false,
+    plain: false,
     repo: VIDEO_REPO,
     recents: [VIDEO_ROOT],
     favorites: [],
@@ -439,6 +443,9 @@ export const SCENARIOS: Record<string, () => Scenario> = {
   'no-repo': () => ({ ...review(), initial: null, pick: null, sessions: [] }),
 
   'no-git': () => ({ ...review(), gitMissing: true }),
+
+  // a project folder with no repository: the terminals and tasks work, the review waits for Git: Init Repository
+  plain: () => ({ ...review(), plain: true }),
 
   // a release is out: Check for Updates… in the palette finds it
   update: () => ({

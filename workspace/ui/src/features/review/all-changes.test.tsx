@@ -402,7 +402,7 @@ describe('the All changes page', () => {
     rethemeAllChanges(false);
     expect(editorOf('a.txt')!.state.facet(EditorView.darkTheme)).toBe(false);
     (checkCwd as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    g.openRepo!.mockResolvedValue({ root: '/other', label: 'other', title: null });
+    g.openRepo!.mockResolvedValue({ root: '/other', label: 'other', title: null, git: true });
 
     await openRepo('/other');
 

@@ -1,6 +1,7 @@
 // The entry of mock.html: the real app on an in-memory backend. vite build bundles only index.html, so
 // nothing under src/mock ships.
 import { mockIPC } from '@tauri-apps/api/mocks';
+import { setMotion } from '#ui/motion';
 import { createBackend, type MenuItem } from './backend';
 import { SCENARIOS } from './scenarios';
 
@@ -45,5 +46,7 @@ globalThis.addEventListener('keydown', (e) => {
   e.preventDefault();
   void backend.api.menu(item);
 });
+
+if (params.get('motion') === 'off') setMotion('off');
 
 await import('#main');

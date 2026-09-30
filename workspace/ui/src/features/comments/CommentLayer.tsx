@@ -4,6 +4,7 @@ import { DropdownMenu } from 'radix-ui';
 import { keyLabel, matches } from '#kernel/keymap';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
+import { inertOnClose, keepFocus } from '#ui/focus';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import {
@@ -114,7 +115,8 @@ export function PendingPill() {
         <button type="button" className="pill pending" title="Comments waiting to be sent">✎ {n} pending ▾</button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu pending-menu" align="end" sideOffset={4}>
+        <DropdownMenu.Content className="menu pending-menu" align="end" sideOffset={4} ref={inertOnClose}
+          onCloseAutoFocus={keepFocus}>
           {sortComments(s.comments).map((c) => (
             <DropdownMenu.Item key={c.id} className="menu-item" onSelect={() => void jumpToComment(c.id)}>
               <span className="loc">{location(c)}</span>

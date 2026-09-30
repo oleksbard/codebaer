@@ -1,8 +1,9 @@
 // Screenshots browser mode: starts Vite on a free port, opens mock.html, waits for the fake backend to go
 // idle, and saves a PNG.
-//   pnpm shot [scenario] [--theme id] [--platform linux] [--out file] [--browser chromium]
+//   pnpm shot [scenario] [--theme id] [--platform linux] [--motion on] [--out file] [--browser chromium]
 //             [--do press:Meta+Shift+T --do click:text=Pull]
-// Each --do step runs in order and waits for the backend to go idle again.
+// Each --do step runs in order and waits for the backend to go idle again. Motion is off by default, so a
+// shot shows the end state; --motion on keeps it.
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -14,6 +15,7 @@ const { values, positionals } = parseArgs({
   options: {
     theme: { type: 'string' },
     platform: { type: 'string' },
+    motion: { type: 'string' },
     out: { type: 'string' },
     browser: { type: 'string', default: 'webkit' },
     size: { type: 'string', default: '1280x820' },
@@ -41,6 +43,7 @@ try {
   const query = new URLSearchParams({
     scenario, slow: '0', ...(values.theme ? { theme: values.theme } : {}),
     ...(values.platform ? { platform: values.platform } : {}),
+    ...(values.motion === 'on' ? {} : { motion: 'off' }),
   });
   await page.goto(`${server.resolvedUrls.local[0]}mock.html?${query}`);
   await page.waitForSelector('html[data-mock-idle]', { state: 'attached' });

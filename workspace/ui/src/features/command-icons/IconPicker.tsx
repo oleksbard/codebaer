@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { logError } from '#ipc/log';
 import { useApp } from '#kernel/store';
+import { Reveal } from '#ui/Reveal';
 import { GlyphSvg } from './CommandIcon';
 import { glyph, loadIconSets, searchIcons } from './icons';
 
@@ -33,32 +34,35 @@ export function IconPicker({ value, preview, autoTitle, labelledBy, onChange }: 
         {preview}
         <span>{value === null ? 'Automatic' : value.slice(value.indexOf(':') + 1)}</span>
       </button>
-      {open && (
-        <div className="icon-panel">
-          <div className="icon-panel-head">
-            {/* no form owner, so Enter here does not save the command */}
-            <input type="search" form="icon-search" aria-label="Search icons" placeholder="Search icons"
-              autoComplete="off" spellCheck={false} autoFocus value={query}
-              onChange={(e) => setQuery(e.target.value)} />
-            <button type="button" className="icon-auto" aria-pressed={value === null} onClick={() => pick(null)}
-              title={autoTitle}>
-              Automatic
-            </button>
-          </div>
-          <div className="icon-grid" role="group" aria-label="Icons">
-            {ids.map((id) => {
-              const g = glyph(id);
-              return g && (
-                <button key={id} type="button" className="icon-cell" title={id} aria-label={id}
-                  aria-pressed={id === value} onClick={() => pick(id)}>
-                  <GlyphSvg g={g} />
-                </button>
-              );
-            })}
-          </div>
-          {ids.length === 0 && <div className="icon-none">{query.trim() ? 'No icon matches' : 'Loading icons…'}</div>}
-        </div>
-      )}
+      <Reveal when={open} className="icon-panel" kind="rise">
+        {open && (
+          <>
+            <div className="icon-panel-head">
+              {/* no form owner, so Enter here does not save the command */}
+              <input type="search" form="icon-search" aria-label="Search icons" placeholder="Search icons"
+                autoComplete="off" spellCheck={false} autoFocus value={query}
+                onChange={(e) => setQuery(e.target.value)} />
+              <button type="button" className="icon-auto" aria-pressed={value === null} onClick={() => pick(null)}
+                title={autoTitle}>
+                Automatic
+              </button>
+            </div>
+            <div className="icon-grid" role="group" aria-label="Icons">
+              {ids.map((id) => {
+                const g = glyph(id);
+                return g && (
+                  <button key={id} type="button" className="icon-cell" title={id} aria-label={id}
+                    aria-pressed={id === value} onClick={() => pick(id)}>
+                    <GlyphSvg g={g} />
+                  </button>
+                );
+              })}
+            </div>
+            {ids.length === 0 &&
+              <div className="icon-none">{query.trim() ? 'No icon matches' : 'Loading icons…'}</div>}
+          </>
+        )}
+      </Reveal>
     </div>
   );
 }

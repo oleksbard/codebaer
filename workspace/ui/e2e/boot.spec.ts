@@ -8,9 +8,13 @@ test('the review scenario opens the first change as a diff', async ({ page, open
   await expect(page.getByRole('button', { name: /Acme Shop/ })).toBeVisible();
 });
 
-test('with no git the app shows only the fatal screen', async ({ page, open }) => {
-  await open('no-git');
-  await expect(page.locator('.fatal')).toContainText('CodeBär needs git on this machine');
+test('with no git the app opens the folder for its terminals and says to install git', async ({ page, open }) => {
+  const mock = await open('no-git');
+  await expect(page.getByRole('heading', { name: 'git is not installed' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Init Repository' })).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+T');
+  await mock.idle();
+  await expect(page.locator('.term-host')).toBeVisible();
 });
 
 test('a cancelled folder picker leaves an empty window', async ({ page, open }) => {

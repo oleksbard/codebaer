@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import { buildQueue } from '#core/model';
 import type { Tab } from '#core/state';
@@ -13,7 +13,10 @@ import { TerminalRail } from '#features/terminals';
 import { checkForUpdates } from '#features/updates';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
+import { Count } from '#ui/Count';
+import { inertOnClose, keepFocus } from '#ui/focus';
 import { Kbd } from '#ui/Kbd';
+import { LayoutGroup } from '#ui/List';
 import { Tabs } from '#ui/Tabs';
 import { setTab } from './actions';
 
@@ -50,7 +53,8 @@ function BrandMenu() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6}>
+        <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6} ref={inertOnClose}
+          onCloseAutoFocus={keepFocus}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings()}>
             Settings…<span className="detail"><Kbd>{keyLabel('settings.open')}</Kbd></span>
           </DropdownMenu.Item>
@@ -82,18 +86,26 @@ export function ActivityBar() {
       icon: (
         <span className="tab-icon">
           <ChangesIcon />
-          {unstaged > 0 && <span className="tab-count" aria-hidden="true">{unstaged > 99 ? '99+' : unstaged}</span>}
+          {unstaged > 0 &&
+            <span className="tab-count" aria-hidden="true">
+              <Count value={unstaged} format={(n) => n > 99 ? '99+' : String(n)} />
+            </span>}
         </span>
       ),
     },
     { value: 'files', label: 'Files', caption: 'Files', icon: <FilesIcon /> },
   ];
+  // one id, so the current-item fill slides between here and the terminal rail's own current tile
+  const indicatorId = useId();
   return (
     <div className="act">
       <BrandMenu />
-      <Tabs vertical value={s.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs} />
-      <TaskMenu />
-      <TerminalRail />
+      <LayoutGroup>
+        <Tabs vertical value={s.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs}
+          indicatorId={indicatorId} />
+        <TaskMenu />
+        <TerminalRail indicatorId={indicatorId} />
+      </LayoutGroup>
     </div>
   );
 }
@@ -104,11 +116,15 @@ export function Sidebar() {
   const q = s.status ? buildQueue(s.status) : { unstaged: [], staged: [] };
   return (
     <aside className="side">
-      {s.tab === 'files'
-        ? <FilesList files={s.files} ignored={s.ignored} active={s.open?.path ?? null} />
-        : <QueueList q={q} selected={s.selected} open={open} allChanges={allChangesShown(s)}
-          onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
-      <CommitBox staged={q.staged.length} hidden={s.tab !== 'changes'} />
+      {s.folderOnly
+        ? <div className="side-note">
+          {s.gitMissing === null ? 'This folder has no git repository' : 'git is not installed'}
+        </div>
+        : s.tab === 'files'
+          ? <FilesList files={s.files} ignored={s.ignored} active={s.open?.path ?? null} />
+          : <QueueList q={q} selected={s.selected} open={open} allChanges={allChangesShown(s)}
+            onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
+      <CommitBox staged={q.staged.length} hidden={s.tab !== 'changes' || s.folderOnly} />
     </aside>
   );
 }

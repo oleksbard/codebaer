@@ -27,3 +27,19 @@ test('a build that does not update itself offers no check', async ({ page, open 
   await expect(page.getByRole('menuitem', { name: 'Terminals and Orphans…' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Check for Updates…' })).toHaveCount(0);
 });
+
+test('hovering the pill tints only the pill, not the header grid cell it sits in', async ({ page, open }) => {
+  const mock = await open('update');
+  await page.getByRole('button', { name: 'CodeBär menu' }).click();
+  await page.getByRole('menuitem', { name: 'Check for Updates…' }).click();
+  await mock.idle();
+  const btn = page.locator('button.update-pill');
+  await btn.waitFor();
+  await btn.hover();
+  const bg = await page.evaluate(() => ({
+    wrapper: getComputedStyle(document.querySelector('.head .update-slot')!).backgroundColor,
+    button: getComputedStyle(document.querySelector('button.update-pill')!).backgroundColor,
+  }));
+  expect(bg.wrapper).toBe('rgba(0, 0, 0, 0)');
+  expect(bg.button).not.toBe('rgba(0, 0, 0, 0)');
+});

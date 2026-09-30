@@ -40,6 +40,7 @@ beforeEach(() => {
   S.settings = { ...DEFAULTS };
   S.canUpdate = false;
   S.update = null;
+  S.installing = false;
   S.toasts = [];
   S.terminals = [];
   S.comments = [];
@@ -112,11 +113,11 @@ describe('automatic checks', () => {
 });
 
 describe('Check for Updates', () => {
-  it('says so when this is the newest version', async () => {
+  it('says so when this is the newest version, changing the same toast rather than adding one', async () => {
     g.updateCheck!.mockResolvedValue(null);
     g.appVersion!.mockResolvedValue('0.6.0');
     await checkForUpdates();
-    expect(toasts()).toEqual(['info: Checking for updates…', 'info: CodeBär 0.6.0 is the newest version']);
+    expect(toasts()).toEqual(['info: CodeBär 0.6.0 is the newest version']);
   });
 
   it('points to the header once it has found one', async () => {
@@ -216,9 +217,40 @@ describe('Restart to Update', () => {
   it('leaves the new app a mark to reopen the repo open now, which it reads once', async () => {
     S.update = FOUND;
     await restartToUpdate();
-    expect(toasts()).toEqual(['info: Downloading CodeBär 0.6.0…']);
+    expect(toasts()).toEqual([]);
     expect(restartedIntoUpdate()).toBe(true);
     expect(restartedIntoUpdate()).toBe(false);
+  });
+
+  it('sets installing once it starts downloading, not while still settling or confirming, and clears it '
+    + 'after, on success and on failure', async () => {
+    S.update = FOUND;
+    let resolveInstall!: () => void;
+    g.updateInstall!.mockImplementation(() => new Promise<void>((r) => { resolveInstall = r; }));
+    const p = restartToUpdate();
+    await tick();
+    expect(S.installing).toBe(true);
+    resolveInstall();
+    await p;
+    expect(S.installing).toBe(false);
+
+    S.update = FOUND;
+    g.updateInstall!.mockRejectedValue({ kind: 'Io', detail: 'Permission denied' });
+    await restartToUpdate();
+    expect(S.installing).toBe(false);
+  });
+
+  it('does not show installing while still asking about ending running terminals', async () => {
+    S.update = { ...FOUND, keeps_terminals: false };
+    S.terminals = [term(1, { t: 'Running', command: 'vite', since_ms: 0 })];
+    let resolveConfirm!: (ok: boolean) => void;
+    vi.mocked(confirmDialog).mockImplementation(() => new Promise((r) => { resolveConfirm = r; }));
+    const p = restartToUpdate();
+    await tick();
+    expect(S.installing).toBe(false);
+    resolveConfirm(true);
+    await p;
+    expect(g.updateInstall).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a mark older than any restart, left by a relaunch that never started', () => {

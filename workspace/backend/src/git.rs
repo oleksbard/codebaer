@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -296,6 +296,11 @@ pub struct Repo {
 
 pub struct AppState {
     pub repo: Mutex<Option<Repo>>,
+    /// A folder open with no repository in it: terminals and tasks start there, repo commands answer NotARepo.
+    pub folder: Mutex<Option<PathBuf>>,
+    /// Held by `open_repo`, `close_repo` and `git_init`, so two at once cannot leave `repo`, `folder` and `watcher`
+    /// from different opens.
+    pub open_lock: Mutex<()>,
     pub write_lock: Mutex<()>,
     pub net_pid: Mutex<Option<u32>>,
     pub net_lock: Mutex<()>,
@@ -316,6 +321,8 @@ impl AppState {
     pub fn new() -> Self {
         AppState {
             repo: Mutex::new(None),
+            folder: Mutex::new(None),
+            open_lock: Mutex::new(()),
             write_lock: Mutex::new(()),
             net_pid: Mutex::new(None),
             net_lock: Mutex::new(()),
@@ -342,17 +349,100 @@ impl AppState {
         }
         Ok(root)
     }
+
+    /// Where a terminal or a task starts: the repo's root, or the folder open without one.
+    pub fn cwd(&self) -> Result<PathBuf, AppError> {
+        if let Ok(root) = self.root() {
+            return Ok(root);
+        }
+        let folder = self.folder.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or(AppError::NotARepo)?;
+        if !folder.is_dir() {
+            return Err(AppError::Io(format!("{} no longer exists", folder.display())));
+        }
+        Ok(folder)
+    }
+}
+
+/// What `open_repo` finds at a path.
+#[derive(Debug)]
+pub enum Found {
+    Repo(Repo),
+    /// Canonical, like a repo's root.
+    Folder(PathBuf),
+}
+
+/// An existing folder where git finds no repository, or where git does not run at all, opens without one. A missing
+/// one goes back to the picker (§9.3).
+pub fn find(path: &Path) -> Result<Found, AppError> {
+    found(path, discover(path), || run(path, &["--version"], None, Some(LOCAL)).is_ok())
+}
+
+/// `find` with its git check passed in, so a test can stand in for a machine whose git does not run.
+pub fn found(path: &Path, discovered: Result<Repo, AppError>, git_runs: impl FnOnce() -> bool) -> Result<Found, AppError> {
+    match discovered {
+        Ok(repo) => return Ok(Found::Repo(repo)),
+        Err(AppError::NotARepo) if path.is_dir() => {}
+        // macOS keeps a git in /usr/bin that, without the Command Line Tools, fails every command, --version too
+        Err(AppError::Git(_)) if path.is_dir() && !git_runs() => {}
+        Err(AppError::NotARepo) if !path.exists() => return Err(AppError::Io(format!("{} no longer exists", path.display()))),
+        Err(e) => return Err(e),
+    }
+    let root = path.canonicalize()?;
+    // a folder macOS keeps from the app fails here with its own error, instead of opening empty
+    std::fs::read_dir(&root)?;
+    Ok(Found::Folder(root))
 }
 
 pub fn discover(path: &Path) -> Result<Repo, AppError> {
     let out = run(path, &["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"], None, Some(LOCAL))
-        .map_err(|_| AppError::NotARepo)?;
+        .map_err(|e| match e {
+            // a repo git refuses, one it does not trust say, must not open as a folder with no repo, and nor must a
+            // worktree whose `.git` file points at a repo that is gone ("not a git repository: <gitdir>")
+            AppError::Git(s) if !s.contains("not a git repository (or any") => AppError::Git(s),
+            // nor must a subfolder of a repo on a slow disk
+            AppError::Timeout => AppError::Timeout,
+            _ => AppError::NotARepo,
+        })?;
     let s = String::from_utf8_lossy(&out.stdout);
     let mut lines = s.lines().map(PathBuf::from);
     let root = lines.next().ok_or(AppError::NotARepo)?;
     let git_dir = lines.next().ok_or(AppError::NotARepo)?;
     let common_dir = lines.next().ok_or(AppError::NotARepo)?;
     Ok(Repo { root: root.canonicalize().map_err(|_| AppError::NotARepo)?, git_dir, common_dir })
+}
+
+/// One folder by its device and inode, not its path: macOS reaches the home folder through
+/// `/System/Volumes/Data/Users/<me>` too, and `canonicalize` keeps that firmlinked path as it is.
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.metadata(), b.metadata()) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+        _ => a == b,
+    }
+}
+
+/// Refuses the home folder, every folder above it, and a folder that holds a repo: each is a folder of projects,
+/// and a repo there would take in every project under it.
+pub fn init_impl(path: &Path, home: Option<&Path>) -> Result<(), AppError> {
+    if !path.is_dir() {
+        return Err(AppError::Io(format!("{} no longer exists", path.display())));
+    }
+    // canonical again, so a folder swapped for a symlink since the open is checked where it now leads
+    let path = &path.canonicalize()?;
+    if home.is_some_and(|h| h.ancestors().any(|a| same_dir(a, path))) {
+        return Err(AppError::Git(format!(
+            "git init in {} would put every project under it into one repository. Open the project's own folder.",
+            path.display()
+        )));
+    }
+    if let Some(inner) = std::fs::read_dir(path)?.flatten().map(|e| e.path()).find(|p| p.join(".git").exists()) {
+        return Err(AppError::Git(format!(
+            "{} holds the repository {}. Open that project's own folder.",
+            path.display(),
+            inner.display()
+        )));
+    }
+    run(path, &["init", "-q"], None, Some(LOCAL))?;
+    Ok(())
 }
 
 pub fn status_impl(root: &Path) -> Result<Status, AppError> {
@@ -367,12 +457,14 @@ pub struct Opened {
     /// Display only, `~`-shortened.
     pub label: String,
     pub title: Option<String>,
+    /// False for a folder with no repository, or where git does not run.
+    pub git: bool,
 }
 
 impl Opened {
-    fn of(root: &Path) -> Self {
+    fn of(root: &Path, git: bool) -> Self {
         let path = root.to_string_lossy().to_string();
-        Self { label: crate::recents::label(&path), root: path, title: repo_title(root) }
+        Self { label: crate::recents::label(&path), root: path, title: repo_title(root), git }
     }
 }
 
@@ -478,29 +570,63 @@ pub(crate) fn repo_about(root: &Path) -> Option<String> {
 
 #[tauri::command(async)]
 pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) -> Result<Opened, AppError> {
-    let repo = discover(Path::new(&path))?;
-    let emitter = app.clone();
-    let handle = crate::watcher::start(&repo.root, &repo.git_dir, &repo.common_dir, move || {
-        let _ = tauri::Emitter::emit(&emitter, "repo-changed", ());
-    })?;
-    let opened = Opened::of(&repo.root);
-    // The watcher is created first, so a failure to start it leaves state
-    // untouched; once it succeeds, the repo is stored before the new
-    // watcher's handle becomes live.
-    *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = Some(repo);
-    *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+    let _open = state.open_lock.lock().unwrap_or_else(|e| e.into_inner());
+    let opened = match find(Path::new(&path))? {
+        Found::Repo(repo) => {
+            let emitter = app.clone();
+            let handle = crate::watcher::start(&repo.root, &repo.git_dir, &repo.common_dir, move || {
+                let _ = tauri::Emitter::emit(&emitter, "repo-changed", ());
+            })?;
+            let opened = Opened::of(&repo.root, true);
+            // The watcher is created first, so a failure to start it leaves state
+            // untouched; once it succeeds, the repo is stored before the new
+            // watcher's handle becomes live.
+            *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = Some(repo);
+            *state.folder.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+            opened
+        }
+        // nothing to watch: a git init run in its terminal shows once the folder is opened again
+        Found::Folder(root) => {
+            *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let opened = Opened::of(&root, false);
+            *state.folder.lock().unwrap_or_else(|e| e.into_inner()) = Some(root);
+            opened
+        }
+    };
     // every way in (dialog, launch argument, second instance, File menu) lands here
     crate::recents::push(&app, &opened.root);
     crate::refresh_recent_menu(&app);
     Ok(opened)
 }
 
+/// Runs `git init` in the folder open without a repository, which must still be `root`, the one on screen: an
+/// open of another folder can be in flight when the user asks. It opens nothing; `open_repo` does that next.
+#[tauri::command(async)]
+pub fn git_init(state: State<AppState>, root: String) -> Result<(), AppError> {
+    let _open = state.open_lock.lock().unwrap_or_else(|e| e.into_inner());
+    let current = state.folder.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let elsewhere = current.is_some() || state.repo.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+    let folder = current.filter(|f| f == Path::new(&root)).ok_or_else(|| {
+        if elsewhere {
+            AppError::Git("Another folder was opened, so no repository was made.".into())
+        } else {
+            AppError::NotARepo
+        }
+    })?;
+    let home = std::env::var_os("HOME").and_then(|h| PathBuf::from(h).canonicalize().ok());
+    init_impl(&folder, home.as_deref())
+}
+
 /// Every repo command answers NotARepo after this, until the next `open_repo`.
 #[tauri::command(async)]
 pub fn close_repo(state: State<AppState>, app: tauri::AppHandle) {
+    let _open = state.open_lock.lock().unwrap_or_else(|e| e.into_inner());
     // the watcher first, so no change of the old repo is reported once it is gone
     *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *state.repo.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *state.folder.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // the File menu's recents leave out the open repo, and there is none now
     crate::refresh_recent_menu(&app);
 }
@@ -1365,13 +1491,58 @@ pub fn stash_list_impl(root: &Path) -> Result<Vec<Stash>, AppError> {
 
 /// `oid` is what `stash@{index}` was when the list was read: another stash made or dropped since then moves the
 /// numbers, and the pop must not take a different one.
-pub fn stash_pop_impl(root: &Path, index: u32, oid: &str) -> Result<(), AppError> {
+/// True when the stash's staged part is staged again; false when a commit since changed what it was staged
+/// against, and it came back unstaged instead.
+pub fn stash_pop_impl(root: &Path, index: u32, oid: &str) -> Result<bool, AppError> {
     let at = format!("stash@{{{index}}}");
-    let now = run_raw(root, &["rev-parse", "-q", "--verify", &at], None, Some(LOCAL), None)?;
-    if now.code != 0 || line_of(now) != oid {
-        return Err(AppError::Git("The list of stashes changed. Pick the stash again.".into()));
+    let still_there = || -> Result<(), AppError> {
+        let now = run_raw(root, &["rev-parse", "-q", "--verify", &at], None, Some(LOCAL), None)?;
+        if now.code != 0 || line_of(now) != oid {
+            return Err(AppError::Git("The list of stashes changed. Pick the stash again.".into()));
+        }
+        Ok(())
+    };
+    still_there()?;
+    match run_locked(root, &["stash", "pop", "--index", &at], None, Some(LOCAL)) {
+        // git checks the index before it touches the tree, so this refusal leaves the stash and the tree as they were
+        Err(AppError::Git(ref s)) if s.contains("conflicts in index") => {
+            let names = |args: &[&str]| -> Result<Vec<Vec<u8>>, AppError> {
+                let out = run(root, args, None, Some(LOCAL))?;
+                Ok(out.stdout.split(|&b| b == 0).filter(|p| !p.is_empty()).map(<[u8]>::to_vec).collect())
+            };
+            let (base, index) = (format!("{oid}^1"), format!("{oid}^2"));
+            let mut ours = names(&["diff", "--no-renames", "--name-only", "-z", &base, oid])?;
+            ours.extend(names(&["diff", "--no-renames", "--name-only", "-z", &base, &index])?);
+            ours.sort();
+            ours.dedup();
+            // a plain pop merges into the index of the files it touches, and over staged work there that merge can
+            // leave the work unmerged: the index is the review, so no file may be in both
+            let shared: Vec<String> = names(&["diff", "--cached", "--no-renames", "--name-only", "-z"])?
+                .into_iter()
+                .filter(|p| ours.binary_search(p).is_ok())
+                .map(|p| String::from_utf8_lossy(&p).into_owned())
+                .collect();
+            if !shared.is_empty() {
+                return Err(AppError::Git(format!(
+                    "The stash and the changes staged now are both in {}. Commit or unstage those, then unstash again.",
+                    shared.join(", ")
+                )));
+            }
+            // a stash pushed from a terminal since the check above renumbers the list
+            still_there()?;
+            run_locked(root, &["stash", "pop", &at], None, Some(LOCAL))?;
+            // the pop leaves a new file staged, with the tree's content, which nobody reviewed; none of these files
+            // had anything staged before it, so their index goes back to HEAD
+            // never with an empty list, which git reads as no pathspec: that resets the whole index
+            if !ours.is_empty() {
+                let list: Vec<u8> = ours.iter().flat_map(|p| p.iter().copied().chain([0])).collect();
+                let args = ["--literal-pathspecs", "reset", "-q", "--pathspec-from-file=-", "--pathspec-file-nul"];
+                run_locked(root, &args, Some(&list), Some(LOCAL))?;
+            }
+            Ok(false)
+        }
+        other => other.map(|_| true),
     }
-    run_locked(root, &["stash", "pop", "--index", &at], None, Some(LOCAL)).map(|_| ())
 }
 
 /// `ignored` carries a trailing slash on a wholly ignored directory, which is how the tree tells
@@ -1475,7 +1646,7 @@ pub fn stash_list(state: State<AppState>) -> Result<Vec<Stash>, AppError> {
 }
 
 #[tauri::command(async)]
-pub fn stash_pop(state: State<AppState>, index: u32, oid: String) -> Result<(), AppError> {
+pub fn stash_pop(state: State<AppState>, index: u32, oid: String) -> Result<bool, AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     stash_pop_impl(&root, index, &oid)
@@ -1787,7 +1958,7 @@ mod tests {
     fn opened_keeps_the_real_root_apart_from_its_label() {
         let home = std::env::var("HOME").unwrap();
         let root = format!("{home}/projects/app");
-        let o = Opened::of(Path::new(&root));
+        let o = Opened::of(Path::new(&root), true);
         // the terminals compare their kernel-reported folders against `root`
         assert_eq!(o.root, root);
         assert_eq!(o.label, "~/projects/app");

@@ -49,8 +49,8 @@
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
-  transition: opacity 180ms ease;
-  animation: term-outside-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity var(--dur-3) ease;
+  animation: term-outside-in var(--dur-3) var(--ease-out);
 
   &[data-near] { opacity: 0.1; }
 
@@ -175,7 +175,7 @@
   /* a session producing output is thinking; one at its prompt is silent */
   &.busy .agent:not(.claude),
   &.busy .num,
-  &.busy .pick { animation: term-work 1.2s ease-in-out infinite; }
+  &.busy .pick { animation: term-work var(--dur-loop) ease-in-out infinite; }
 
   .bell {
     position: absolute;
@@ -185,6 +185,17 @@
     height: 6px;
     border-radius: var(--r-pill);
     background: var(--accent);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border: 1.5px solid var(--accent);
+      border-radius: var(--r-pill);
+      opacity: 0;
+      pointer-events: none;
+      animation: task-ping var(--dur-5) ease-out;
+    }
   }
 }
 
@@ -197,4 +208,12 @@
   .rail-b.busy .num,
   .rail-b.busy .pick { animation: none; opacity: 0.55; }
   .term-outside { animation: none; }
+  .bell::after { animation: none; }
+}
+
+/* the outside badge's one-shot entrance stays; only the busy loop is heavy under lite */
+:root[data-motion="lite"] {
+  .rail-b.busy .agent,
+  .rail-b.busy .num,
+  .rail-b.busy .pick { animation: none; opacity: 0.55; }
 }

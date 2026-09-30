@@ -43,4 +43,16 @@
   --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
   --shadow-1: 0 14px 44px oklch(0 0 0 / 0.5);
+
+  --dur-1: 90ms;    /* press, hover colour, menus, fast exits */
+  --dur-2: 140ms;   /* dialogs, chevrons, fades */
+  --dur-3: 240ms;   /* layout moves, the sidebar */
+  --dur-4: 400ms;   /* one-shot entrances (DiffStat, task launch) */
+  --dur-5: 650ms;   /* flashes, bumps, pings */
+  --dur-spin: 800ms;
+  --dur-loop: 1.2s; /* every infinite pulse */
+  --stagger: 45ms;
+  --ease-std: cubic-bezier(.2,0,0,1);
+  --ease-out: cubic-bezier(.2,.8,.2,1);
+  --ease-pop: cubic-bezier(.34,1.56,.64,1);
 }

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Tabs as RT } from 'radix-ui';
 import { SetIcon } from '#features/command-icons';
 import { useApp } from '#kernel/store';
 import { Dialog } from '#ui/Dialog';
 import { InfoTip } from '#ui/InfoTip';
 import { Segmented } from '#ui/Segmented';
+import { TabIndicator } from '#ui/Tabs';
 import { SECTIONS, type Option } from './catalog';
 import { CommandsPane } from './CommandSettings';
 import { closeSettings, setSetting } from './settings';
@@ -55,6 +56,7 @@ function OptionRow({ option }: { option: Option }) {
 export function SettingsDialog() {
   const app = useApp();
   const [section, setSection] = useState(app.settingsSection);
+  const navId = useId();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) closeSettings(); }} title="Settings" className="settings">
       <RT.Root className="settings-body" orientation="vertical" value={section} onValueChange={setSection}>
@@ -62,7 +64,12 @@ export function SettingsDialog() {
           {/* the dialog is already named by its hidden title */}
           <h2 className="dialog-title" aria-hidden="true">Settings</h2>
           <RT.List className="settings-nav" aria-label="Sections">
-            {SECTIONS.map((s) => <RT.Trigger key={s.id} className="settings-tab" value={s.id}>{s.label}</RT.Trigger>)}
+            {SECTIONS.map((s) => (
+              <RT.Trigger key={s.id} className="settings-tab" value={s.id}>
+                {s.id === section && <TabIndicator id={navId} value={section} className="settings-ind" />}
+                {s.label}
+              </RT.Trigger>
+            ))}
           </RT.List>
         </div>
         {SECTIONS.map((s) => (

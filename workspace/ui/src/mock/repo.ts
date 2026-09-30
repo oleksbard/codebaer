@@ -364,7 +364,7 @@ export function createRepo(seed: RepoSeed) {
       ({ index, oid, branch: b, message, wip, time })),
 
     /** `stash pop --index`: refused, and the stash kept, when a file it holds was changed since. */
-    stashPop(index: number, oid: string): void {
+    stashPop(index: number, oid: string): boolean {
       const s = stash[index];
       if (s?.oid !== oid) gitError('The list of stashes changed. Pick the stash again.');
       for (const [p, st] of s.files) {
@@ -379,6 +379,7 @@ export function createRepo(seed: RepoSeed) {
         e.work = st.work;
       }
       stash.splice(index, 1);
+      return true;
     },
 
     listFiles(): Listing {
