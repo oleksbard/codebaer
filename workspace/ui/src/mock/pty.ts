@@ -20,11 +20,15 @@ export type PtyDeps = {
 
 type Session = {
   info: Info; line: string; ring: Uint8Array[]; ringSize: number; cancel?: (() => void) | undefined;
+  /** A bracketed paste was echoed and the Enter that submits it has not come yet. */
+  pasted: boolean;
 };
 
 /** `PROTO` in workspace/backend/src/pty/proto.rs. */
 const PROTO = 3;
 const RING_MAX = 256 * 1024;
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
 const enc = new TextEncoder();
 
 const color = (code: number, text: string): string => `\x1b[${code}m${text}\x1b[0m`;
@@ -60,6 +64,7 @@ export function createPty(d: PtyDeps) {
 
   const send = (m: ServerMsg): void => ev?.onmessage(m);
   const infos = (): Info[] => [...sessions.values()].map((s) => s.info);
+  const sessionOf = (id?: number): Session | undefined => sessions.get(id ?? Math.max(0, ...sessions.keys()));
   const name = d.root.split('/').at(-1) ?? d.root;
 
   const write = (s: Session, text: string): void => {
@@ -79,7 +84,7 @@ export function createPty(d: PtyDeps) {
     write(s, `${color(32, name)} ${color(90, d.status().branch ?? '')} $ `);
   };
   const add = (info: Omit<Info, 'id'>, transcript = ''): Session => {
-    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0 };
+    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0, pasted: false };
     sessions.set(s.info.id, s);
     if (transcript) write(s, transcript);
     return s;
@@ -219,7 +224,17 @@ export function createPty(d: PtyDeps) {
     input(id: number, data: string): void {
       const s = sessions.get(id);
       if (!s || s.info.state.t === 'Exited') return;
-      const text = data.split('\x1b[200~').join('').split('\x1b[201~').join('');
+      if (s.info.tier === 'process' && !s.info.task && data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
+        const [first = '', ...rest] = data.slice(PASTE_START.length, -PASTE_END.length).split('\r');
+        write(s, `${[first, ...rest.map((l) => (l ? `  ${l}` : l))].join('\n')}\n\n`);
+        s.pasted = true;
+        return;
+      }
+      if (s.pasted) {
+        s.pasted = false;
+        if (data === '\r') return;
+      }
+      const text = data.split(PASTE_START).join('').split(PASTE_END).join('');
       if (s.info.task && text.includes('\x03')) { write(s, '^C\n'); exit(s, 130); return; }
       if (s.info.state.t === 'Running' && s.info.tier === 'marks') {
         if (text.includes('\x03')) { stop(s); write(s, '^C\n'); finish(s, 130); }
@@ -262,9 +277,15 @@ export function createPty(d: PtyDeps) {
 
     orphans: (): Orphans => orphans,
 
+    /** Prints into a session as its program would; the newest session for no id. */
+    print(text: string, id?: number): void {
+      const s = sessionOf(id);
+      if (s && s.info.state.t !== 'Exited') write(s, text);
+    },
+
     /** What the session printed, as the host's ring holds it; the newest session for no id. */
     text(id?: number): string {
-      const s = sessions.get(id ?? Math.max(0, ...sessions.keys()));
+      const s = sessionOf(id);
       if (!s) return '';
       const dec = new TextDecoder();
       return s.ring.map((b) => dec.decode(b, { stream: true })).join('') + dec.decode();

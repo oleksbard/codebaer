@@ -1,3 +1,4 @@
+import type { Update } from '#ipc/git';
 import type { AiProvider, CustomCommand } from '#ipc/settings';
 import type { Menu, Orphans, Proc } from '#ipc/terminal';
 import type { SessionSeed } from './pty';
@@ -18,6 +19,9 @@ export type Scenario = {
   menu: Menu;
   sessions: SessionSeed[];
   orphans: Orphans;
+  /** null for a build that does not update itself, as every build but main's macOS packages; else what a check
+   *  finds, with null for nothing newer. */
+  updates: { found: Update | null } | null;
 };
 
 const ROOT = '/Users/dev/projects/acme-shop';
@@ -211,6 +215,129 @@ function review(): Scenario {
       },
     ],
     orphans: NO_ORPHANS,
+    updates: null,
+  };
+}
+
+const VIDEO_HOME = '/Users/dev';
+const VIDEO_ROOT = `${VIDEO_HOME}/projects/plant-shop`;
+
+const VIDEO_CART_HEAD = `export type LineItem = {
+  sku: string;
+  price: number;
+  discount: number;
+  qty: number;
+};
+
+export function subtotal(items: LineItem[]): number {
+  return items.reduce((sum, i) => sum + i.price * i.qty, 0);
+}
+
+export function itemCount(items: LineItem[]): number {
+  return items.reduce((n, i) => n + i.qty, 0);
+}
+`;
+const VIDEO_CART_WORK = VIDEO_CART_HEAD.replace(
+  '  return items.reduce((sum, i) => sum + i.price * i.qty, 0);',
+  `  return items.reduce((sum, i) => {
+    const net = i.price - i.discount;
+    return sum + net * i.qty;
+  }, 0);`,
+);
+
+const VIDEO_CHECKOUT_HEAD = `import { type LineItem, subtotal } from './cart';
+
+const TAX_RATE = 0.19;
+
+export function total(items: LineItem[]): number {
+  return subtotal(items) * (1 + TAX_RATE);
+}
+
+export function canCheckout(items: LineItem[]): boolean {
+  return items.length > 0;
+}
+`;
+const VIDEO_CHECKOUT_WORK = VIDEO_CHECKOUT_HEAD.replace(
+  'boolean {\n  return items.length > 0;',
+  'boolean {\n  if (items.some((i) => i.qty > 10)) return false;\n  return items.length > 0;',
+);
+
+const VIDEO_REPO: RepoSeed = {
+  files: {
+    '.gitignore': { head: 'node_modules/\ndist/\n' },
+    'README.md': { head: '# Plant Shop\n\nHouseplants, delivered.\n' },
+    'package.json': { head: PACKAGE.replace('acme-shop', 'plant-shop') },
+    'tsconfig.json': { head: '{\n  "compilerOptions": { "strict": true, "target": "ES2022" }\n}\n' },
+    'src/index.ts': { head: "export * from './cart';\nexport * from './checkout';\n" },
+    'src/cart.ts': { head: VIDEO_CART_HEAD, work: VIDEO_CART_WORK },
+    'src/checkout.ts': { head: VIDEO_CHECKOUT_HEAD, work: VIDEO_CHECKOUT_WORK },
+  },
+  branch: 'item-discounts',
+  upstream: 'origin/item-discounts',
+  ahead: 0,
+  behind: 0,
+  branches: [
+    { kind: 'local', name: 'main' },
+    { kind: 'local', name: 'item-discounts' },
+    { kind: 'remote', remote: 'origin', branch: 'main' },
+    { kind: 'remote', remote: 'origin', branch: 'item-discounts' },
+  ],
+  ignored: ['dist/', 'node_modules/'],
+  dirs: { 'dist': ['dist/index.html'], 'node_modules': ['node_modules/.pnpm/', 'node_modules/typescript/'] },
+  log: ['Add the cart and checkout', 'Set up the storefront'],
+};
+
+const dim = (s: string): string => `\x1b[2m${s}\x1b[0m`;
+const grey = (s: string): string => `\x1b[90m${s}\x1b[0m`;
+const BANNER_WIDTH = 54;
+const bannerRow = (plain: string, styled = plain): string =>
+  `${grey('│')} ${styled}${' '.repeat(BANNER_WIDTH - 1 - plain.length)}${grey('│')}`;
+const dimRow = (plain: string): string => bannerRow(plain, dim(plain));
+
+const VIDEO_AGENT_TRANSCRIPT = [
+  grey(`╭${'─'.repeat(BANNER_WIDTH)}╮`),
+  bannerRow('✻ Welcome to Claude Code', '✻ Welcome to \x1b[1mClaude Code\x1b[0m'),
+  bannerRow(''),
+  dimRow('  /help for help, /status for your current setup'),
+  bannerRow(''),
+  dimRow(`  cwd: ${VIDEO_ROOT.replace(VIDEO_HOME, '~')}`),
+  grey(`╰${'─'.repeat(BANNER_WIDTH)}╯`),
+  '',
+  '\x1b[36m>\x1b[0m Apply per-item discounts to the cart total.',
+  '',
+  "⏺ I'll apply each item's discount when the cart total is computed.",
+  '',
+  '\x1b[32m⏺\x1b[0m \x1b[1mUpdate\x1b[0m(src/cart.ts)',
+  dim('  ⎿  Updated src/cart.ts with 4 additions and 1 removal'),
+  '',
+  '\x1b[32m⏺\x1b[0m \x1b[1mUpdate\x1b[0m(src/checkout.ts)',
+  dim('  ⎿  Updated src/checkout.ts with 1 addition'),
+  '',
+  "⏺ Done. subtotal() now subtracts each item's discount.",
+  '',
+  '\x1b[36m>\x1b[0m ',
+].join('\n');
+
+/** The promo video's one repo and story: asked for discounts, the agent also limited checkout to 10 units. */
+function video(): Scenario {
+  return {
+    root: VIDEO_ROOT,
+    initial: VIDEO_ROOT,
+    pick: VIDEO_ROOT,
+    gitMissing: false,
+    repo: VIDEO_REPO,
+    recents: [VIDEO_ROOT],
+    favorites: [],
+    commands: [],
+    ai: 'claude',
+    menu: MENU,
+    sessions: [
+      { pid: 50_001, title: 'claude', tier: 'process', state: { t: 'Idle' }, transcript: VIDEO_AGENT_TRANSCRIPT },
+      { pid: 50_002, title: 'codex', tier: 'process', state: { t: 'Idle' }, transcript: '\x1b[36m>\x1b[0m ' },
+      { pid: 50_003, title: 'opencode', tier: 'process', state: { t: 'Idle' }, transcript: '\x1b[36m>\x1b[0m ' },
+    ],
+    orphans: NO_ORPHANS,
+    updates: null,
   };
 }
 
@@ -240,6 +367,8 @@ const CONFLICTED_CART = CART_HEAD.replace(`  let total = 0;
 /** Built per call: each backend mutates its own copy, and `since_ms` counts from page load. */
 export const SCENARIOS: Record<string, () => Scenario> = {
   review,
+
+  video,
 
   clean: () => {
     const s = review();
@@ -310,4 +439,14 @@ export const SCENARIOS: Record<string, () => Scenario> = {
   'no-repo': () => ({ ...review(), initial: null, pick: null, sessions: [] }),
 
   'no-git': () => ({ ...review(), gitMissing: true }),
+
+  // a release is out: Check for Updates… in the palette finds it
+  update: () => ({
+    ...review(),
+    updates: {
+      found: {
+        version: '0.6.0', page: 'https://github.com/oleksbard/codebaer/releases/tag/v0.6.0', keeps_terminals: true,
+      },
+    },
+  }),
 };

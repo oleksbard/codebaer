@@ -5,7 +5,8 @@ export type AiProvider = 'off' | (typeof AI_PROVIDERS)[number];
 
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
 export type Settings = {
-  'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off'; 'appearance.theme': Theme;
+  'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off';
+  'general.check-updates': 'on' | 'off'; 'appearance.theme': Theme;
   'appearance.diff-layout': 'unified' | 'side-by-side';
 };
 export type SettingKey = keyof Settings;
@@ -22,6 +23,6 @@ export type CustomCommand = {
 export type HiddenScripts = Record<string, string[]>;
 
 export const DEFAULTS: Settings = {
-  'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'appearance.theme': DEFAULT_THEME,
-  'appearance.diff-layout': 'unified',
+  'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'general.check-updates': 'on',
+  'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified',
 };

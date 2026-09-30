@@ -10,7 +10,7 @@ vi.mock('#ipc/git', async () => {
 });
 
 const { git } = await import('#ipc/git');
-const { S } = await import('#kernel/store');
+const { notify, S } = await import('#kernel/store');
 const { DEFAULTS } = await import('#ipc/settings');
 const { SECTIONS } = await import('./catalog');
 const { closeSettings, openSettings, setSetting } = await import('./settings');
@@ -27,6 +27,7 @@ const KEY = 'general.headless-ai-provider';
 const THEME = 'appearance.theme';
 const AUTO_FETCH = 'general.auto-fetch';
 const DIFF = 'appearance.diff-layout';
+const CHECK_UPDATES = 'general.check-updates';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
@@ -179,6 +180,17 @@ describe('settings dialog', () => {
     expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [AUTO_FETCH]: 'off' });
     expect(pressed(AUTO_FETCH)).toEqual(['Off']);
     expect(pressed()).toEqual(['Off']);
+  });
+
+  it('shows the update check, on by default, only in a build that updates itself', async () => {
+    await openSettings();
+    await tick();
+    expect(segments(CHECK_UPDATES)).toEqual([]);
+    S.canUpdate = true;
+    notify();
+    await tick();
+    expect(pressed(CHECK_UPDATES)).toEqual(['On']);
+    S.canUpdate = false;
   });
 
   it('keeps the choice when the pressed item is clicked again', async () => {

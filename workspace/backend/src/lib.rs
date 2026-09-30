@@ -10,6 +10,7 @@ pub mod settings;
 pub mod status;
 pub mod sys;
 pub mod tasks;
+pub mod updates;
 pub mod watcher;
 
 pub use error::AppError;
@@ -161,16 +162,20 @@ pub fn refresh_recent_menu(app: &AppHandle) {
 /// everything in it.
 #[cfg(target_os = "macos")]
 fn menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<Wry>> {
-    let app_menu = Submenu::with_items(app, "CodeBär", true, &[
-        &PredefinedMenuItem::about(app, None, None)?,
-        &PredefinedMenuItem::separator(app)?,
-        &MenuItem::with_id(app, "app.settings", "Settings\u{2026}", true, Some("CmdOrCtrl+,"))?,
-        &MenuItem::with_id(app, "app.ai-tools", "Explore AI Tools\u{2026}", true, None::<&str>)?,
-        &PredefinedMenuItem::separator(app)?,
-        // not the predefined item: its terminate: reaches only applicationWillTerminate, which tao gives no
-        // way to cancel. Dock > Quit and logout still take that path.
-        &MenuItem::with_id(app, "app.quit", "Quit CodeBär", true, Some("CmdOrCtrl+Q"))?,
-    ])?;
+    let about = PredefinedMenuItem::about(app, None, None)?;
+    let check = MenuItem::with_id(app, "app.check-updates", "Check for Updates\u{2026}", true, None::<&str>)?;
+    let top = PredefinedMenuItem::separator(app)?;
+    let settings = MenuItem::with_id(app, "app.settings", "Settings\u{2026}", true, Some("CmdOrCtrl+,"))?;
+    let ai_tools = MenuItem::with_id(app, "app.ai-tools", "Explore AI Tools\u{2026}", true, None::<&str>)?;
+    let bottom = PredefinedMenuItem::separator(app)?;
+    // not the predefined item: its terminate: reaches only applicationWillTerminate, which tao gives no
+    // way to cancel. Dock > Quit and logout still take that path.
+    let quit = MenuItem::with_id(app, "app.quit", "Quit CodeBär", true, Some("CmdOrCtrl+Q"))?;
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = vec![&about, &top, &settings, &ai_tools, &bottom, &quit];
+    if updates::enabled() {
+        items.insert(1, &check);
+    }
+    let app_menu = Submenu::with_items(app, "CodeBär", true, &items)?;
     // macOS delivers Cut/Copy/Paste/Select All/Undo to the webview only through these
     // menu items' key equivalents; without an Edit menu the shortcuts are dead in every input
     let edit = Submenu::with_items(app, "Edit", true, &[
@@ -207,6 +212,7 @@ pub fn run_app() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 // the plugin saves is_visible(), which macOS reports false for a minimized window;
@@ -216,6 +222,7 @@ pub fn run_app() {
         )
         .manage(git::AppState::new())
         .manage(pty::client::PtyState::new())
+        .manage(updates::UpdateState::default())
         .setup(|app| {
             // after the path resolver is managed, which is the only way to ask where the logs go
             if let Ok(dir) = app.path().app_log_dir() {
@@ -267,6 +274,8 @@ pub fn run_app() {
                 let _ = app.emit("menu-settings", ());
             } else if id == "app.ai-tools" {
                 let _ = app.emit("menu-ai-tools", ());
+            } else if id == "app.check-updates" {
+                let _ = app.emit("menu-check-updates", ());
             } else if id == "recent.clear" {
                 recents::clear(app);
                 refresh_recent_menu(app);
@@ -275,14 +284,16 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, favorite_repo, git::open_repo, git::close_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_list, git::stash_pop, git::outgoing, git::undo_commit, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_stash_description, ai::ai_command_icons, ai::ai_repo_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan])
+        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, favorite_repo, git::open_repo, git::close_repo, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_list, git::stash_pop, git::outgoing, git::undo_commit, git::list_files, git::list_dir, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_stash_description, ai::ai_command_icons, ai::ai_repo_icons, ai::installed_ai_providers, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan, updates::update_enabled, updates::update_check, updates::update_install])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {
             // both variants: closing the last window and the Quit menu item give ExitRequested, but Dock > Quit
             // and logout go through applicationWillTerminate, which tauri maps to Exit.
-            // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart.
-            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+            // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart. A restart into
+            // an update whose host protocol matches skips it too, so the new app reattaches to the sessions.
+            let exiting = matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit);
+            if exiting && !updates::keeps_terminals() {
                 pty::client::shutdown(app);
             }
         });

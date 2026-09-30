@@ -17,6 +17,7 @@ export type Mock = {
   /** The names of the commands invoked so far, in order. */
   calls(): Promise<string[]>;
   terminalText(id?: number): Promise<string>;
+  terminalWrite(text: string, id?: number): Promise<void>;
 };
 
 const mockOf = (page: Page): Mock => ({
@@ -32,6 +33,7 @@ const mockOf = (page: Page): Mock => ({
   exited: () => page.evaluate(() => globalThis.__mock!.exited()),
   calls: () => page.evaluate(() => globalThis.__mock!.calls.map((c) => c.cmd)),
   terminalText: (id) => page.evaluate((i) => globalThis.__mock!.terminalText(i), id),
+  terminalWrite: (text, id) => page.evaluate(([t, i]) => globalThis.__mock!.terminalWrite(t, i), [text, id] as const),
 });
 
 type Fixtures = {

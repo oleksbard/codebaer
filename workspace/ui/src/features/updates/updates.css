@@ -1,0 +1,8 @@
+.head .update-pill {
+  grid-column: 3;
+  justify-self: end;
+  color: var(--accent);
+  border-color: var(--accent);
+
+  &:hover, &[data-state="open"] { background: var(--accent-soft); }
+}

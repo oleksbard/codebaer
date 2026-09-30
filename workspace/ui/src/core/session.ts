@@ -223,6 +223,13 @@ export const settle = (): Promise<boolean> => offerSave(
   'Save', "Don't Save",
 );
 
+/** Before everything held in memory for the repo is dropped: each feature's own question, then the open file's
+ *  buffer. False when the caller has to stay. */
+export async function settleAll(): Promise<boolean> {
+  for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return false;
+  return settle();
+}
+
 /** What Cmd-Q and the window's close button ask for while the backend knows of unsaved changes. */
 export async function quit(): Promise<void> {
   if (await settle()) await git.quit();
@@ -536,8 +543,7 @@ export const lastRepo = (): string | null => localStorage.getItem(LAST_REPO);
 export const reopenAtLaunch = (): string | null => (localStorage.getItem(LAST_CLOSED) ? null : lastRepo());
 
 export async function openRepo(path: string): Promise<void> {
-  for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return;
-  if (!(await settle())) return;
+  if (!(await settleAll())) return;
   try {
     const opened = await git.openRepo(path);
     S.root = opened.root;
@@ -568,8 +574,7 @@ export async function openRepo(path: string): Promise<void> {
 /** Leaves the window with no repository, as a cancelled folder picker does, after the same asks as a switch. */
 export async function closeRepo(): Promise<void> {
   if (S.root === null) return;
-  for (const f of features()) if (f.onRepoChange?.confirm && !(await f.onRepoChange.confirm())) return;
-  if (!(await settle())) return;
+  if (!(await settleAll())) return;
   try {
     await git.closeRepo();
   } catch (e) {

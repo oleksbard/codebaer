@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Outgoing,
-  Recent, RepoItem, Rev, Scripts, StageResult, Stash, StashKind, Status } from '#ipc/git';
+  Recent, RepoItem, Rev, Scripts, StageResult, Stash, StashKind, Status, Update } from '#ipc/git';
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
@@ -12,7 +12,7 @@ import { createRepo, type Snapshot } from './repo';
 import type { Scenario } from './scenarios';
 
 export type Call = { cmd: string; args: Record<string, unknown> };
-export type MenuItem = 'open-folder' | 'open-recent' | 'orphans' | 'settings' | 'ai-tools';
+export type MenuItem = 'open-folder' | 'open-recent' | 'orphans' | 'settings' | 'ai-tools' | 'check-updates';
 
 /** `window.__mock`, for Playwright and for poking at the page from devtools. */
 export type MockApi = {
@@ -35,6 +35,8 @@ export type MockApi = {
   remotePush(upstream: string, n: number): void;
   /** Everything a terminal session printed; the newest session for no id. */
   terminalText(id?: number): string;
+  /** Prints into a terminal session as its program would, for an agent's reply; the newest session for no id. */
+  terminalWrite(text: string, id?: number): void;
   /** Resolves once no command or backend timer has been pending for a moment. */
   idle(): Promise<void>;
 };
@@ -57,6 +59,7 @@ const WATCHER_MS = 60;
 const MENU_EVENTS: Record<MenuItem, string> = {
   'open-folder': 'menu-open-folder', 'open-recent': 'menu-open-recent',
   orphans: 'menu-orphans', settings: 'menu-settings', 'ai-tools': 'menu-ai-tools',
+  'check-updates': 'menu-check-updates',
 };
 
 /** Browser mode's stand-in for the AI's icon pick: a word of the command or the repo name that names an icon. */
@@ -216,6 +219,12 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     initial_repo: (): string | null => sc.initial,
     set_unsaved: ({ unsaved: on }: { unsaved: boolean }) => { unsaved = on; },
     quit: () => { exited = true; },
+    update_enabled: (): boolean => sc.updates !== null,
+    update_check: async (): Promise<Update | null> => {
+      await sleep(opts.slow);
+      return sc.updates?.found ?? null;
+    },
+    update_install: () => { exited = true; },
     log_error: ({ message }: { message: string }) => console.error(`[backend] ${message}`),
     log_info: ({ message }: { message: string }) => console.info(`[backend] ${message}`),
     recent_repos: (): Recent[] => recents(),
@@ -376,6 +385,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     state: () => repo.snapshot(),
     remotePush: (upstream, n) => repo.remotePush(upstream, n),
     terminalText: (id) => pty.text(id),
+    terminalWrite: (text, id) => pty.print(text, id),
     idle: () => new Promise((resolve) => {
       const check = (): void => { if (pending) onSettle.push(check); else resolve(); };
       setTimeout(check, QUIET_MS);

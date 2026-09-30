@@ -9,6 +9,9 @@ export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean
 export type StageResult = { oid: string | null };
 export type Opened = { root: string; label: string; title: string | null };
 export type Recent = { path: string; name: string; label: string; favorite: boolean };
+/** A newer release, downloaded and verified. `keeps_terminals` is false when it cannot carry the running terminal
+ *  sessions over, which its restart then ends. */
+export type Update = { version: string; page: string | null; keeps_terminals: boolean };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
 export type Listing = { files: string[]; ignored: string[] };
 export type BlameLine = { oid: string; author: string; time: number; summary: string };
@@ -92,6 +95,12 @@ export const git = {
   initialRepo: () => invoke<string | null>('initial_repo'),
   setUnsaved: (unsaved: boolean) => invoke<void>('set_unsaved', { unsaved }),
   quit: () => invoke<void>('quit'),
+  /** Only main's macOS packages update themselves. */
+  updateEnabled: () => invoke<boolean>('update_enabled'),
+  /** Null when this is the newest release. Reads the release's manifest only. */
+  updateCheck: () => invoke<Update | null>('update_check'),
+  /** Downloads the update found last, puts it in place of the app and restarts, which begins as this resolves. */
+  updateInstall: () => invoke<void>('update_install'),
   /** The open repo included. */
   recentRepos: () => invoke<Recent[]>('recent_repos'),
   favoriteRepo: (path: string, favorite: boolean) => invoke<Recent[]>('favorite_repo', { path, favorite }),

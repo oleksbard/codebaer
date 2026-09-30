@@ -206,3 +206,84 @@ test('terminals: subscribe says hello, a spawn is announced after its req, and o
   expect(frames.filter((f) => f.id === id).map((f) => f.text).join('')).toContain('hi\r\n');
   expect(events.at(-2)).toEqual({ t: 'Command', id, code: 0 });
 });
+
+test('the video scenario has the two changes its story needs and three idle agent sessions', async () => {
+  const b = boot('video');
+  const s = await invoke<Status>('status');
+  expect(s.files.map((f) => f.path)).toEqual(['src/cart.ts', 'src/checkout.ts']);
+  expect(s).toMatchObject({ upstream: 'origin/item-discounts', ahead: 0 });
+  expect(b.api.terminalText(1)).toContain('Apply per-item discounts to the cart total.');
+  const events: ServerMsg[] = [];
+  const ev = new Channel<ServerMsg>();
+  ev.onmessage = (m) => events.push(m);
+  await invoke('term_subscribe', { out: new Channel<ArrayBuffer | number[]>(), ev });
+  const hello = events.find((m) => m.t === 'Hello');
+  expect(hello?.t === 'Hello' ? hello.sessions.map((x) => [x.title, x.tier, x.state.t]) : []).toEqual([
+    ['claude', 'process', 'Idle'], ['codex', 'process', 'Idle'], ['opencode', 'process', 'Idle'],
+  ]);
+});
+
+describe('a comment pasted into an agent session', () => {
+  const paste = (text: string) => invoke('term_input', { id: 1, data: `\x1b[200~${text}\x1b[201~` });
+  const typed = (data: string) => invoke('term_input', { id: 1, data });
+
+  test('is echoed once as a block, and the Enter that submits it gets no answer', async () => {
+    const b = boot('video');
+    const before = b.api.terminalText(1);
+    await paste('src/cart.ts:20\rconst net = 1;\r\rClamp this at zero.');
+    await typed('\r');
+    expect(b.api.terminalText(1).slice(before.length))
+      .toBe('src/cart.ts:20\r\n  const net = 1;\r\n\r\n  Clamp this at zero.\r\n\r\n');
+  });
+
+  test('does not swallow an Enter that comes after typing, and a second paste is a block of its own', async () => {
+    const b = boot('video');
+    await paste('one\rtwo');
+    await paste('three');
+    await typed('x');
+    const before = b.api.terminalText(1);
+    await typed('\r');
+    expect(b.api.terminalText(1).slice(before.length)).toContain('Browser mode has no agent. It heard: x');
+    expect(b.api.terminalText(1)).toContain('one\r\n  two\r\n\r\nthree\r\n\r\n');
+  });
+
+  test('still gets an answer per line in a shell, where a paste is just typing', async () => {
+    const b = boot();
+    await invoke('term_input', { id: 1, data: '\x1b[200~echo hi\x1b[201~\r' });
+    expect(b.api.terminalText(1)).toContain('echo hi\r\nhi\r\n');
+  });
+
+  test('is typing, not a block, in a task session', async () => {
+    const b = boot('video');
+    await invoke('task_run', { task: { t: 'Script', name: 'test' }, cols: 80, rows: 24 });
+    await invoke('term_input', { id: 4, data: '\x1b[200~echo\x1b[201~' });
+    expect(b.api.terminalText(4).endsWith('echo')).toBe(true);
+  });
+
+  test('is ignored by an exited session', async () => {
+    const b = boot('video');
+    await invoke('term_kill', { id: 1 });
+    const before = b.api.terminalText(1);
+    await paste('one');
+    expect(b.api.terminalText(1)).toBe(before);
+  });
+
+  test('is not needed for an Enter to draw a new prompt: with no paste before it, it only draws one', async () => {
+    const b = boot('video');
+    const before = b.api.terminalText(1);
+    await typed('\r');
+    expect(b.api.terminalText(1).slice(before.length)).toBe('\r\n\x1b[35m>\x1b[0m ');
+  });
+});
+
+test('terminalWrite prints into the given session, into the newest one for no id, and not into an exited one',
+  async () => {
+    const b = boot('video');
+    b.api.terminalWrite('one\n', 1);
+    b.api.terminalWrite('two\n');
+    await invoke('term_kill', { id: 2 });
+    b.api.terminalWrite('three\n', 2);
+    expect(b.api.terminalText(1)).toContain('one\r\n');
+    expect(b.api.terminalText(3)).toContain('two\r\n');
+    expect(b.api.terminalText(2)).not.toContain('three');
+  });

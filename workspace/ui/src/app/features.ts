@@ -11,6 +11,7 @@ import { review } from '#features/review';
 import { settings } from '#features/settings';
 import { tasks } from '#features/tasks';
 import { terminals } from '#features/terminals';
+import { updates } from '#features/updates';
 import { about, toggleSidebar } from './actions';
 import { core } from '#core/feature';
 import { expandSide, quit } from '#core/session';
@@ -28,6 +29,7 @@ const app = defineFeature({
 
 /** Palette order, hook order and repo-change order follow this list. */
 export const FEATURES = [
-  core, gitOps, review, comments, repos, terminals, files, orphans, settings, aiTools, commandIcons, tasks, app,
+  core, gitOps, review, comments, repos, terminals, files, orphans, settings, aiTools, commandIcons, tasks, updates,
+  app,
 ] as const;
 export type CommandId = CommandIds<typeof FEATURES>;

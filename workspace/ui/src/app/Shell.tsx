@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent } from 'react';
 import { toggleSide } from '#core/session';
 import { RepoSwitcher } from '#features/repos';
+import { UpdatePill } from '#features/updates';
 import { keyLabel } from '#kernel/keymap';
 import { openPalette } from '#kernel/registry';
 import { notify, useApp } from '#kernel/store';
@@ -20,6 +21,7 @@ export function Header() {
         <span className="txt">Search commands</span>
         <Kbd>{keyLabel('app.palette')}</Kbd>
       </button>
+      <UpdatePill />
     </header>
   );
 }

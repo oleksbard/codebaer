@@ -10,6 +10,7 @@ import { reviewState } from '#features/review/state';
 import { settingsState } from '#features/settings/state';
 import { tasksState } from '#features/tasks/state';
 import { terminalsState } from '#features/terminals/state';
+import { updatesState } from '#features/updates/state';
 import { S, type State } from '#kernel/store';
 
 declare module '#kernel/store' {
@@ -26,7 +27,7 @@ const storedWidth = localStorage.getItem('codebaer.sideWidth');
 const initial: Omit<State, 'palette' | 'confirm' | 'prompt' | 'toasts' | 'chord'> = {
   ...coreState(), ...gitOpsState(), ...reviewState(), ...commentsState(), ...terminalsState(), ...filesState(),
   ...orphansState(), ...settingsState(), ...aiToolsState(), ...commandIconsState(), ...tasksState(),
-  ...reposState(),
+  ...reposState(), ...updatesState(),
   sidebarHidden: localStorage.getItem('codebaer.sidebarHidden') === 'true',
   sideWidth: storedWidth ? Math.max(180, Number(storedWidth)) : null,
 };

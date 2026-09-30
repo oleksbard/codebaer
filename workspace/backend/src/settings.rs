@@ -28,6 +28,14 @@ pub enum AutoFetch {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckUpdates {
+    #[default]
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiffLayout {
     #[default]
@@ -69,6 +77,8 @@ pub struct Settings {
     pub headless_ai_provider: AiProvider,
     #[serde(rename = "general.auto-fetch")]
     pub auto_fetch: AutoFetch,
+    #[serde(rename = "general.check-updates")]
+    pub check_updates: CheckUpdates,
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
     #[serde(rename = "appearance.diff-layout")]
@@ -147,6 +157,7 @@ fn from_file(map: &Map<String, Value>) -> Settings {
     Settings {
         headless_ai_provider: choice(map, "general.headless-ai-provider"),
         auto_fetch: choice(map, "general.auto-fetch"),
+        check_updates: choice(map, "general.check-updates"),
         theme: choice(map, "appearance.theme"),
         diff_layout: choice(map, "appearance.diff-layout"),
     }
@@ -338,6 +349,7 @@ mod tests {
     const CLAUDE: Settings = Settings {
         headless_ai_provider: AiProvider::Claude,
         auto_fetch: AutoFetch::On,
+        check_updates: CheckUpdates::On,
         theme: Theme::Codebaer,
         diff_layout: DiffLayout::Unified,
     };
@@ -391,6 +403,15 @@ mod tests {
     }
 
     #[test]
+    fn update_checks_are_on_unless_the_file_says_off() {
+        assert_eq!(Settings::default().check_updates, CheckUpdates::On);
+        let (_d, f) = file(r#"{"general.check-updates": "off"}"#);
+        assert_eq!(read_at(&f), Settings { check_updates: CheckUpdates::Off, ..Settings::default() });
+        let (_d, f) = file(r#"{"general.check-updates": false}"#);
+        assert_eq!(read_at(&f).check_updates, CheckUpdates::On);
+    }
+
+    #[test]
     fn a_valid_theme_is_read() {
         let (_d, f) = file(r#"{"appearance.theme": "catppuccin-latte"}"#);
         assert_eq!(read_at(&f), Settings { theme: Theme::CatppuccinLatte, ..Settings::default() });
@@ -441,8 +462,8 @@ mod tests {
         write_at(&f, &CLAUDE).unwrap();
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
-            "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "appearance.theme": "codebaer",
-            "appearance.diff-layout": "unified",
+            "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "general.check-updates": "on",
+            "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
         });
         assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
@@ -468,7 +489,7 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
-            "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
+            "general.check-updates": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
         });
         assert_eq!(on_disk, want);
     }
@@ -669,8 +690,8 @@ mod tests {
         use serde_json::json;
         let with = |ai: &str, theme: &str| {
             json!({
-                "general.headless-ai-provider": ai, "general.auto-fetch": "on", "appearance.theme": theme,
-                "appearance.diff-layout": "unified",
+                "general.headless-ai-provider": ai, "general.auto-fetch": "on", "general.check-updates": "on",
+                "appearance.theme": theme, "appearance.diff-layout": "unified",
             })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());

@@ -373,8 +373,9 @@ pub fn term_check_cwd(state: State<'_, PtyState>) -> Result<(), AppError> {
     control(&mut c, &ClientMsg::CheckCwd)
 }
 
-/// Quitting is the one exit that takes the sessions with it. A rebuild kills this process with
-/// SIGKILL, which cannot run this, which is exactly how the host tells the two apart.
+/// Quitting is the exit that takes the sessions with it. A rebuild kills this process with
+/// SIGKILL, which cannot run this, which is exactly how the host tells the two apart; a restart into
+/// an update that can take the sessions over skips it on purpose.
 pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<PtyState>();
     let mut c = state.0.lock().unwrap();

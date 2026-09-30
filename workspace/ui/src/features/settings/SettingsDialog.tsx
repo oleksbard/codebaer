@@ -70,7 +70,9 @@ export function SettingsDialog() {
           <RT.Content key={s.id} className="settings-pane" value={s.id} tabIndex={-1}>
             <h3 className="settings-pane-title">{s.label}</h3>
             <div className="settings-pane-body">
-              {s.id === 'commands' ? <CommandsPane /> : s.options.map((o) => <OptionRow key={o.key} option={o} />)}
+              {s.id === 'commands'
+                ? <CommandsPane />
+                : s.options.filter((o) => o.hidden?.() !== true).map((o) => <OptionRow key={o.key} option={o} />)}
             </div>
           </RT.Content>
         ))}

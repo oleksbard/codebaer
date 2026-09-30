@@ -37,10 +37,10 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 
 `workspace/ui/mock.html` runs the real frontend in a browser on a fake backend, so a UI change can be seen and tested without Tauri. `workspace/ui/src/mock/boot.ts` installs `mockIPC` from `@tauri-apps/api/mocks`, then loads `main.tsx` unchanged. `vite build` bundles only `index.html`, so nothing under `workspace/ui/src/mock/` ships.
 
-- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`.
+- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`, `terminalWrite`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
-- `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`).
-- `scenarios.ts`: `?scenario=` is `review` (default), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo` or `no-git`. `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome.
+- `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`). An agent session echoes a bracketed paste, which is how a comment arrives, once as a block and gives the Enter that submits it no answer; `__mock.terminalWrite` prints its reply.
+- `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` or `update` (a newer release that Check for Updates… finds). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome.
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -109,6 +109,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          and their cache, the asker the repo icons share (icons.ts), the icon and the picker
     ai-tools/            the Explore AI Tools dialog: a card per agent CLI (catalog.ts), with its install command
                          and install guide while the backend cannot find it, marked installed once it can
+    updates/             the self-update: the checks, Restart to Update and the mark that the restarted app reads
+                         (updates.ts), and the pill in the header
   app/                   composition only:
     App.tsx, Shell.tsx, Sidebar.tsx   the window, the header and sidebar gutter, the sidebar frame and activity bar
     OverlayHost.tsx      palette, confirm, prompt, then every registered overlay; toasts and the chord hint
@@ -131,6 +133,7 @@ workspace/backend/src/   Rust backend
                          locale and PATH dirs, opening a URL
   ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command and repo icons
   browser.rs             opens an https page in the default browser
+  updates.rs             the self-update through tauri-plugin-updater: check, download, install and restart
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),
@@ -183,6 +186,7 @@ Adding a feature:
 - Never create tags or releases. The owner releases with `pnpm release` (`scripts/release.mjs`): it writes the notes for main's head on origin with Claude Opus through the local `claude` CLI, replaces any draft with a draft of that commit carrying them, and starts `.github/workflows/release.yml`. That workflow waits for main's CI on the commit, attaches the app CI built and smoke-tested there (kept for 30 days), and publishes the draft, which creates the tag. Commits pushed after that are not in the release. `install.sh` is what the README's install one-liner runs.
 - Releases are macOS on Apple Silicon, plus the Linux x86_64 beta's `.deb` and `.rpm` when `linux.yml` passed on the same commit; without them `release.yml` publishes the macOS app alone and says so. `install.sh` installs on macOS, and on Linux downloads and checks the package and prints the `apt`, `dnf` or `zypper` line. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`. Platform code goes in `workspace/backend/src/sys/`, and the frontend reads the platform from `kernel/platform.ts`; the Linux keymap is `app/keymap/linux.ts`.
 - Every file the updater installs is signed. On main, the Package step of `ci.yml` and the `package` job of `linux.yml` sign the macOS tarball and the Linux packages with `tauri signer sign`, using the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets, and `scripts/updates.mjs verify` checks each signature against `plugins.updater.pubkey` in `tauri.conf.json`. `release.yml` then writes `latest.json` with `scripts/updates.mjs manifest`: the version, the notes, the terminal protocol (`PROTO`), and a URL and signature per platform. The updater reads it from the latest release. Changing the key pair strands every installed copy on its version until it is installed again by hand.
+- Only a build compiled with `CODEBAER_UPDATES` set updates itself. `ci.yml` sets it for main's macOS build only, so a local, pull request or Linux build never checks. On main, the `Signing identity` step of `ci.yml` signs the app with the self-signed certificate in the `MACOS_CERTIFICATE` (a `.p12` in base64) and `MACOS_CERTIFICATE_PASSWORD` secrets. macOS keeps the folder access that a user gave against this certificate, and an ad hoc signature changes with each build. `codesign` accepts only a trusted identity, so the step trusts the certificate on the runner first. The owner made the certificate once with `/usr/bin/openssl req -x509` (key usage `digitalSignature`, extended key usage `codeSigning`, 20 years) and `/usr/bin/openssl pkcs12 -export`. A new certificate makes macOS ask each user for folder access one more time.
 
 ## Boundaries
 

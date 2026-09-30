@@ -11,6 +11,8 @@ export type Option = {
     uses?(): { label: string; icon: string }[];
     /** Choices that cannot be picked right now, with the reason, keyed by value. */
     unavailable?(): ReadonlyMap<string, string>;
+    /** True while the option does nothing in this build. */
+    hidden?(): boolean;
   };
 }[SettingKey];
 export type Section = { id: string; label: string; options: Option[] };
@@ -40,6 +42,14 @@ export const SECTIONS: Section[] = [
           + 'and every few minutes after that, so the count of commits to pull stays current. '
           + 'It never pulls. Your branch and files are left as they are.',
         choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
+      },
+      {
+        key: 'general.check-updates',
+        label: 'Check for updates',
+        description: 'Looks for a new release a little after the app starts and every few hours. '
+          + 'It is downloaded and installed only when you restart from the button in the header.',
+        choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
+        hidden: () => !S.canUpdate,
       },
     ],
   },

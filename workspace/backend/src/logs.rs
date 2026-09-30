@@ -44,8 +44,9 @@ pub fn init(dir: &Path, who: &str) {
     sweep(dir, SystemTime::now());
     let sink = Daily { dir: dir.to_path_buf() };
     // env_logger's own default keeps `error` only, which would drop every warning the app
-    // already writes and had nowhere to put. RUST_LOG still overrides this.
-    let env = env_logger::Env::default().default_filter_or("info");
+    // already writes and had nowhere to put. RUST_LOG still overrides this. The updater plugin logs a
+    // check that fails offline as an error; the frontend logs it once per reason instead.
+    let env = env_logger::Env::default().default_filter_or("info,tauri_plugin_updater=off");
     let _ = env_logger::Builder::from_env(env).target(env_logger::Target::Pipe(Box::new(sink))).try_init();
     // also what tells a reader where one run ends and the next begins
     log::info!("{who} {} starting, pid {}", env!("CARGO_PKG_VERSION"), std::process::id());

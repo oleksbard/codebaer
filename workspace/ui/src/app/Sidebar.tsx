@@ -10,6 +10,7 @@ import { allChangesShown, QueueList, type QueueSection } from '#features/review'
 import { openSettings } from '#features/settings';
 import { TaskMenu } from '#features/tasks';
 import { TerminalRail } from '#features/terminals';
+import { checkForUpdates } from '#features/updates';
 import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
 import { Kbd } from '#ui/Kbd';
@@ -40,6 +41,7 @@ function FilesIcon() {
 }
 
 function BrandMenu() {
+  const s = useApp();
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -58,6 +60,11 @@ function BrandMenu() {
           <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
             Terminals and Orphans…
           </DropdownMenu.Item>
+          {s.canUpdate && (
+            <DropdownMenu.Item className="menu-item" onSelect={() => void checkForUpdates()}>
+              Check for Updates…
+            </DropdownMenu.Item>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

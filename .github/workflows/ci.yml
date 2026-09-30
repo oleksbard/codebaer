@@ -50,7 +50,47 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo clippy --manifest-path workspace/backend/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path workspace/backend/Cargo.toml
+      # main's build gets the project's own certificate, not an ad hoc signature: macOS keeps the folder access
+      # that a user gave against the certificate, and an ad hoc signature changes with each build
+      - name: Signing identity
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            echo "::error::there is no MACOS_CERTIFICATE secret; AGENTS.md tells how the owner makes it"
+            exit 1
+          fi
+          p12="$RUNNER_TEMP/signing.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(uuidgen)
+          base64 --decode <<< "$CERTIFICATE" > "$p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # codesign accepts only a trusted identity. The runner can trust one without a password prompt only
+          # after this change to its authorization database
+          /usr/bin/openssl pkcs12 -in "$p12" -nokeys -passin env:CERTIFICATE_PASSWORD -out "$RUNNER_TEMP/signing.pem"
+          rm "$p12"
+          sudo security authorizationdb write com.apple.trust-settings.admin allow
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain \
+            "$RUNNER_TEMP/signing.pem"
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '$1 == "1)" { print $2 }')
+          if [ -z "$identity" ]; then
+            security find-identity -p codesigning "$keychain"
+            echo "::error::the MACOS_CERTIFICATE secret holds no trusted code-signing identity"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
       - run: pnpm tauri build --ci
+        env:
+          # the build that updates itself, see updates.rs
+          CODEBAER_UPDATES: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && '1' || '' }}
       - run: scripts/smoke.sh
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
