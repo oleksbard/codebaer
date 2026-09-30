@@ -1,8 +1,19 @@
+import { vi } from 'vitest';
 import './app/state';
 import './app/keymap';
 import { setMotion } from './ui/motion';
 
 setMotion('off');
+
+// @xterm/addon-unicode-graphemes 0.4.0 decodes its width table with Buffer when Buffer exists, then reads the
+// table's header through a DataView over the whole Buffer pool, not over the table. In Node the header then comes
+// from whatever else the pool holds, and the import can throw "Data error". WKWebView has no Buffer.
+vi.mock('@xterm/addon-unicode-graphemes', () => ({
+  UnicodeGraphemesAddon: class {
+    activate(): void {}
+    dispose(): void {}
+  },
+}));
 
 // jsdom implements no Range geometry, and CodeMirror measures the document
 // whenever a dispatch asks to scroll a chunk into view
