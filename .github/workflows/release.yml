@@ -142,6 +142,8 @@ jobs:
           fi
           gh api "repos/$GH_REPO/releases/$ID" --jq .body > "$RUNNER_TEMP/notes.md"
           node scripts/updates.mjs manifest release "$GH_REPO" "$TAG" "$RUNNER_TEMP/notes.md"
+          # latest.json carries each signature, and the updater reads it from there, never from a .sig asset
+          rm release/*.sig
           (cd release && sha256sum -- * > SHA256SUMS.txt)
           gh release upload "$TAG" release/* --clobber
       - name: Publish the release
@@ -149,8 +151,7 @@ jobs:
           ID: ${{ steps.draft.outputs.id }}
         run: |
           assets=$(gh api "repos/$GH_REPO/releases/$ID" --jq '.assets[].name')
-          for name in codebaer-macos-arm64.tar.gz codebaer-macos-arm64.tar.gz.sig codebaer-macos-arm64.dmg latest.json \
-            SHA256SUMS.txt; do
+          for name in codebaer-macos-arm64.tar.gz codebaer-macos-arm64.dmg latest.json SHA256SUMS.txt; do
             if ! grep -qxF "$name" <<< "$assets"; then
               echo "::error::the draft for $TAG has no $name"
               exit 1
