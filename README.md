@@ -30,7 +30,7 @@ xattr -dr com.apple.quarantine /Applications/CodeBär.app
 
 From 0.5.0 the app updates itself: a little after it starts and every few hours it looks for a new release, and a button in the header then downloads and installs it and restarts the app. Running terminals carry over unless the release says otherwise. Settings, General, Check for updates turns this off.
 
-From 0.5.0, each release has the same certificate. After the update to 0.5.0, macOS asks one more time for access to protected folders, such as Documents or Desktop. Then it keeps that access across updates.
+Every build has a new ad-hoc signature, so after an update macOS asks again for access to protected folders such as Documents or Desktop.
 
 ### Linux (beta)
 
