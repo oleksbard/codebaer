@@ -37,7 +37,7 @@ test('popLayout takes the exiting queue row out of flow, so the row below starts
   const read = await recordPop(
     page, '.row[data-key="unstaged:src/cart.ts"]', '.row[data-key="unstaged:src/checkout.ts"]', beforeY,
   );
-  await page.keyboard.press('ControlOrMeta+Shift+Y'); // stages the open file, src/cart.ts
+  await page.keyboard.press('Meta+Shift+Y'); // stages the open file, src/cart.ts
   await mock.idle();
   await cart.waitFor({ state: 'detached', timeout: 2000 });
   const frames = await read();

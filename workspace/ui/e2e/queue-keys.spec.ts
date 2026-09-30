@@ -8,7 +8,7 @@ test('Enter right after staging the selected file opens the row it moved to, not
 ) => {
   const mock = await open('review', FULL_MOTION);
   await page.locator('.side .list').focus();
-  await page.keyboard.press('ControlOrMeta+Shift+Y'); // stages the open file, src/cart.ts, which moves on
+  await page.keyboard.press('Meta+Shift+Y'); // stages the open file, src/cart.ts, which moves on
   await page.keyboard.press('Enter');
   await mock.idle();
   await row(page, 'unstaged', 'src/cart.ts').waitFor({ state: 'detached', timeout: 1000 });
@@ -21,7 +21,7 @@ test('ArrowDown right after staging the selected file moves on from the row it m
   async ({ page, open }) => {
     const mock = await open('review', FULL_MOTION);
     await page.locator('.side .list').focus();
-    await page.keyboard.press('ControlOrMeta+Shift+Y');
+    await page.keyboard.press('Meta+Shift+Y');
     await page.locator('.side .list').focus();
     await page.keyboard.press('ArrowDown');
     await mock.idle();

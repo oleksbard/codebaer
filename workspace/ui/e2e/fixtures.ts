@@ -67,7 +67,8 @@ export const test = base.extend<Fixtures>({
 export { expect };
 
 /** `open` params for a test of the heavy motion: on a Linux host the default platform is linux, whose `lite`
- *  level turns that motion off. */
+ *  level turns that motion off. The page then runs the macOS keymap, so a Mod key is `Meta`, not `ControlOrMeta`,
+ *  which is Control on a Linux host. */
 export const FULL_MOTION = { platform: 'macos', motion: 'on' };
 
 /** The queue row for a path, in the Changes (`unstaged`) or Staged section. */

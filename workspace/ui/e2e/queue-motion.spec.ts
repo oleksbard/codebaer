@@ -5,7 +5,7 @@ test('a file moves from Changes to Staged: it lands in Staged, and Changes keeps
 ) => {
   const mock = await open('review', FULL_MOTION);
   const read = await recordFade(page, '.row[data-key="unstaged:src/cart.ts"]');
-  await page.keyboard.press('ControlOrMeta+Shift+Y'); // stages the open file, src/cart.ts
+  await page.keyboard.press('Meta+Shift+Y'); // stages the open file, src/cart.ts
   await mock.idle();
   await row(page, 'unstaged', 'src/cart.ts').waitFor({ state: 'detached', timeout: 2000 });
   // a broken (instant) implementation would have removed the row right away, never sampled with a sub-1
