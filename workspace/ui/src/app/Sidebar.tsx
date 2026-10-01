@@ -115,7 +115,7 @@ export function Sidebar() {
   const [open, setOpen] = useState<Record<QueueSection, boolean>>({ unstaged: true, staged: true, commits: true });
   const q = s.status ? buildQueue(s.status) : { unstaged: [], staged: [] };
   return (
-    <aside className="side">
+    <aside className="side glow">
       {s.folderOnly
         ? <div className="side-note">
           {s.gitMissing === null ? 'This folder has no git repository' : 'git is not installed'}

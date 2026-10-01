@@ -4,13 +4,15 @@ import { AllChanges, allChangesShown, ReviewPane } from '#features/review';
 import { Terminals } from '#features/terminals';
 import { OverlayHost } from './OverlayHost';
 import { Gutter, Header, SideHandle } from './Shell';
+import { useGlowScene } from './glow';
 import { ActivityBar, Sidebar } from './Sidebar';
 import { useApp } from '#kernel/store';
 
 export function App() {
   const s = useApp();
+  useGlowScene(s);
   const style = s.sideWidth ? ({ '--side-w': `${s.sideWidth}px` } as CSSProperties) : undefined;
-  const cls = `app${s.sidebarHidden ? ' nosidebar' : ''}${s.sideCollapsed ? ' sidecollapsed' : ''}`
+  const cls = `app glow${s.sidebarHidden ? ' nosidebar' : ''}${s.sideCollapsed ? ' sidecollapsed' : ''}`
     + (s.tab === 'terminals' ? ' terminals' : '');
   return (
     <>

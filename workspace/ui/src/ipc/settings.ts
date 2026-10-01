@@ -1,3 +1,4 @@
+import type { GlowMode } from '#ui/glow';
 import { DEFAULT_THEME, type Theme } from '#ui/theme';
 
 export const AI_PROVIDERS = ['claude', 'codex', 'opencode'] as const;
@@ -7,7 +8,7 @@ export type AiProvider = 'off' | (typeof AI_PROVIDERS)[number];
 export type Settings = {
   'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off';
   'general.check-updates': 'on' | 'off'; 'appearance.theme': Theme;
-  'appearance.diff-layout': 'unified' | 'side-by-side';
+  'appearance.diff-layout': 'unified' | 'side-by-side'; 'appearance.glow': GlowMode;
 };
 export type SettingKey = keyof Settings;
 
@@ -24,5 +25,5 @@ export type HiddenScripts = Record<string, string[]>;
 
 export const DEFAULTS: Settings = {
   'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'general.check-updates': 'on',
-  'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified',
+  'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified', 'appearance.glow': 'animated',
 };

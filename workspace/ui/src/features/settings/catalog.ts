@@ -72,6 +72,16 @@ export const SECTIONS: Section[] = [
           + 'The staged view always uses one column.',
         choices: [{ value: 'unified', label: 'Unified' }, { value: 'side-by-side', label: 'Side by side' }],
       },
+      {
+        key: 'appearance.glow',
+        label: 'Glow',
+        description: 'Soft lights in the theme\'s colours behind the header, the activity bar and the sidebar. '
+          + 'They change slowly with the time of day, and each tab has its own. Animated moves them from one tab\'s '
+          + 'lights to the next; Enabled changes them at once. The editor and the terminals stay plain.',
+        choices: [
+          { value: 'off', label: 'Off' }, { value: 'on', label: 'Enabled' }, { value: 'animated', label: 'Animated' },
+        ],
+      },
     ],
   },
   // a list the user edits rather than choices, so SettingsDialog.tsx draws this pane itself

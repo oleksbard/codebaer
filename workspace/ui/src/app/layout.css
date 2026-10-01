@@ -6,7 +6,7 @@
   grid-template-rows: 38px minmax(0,1fr);
   grid-template-columns: 72px minmax(0,1fr);
   grid-template-areas: "head head" "act frame";
-  background: var(--chrome);
+  --glow-base: var(--chrome);
 
   &.nosidebar { grid-template-columns: 0 minmax(0,1fr); }
 }
@@ -148,7 +148,7 @@
 .side {
   grid-area: side;
   border-right: 1px solid var(--line);
-  background: var(--panel);
+  --glow-base: var(--panel);
   display: flex;
   flex-direction: column;
   /* with the width below, the panel slides out under the frame's left edge instead of reflowing as its

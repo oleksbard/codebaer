@@ -213,6 +213,7 @@ export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
                 className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`
                   + `${away ? ' outside' : ''}`}
                 layoutDependency={sessionKey}
+                data-term={s.id}
                 aria-current={s.id === active || undefined}
                 aria-label={label}
                 title={label}

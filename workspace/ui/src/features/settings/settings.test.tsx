@@ -28,6 +28,7 @@ const THEME = 'appearance.theme';
 const AUTO_FETCH = 'general.auto-fetch';
 const DIFF = 'appearance.diff-layout';
 const CHECK_UPDATES = 'general.check-updates';
+const GLOW = 'appearance.glow';
 let root: Root;
 /** What the backend holds; only a save that succeeds changes it. */
 let disk: Settings;
@@ -375,6 +376,21 @@ describe('appearance', () => {
     } finally {
       S.open = null;
     }
+  });
+
+  it('offers the glow, animated by default, and sets it on the page and in the file', async () => {
+    await openAppearance();
+    expect(pressed(GLOW)).toEqual(['Animated']);
+    choice('Off', GLOW).click();
+    await tick();
+    expect(git.saveSettings).toHaveBeenCalledExactlyOnceWith({ ...DEFAULTS, [GLOW]: 'off' });
+    expect(document.documentElement.dataset.glow).toBe('off');
+    choice('Enabled', GLOW).click();
+    await tick();
+    expect(document.documentElement.dataset.glow).toBe('on');
+    choice('Animated', GLOW).click();
+    await tick();
+    expect(document.documentElement.dataset.glow).toBe('animated');
   });
 });
 

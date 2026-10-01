@@ -2,6 +2,7 @@
 @import '../ui/themes.css';
 @import './base.css';
 @import '../ui/ui.css';
+@import '../ui/glow.css';
 @import './layout.css';
 @import '../features/repos/repos.css';
 @import '../ui/list.css';

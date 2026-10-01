@@ -65,7 +65,7 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
   ui/                    presentational primitives (Radix-based; List.tsx for the queue and the tree), tokens,
                          themes; the motion level and its tokens (motion.ts), the motion primitives (MotionRoot,
                          Presence, Reveal, Count, Toasts, Pop, useLatest) and the menu and dialog focus rules
-                         (focus.ts)
+                         (focus.ts); the shell glow (glow.ts, glow.css) and the sun, moon and seasons it follows (sky.ts)
   editor/                CodeMirror toolkit: merge view, language loading, theme, changes-only folds and the
                          keepVisible facet; no app state
   ipc/                   every invoke(), Channel and event wrapper: git.ts (git commands, AppError, errText),
@@ -120,6 +120,7 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
     bootstrap.ts         register(), start()
     state.ts             sets every declared field's initial value
     actions.ts           app-level actions: tab switch, sidebar toggle and width
+    glow.ts              the glow's scene for each tab, and the hook that shows it
     keymap/              the binding tables, one per platform (mac.ts, linux.ts)
     styles.css           imports every folder's CSS in cascade order; base, layout, panes and overlays CSS
 workspace/backend/src/   Rust backend

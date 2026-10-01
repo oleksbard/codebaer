@@ -9,6 +9,7 @@ import { toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
 import { idle } from '#kernel/registry';
 import { notify, S } from '#kernel/store';
+import { setGlow } from '#ui/glow';
 import { getTheme, isDark, setTheme } from '#ui/theme';
 
 /** One at a time: two saves in flight could land in either order, and a read between a save and
@@ -39,6 +40,7 @@ function showTheme(): void {
 function showSettings(): void {
   showTheme();
   applyDiffLayout();
+  setGlow(S.settings['appearance.glow']);
 }
 
 /** Like `confirmed`, for the command list and the hidden scripts. */

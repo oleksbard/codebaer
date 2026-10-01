@@ -43,6 +43,16 @@ pub enum DiffLayout {
     SideBySide,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+/// `On` (shown as Enabled) keeps the time of day and drops the lights' flight between scenes.
+pub enum Glow {
+    Off,
+    On,
+    #[default]
+    Animated,
+}
+
 /// The ids of the frontend's `THEMES` in `workspace/ui/src/ui/theme.ts`; a theme added there needs its variant here.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -83,6 +93,8 @@ pub struct Settings {
     pub theme: Theme,
     #[serde(rename = "appearance.diff-layout")]
     pub diff_layout: DiffLayout,
+    #[serde(rename = "appearance.glow")]
+    pub glow: Glow,
 }
 
 /// A command saved in Settings. `repo` is the canonical root of the one repository it belongs to, the
@@ -160,6 +172,7 @@ fn from_file(map: &Map<String, Value>) -> Settings {
         check_updates: choice(map, "general.check-updates"),
         theme: choice(map, "appearance.theme"),
         diff_layout: choice(map, "appearance.diff-layout"),
+        glow: choice(map, "appearance.glow"),
     }
 }
 
@@ -352,6 +365,7 @@ mod tests {
         check_updates: CheckUpdates::On,
         theme: Theme::Codebaer,
         diff_layout: DiffLayout::Unified,
+        glow: Glow::Animated,
     };
 
     #[test]
@@ -427,6 +441,17 @@ mod tests {
     }
 
     #[test]
+    fn the_glow_is_animated_unless_the_file_says_otherwise() {
+        assert_eq!(Settings::default().glow, Glow::Animated);
+        let (_d, f) = file(r#"{"appearance.glow": "off"}"#);
+        assert_eq!(read_at(&f), Settings { glow: Glow::Off, ..Settings::default() });
+        let (_d, f) = file(r#"{"appearance.glow": "on"}"#);
+        assert_eq!(read_at(&f).glow, Glow::On);
+        let (_d, f) = file(r#"{"appearance.glow": false}"#);
+        assert_eq!(read_at(&f).glow, Glow::Animated);
+    }
+
+    #[test]
     fn the_diff_layout_is_unified_unless_the_file_says_side_by_side() {
         assert_eq!(Settings::default().diff_layout, DiffLayout::Unified);
         let (_d, f) = file(r#"{"appearance.diff-layout": "side-by-side"}"#);
@@ -463,7 +488,7 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "general.check-updates": "on",
-            "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
+            "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
@@ -490,6 +515,7 @@ mod tests {
         let want = serde_json::json!({
             "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
             "general.check-updates": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
+            "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
     }
@@ -691,7 +717,7 @@ mod tests {
         let with = |ai: &str, theme: &str| {
             json!({
                 "general.headless-ai-provider": ai, "general.auto-fetch": "on", "general.check-updates": "on",
-                "appearance.theme": theme, "appearance.diff-layout": "unified",
+                "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
             })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());

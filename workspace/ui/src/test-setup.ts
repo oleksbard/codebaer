@@ -27,6 +27,7 @@ HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.hasPointerCapture ??= () => false;
 HTMLElement.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.getAnimations ??= () => [];
 // nor the Web Animations API. The hunk ghost calls it directly and awaits `finished`; Motion detects
 // WAAPI support from `Element.prototype.animate` alone and then drives its own completion off `onfinish`,
 // so the stub has to call that too, or an AnimatePresence exit never resolves and its node never unmounts.

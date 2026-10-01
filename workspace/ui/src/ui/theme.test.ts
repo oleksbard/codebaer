@@ -76,6 +76,7 @@ describe('theme switch', () => {
   it('setTheme writes the root attribute and localStorage', () => {
     setTheme('nord');
     expect(document.documentElement.dataset.theme).toBe('nord');
+    expect(document.documentElement.dataset.scheme).toBe('dark');
     expect(localStorage.getItem('codebaer.theme')).toBe('nord');
     expect(getTheme()).toBe('nord');
   });
@@ -84,6 +85,7 @@ describe('theme switch', () => {
     localStorage.setItem('codebaer.theme', 'gruvbox-light');
     initTheme();
     expect(document.documentElement.dataset.theme).toBe('gruvbox-light');
+    expect(document.documentElement.dataset.scheme).toBe('light');
 
     delete document.documentElement.dataset.theme;
     localStorage.setItem('codebaer.theme', 'solarised');

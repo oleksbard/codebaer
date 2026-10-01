@@ -34,11 +34,17 @@ export function getTheme(): Theme {
 
 /** The settings file owns the choice; the copy in localStorage only lets the first paint use it. */
 export function setTheme(t: Theme): void {
-  document.documentElement.dataset.theme = t;
+  apply(t);
   localStorage.setItem(KEY, t);
 }
 
 export function initTheme(): void {
   const t = localStorage.getItem(KEY);
-  if (isTheme(t)) document.documentElement.dataset.theme = t;
+  if (isTheme(t)) apply(t);
+}
+
+/** The scheme lets a rule tell the light themes from the dark ones without listing them (glow.css). */
+function apply(t: Theme): void {
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.scheme = isDark(t) ? 'dark' : 'light';
 }
