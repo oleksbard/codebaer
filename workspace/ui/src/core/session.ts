@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { EditorState, type Text } from '@codemirror/state';
 import { getChunks } from '@codemirror/merge';
 import { unfoldAll } from '@codemirror/language';
+import { conflictMarkers, selectFirstConflict } from '#editor/conflicts';
 import { foldToChanges } from '#editor/context-view';
 import { buildState, onCursor, replaceDoc, replaceOriginal, type ViewKind } from '#editor/editor';
 import { pickFolder } from '#ipc/dialog';
@@ -441,12 +442,14 @@ async function openConflict(path: string, hand = handOver(null)): Promise<void> 
       path, view: 'unstaged', eol: f.eol, baseline: f.exists ? f.text : null, originalOid: null,
       originalExists: false, docOid: null, dirty: false, badge: null, panel: null, conflicted: true,
     };
-    const state = await buildState('plain', path, f.text, null, onEdit, editorExtensions(), undefined, hand.from);
+    const state = await buildState('plain', path, f.text, null, onEdit, [...editorExtensions(), conflictMarkers],
+      undefined, hand.from);
     if (!live()) return;
-    hand.carry(opened, f, state.doc);
+    const carried = hand.carry(opened, f, state.doc);
     S.open = opened;
     view.setState(state);
     afterOpen();
+    if (!carried) selectFirstConflict(view);
   } catch (e) {
     if (!live()) return;
     if (hand.unsaved()) { toast(errText(e), 'err'); return; }

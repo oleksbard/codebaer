@@ -38,3 +38,48 @@
 @keyframes landing-flash {
   from { background-color: var(--accent-soft); }
 }
+
+/* VS Code's colours: current (ours) green, incoming (theirs) blue. Three classes, to outrank the theme's
+   .cm-activeLine, so a band keeps its side's colour under the cursor. */
+.cm-editor .cm-line.cm-conflict { --side: var(--muted); box-shadow: inset 3px 0 0 var(--side); }
+.cm-editor .cm-line.cm-conflictCurrent { --side: var(--add); }
+.cm-editor .cm-line.cm-conflictIncoming { --side: var(--info); }
+.cm-editor .cm-line.cm-conflict { background: color-mix(in srgb, var(--side) 11%, transparent); }
+.cm-editor .cm-line.cm-conflictHead { background: color-mix(in srgb, var(--side) 24%, transparent); }
+.cm-editor .cm-line.cm-conflictSep {
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--add) 11%, transparent) 50%,
+    color-mix(in srgb, var(--info) 11%, transparent) 50%);
+  box-shadow: none;
+}
+
+.cm-conflictMarker, .cm-conflictMarker * { color: var(--faint); }
+
+.cm-conflictActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  vertical-align: 1px;
+  font: 500 var(--fs-1)/1.6 var(--ui);
+}
+
+.cm-conflictTag {
+  color: color-mix(in srgb, var(--side) 60%, var(--text));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cm-conflictActions button {
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover { border-color: var(--side); }
+  &[name=current]:hover { --side: var(--add); }
+  &[name=incoming]:hover { --side: var(--info); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+}

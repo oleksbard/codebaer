@@ -4,6 +4,7 @@ import { blameShort, blameText, buildQueue, plural, split } from '#core/model';
 import {
   closeFile, hasUnstaged, keepMine, reload, toggleChangesOnly, view, viewChanges,
 } from '#core/session';
+import { conflictIndexAtCursor, conflicts } from '#editor/conflicts';
 import { chunkCount, chunkIndexAtCursor } from '#editor/editor';
 import { CommentLayer, PendingPill } from '#features/comments';
 import { git, type DiffStat as Stat } from '#ipc/git';
@@ -107,8 +108,13 @@ function TitleBar() {
       <div className="right"><PendingPill />{badge}{close}</div></div>;
   }
   if (o.conflicted) {
+    const total = conflicts(view.state).length;
+    const at = conflictIndexAtCursor(view.state);
+    const pos = !total ? 'no conflict markers left'
+      : at < 0 ? plural(total, 'conflict')
+        : <>conflict <Count value={at + 1} /> of {total}</>;
     return (
-      <div className="tbar">{title}<span className="pos">conflict</span>{blame}
+      <div className="tbar">{title}<span className="pos">{pos}</span>{blame}
         <div className="right"><PendingPill />{badge}
           <Button variant="primary" onClick={() => void acceptFile(o.path)}>Mark resolved</Button>{close}</div>
       </div>

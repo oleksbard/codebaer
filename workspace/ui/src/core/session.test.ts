@@ -274,6 +274,16 @@ describe('an unsaved conflict resolution', () => {
   });
 });
 
+describe('a conflicted file', () => {
+  it('opens with the cursor on the first conflict', async () => {
+    S.status = status('a.txt', 'U', 'U', false, true);
+    g.status!.mockResolvedValue(S.status);
+    g.readFile!.mockResolvedValue(file('one\ntwo\n<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> b\n'));
+    await openRow({ ...B, path: 'a.txt', letter: '!', conflicted: true });
+    expect(view.state.doc.lineAt(view.state.selection.main.head).number).toBe(3);
+  });
+});
+
 describe('quitting', () => {
   it('quits at once with nothing unsaved', async () => {
     await openUnstaged('a.txt', blob('index\n'), file('disk\n'));
