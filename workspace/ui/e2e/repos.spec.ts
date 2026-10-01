@@ -41,18 +41,20 @@ test('the open repo is starred in its preferences, and a closed one waits to be 
 });
 
 test('a push still running keeps the repo from closing, and the close works after it', async ({ page, open }) => {
-  const mock = await open('review', { slow: '600' });
+  const mock = await open();
   const close = async () => {
     await page.locator('.repo-trigger').click();
     await page.getByRole('menuitem', { name: 'Close Repository' }).click();
   };
+  await mock.hold('push');
   await page.getByRole('button', { name: 'Push 1 commit' }).click();
   await close();
   await expect(page.locator('.toast')).toHaveText(['Wait for the git action to finish']);
-  await mock.idle();
   expect(await mock.calls()).not.toContain('close_repo');
-  await expect(page.locator('.toast')).toHaveText(['Wait for the git action to finish', 'Pushed']);
 
+  await mock.release('push');
+  await mock.idle();
+  await expect(page.locator('.toast')).toHaveText(['Wait for the git action to finish', 'Pushed']);
   await close();
   await mock.idle();
   await expect(page.getByRole('heading', { name: 'No repository open' })).toBeVisible();

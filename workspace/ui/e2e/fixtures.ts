@@ -11,6 +11,8 @@ export type Mock = {
   agentEdit(path: string, text: string | null, opts?: { watcher?: boolean }): Promise<void>;
   emit(event: string): Promise<void>;
   fail(cmd: string, error: AppError): Promise<void>;
+  hold(cmd: string): Promise<void>;
+  release(cmd: string): Promise<void>;
   menu(item: MenuItem, path?: string): Promise<void>;
   quit(): Promise<void>;
   exited(): Promise<boolean>;
@@ -28,6 +30,8 @@ const mockOf = (page: Page): Mock => ({
     page.evaluate(([p, t, o]) => globalThis.__mock!.agentEdit(p, t, o), [path, text, opts] as const),
   emit: (event) => page.evaluate((e) => globalThis.__mock!.emit(e), event),
   fail: (cmd, error) => page.evaluate(([c, e]) => globalThis.__mock!.fail(c, e), [cmd, error] as const),
+  hold: (cmd) => page.evaluate((c) => globalThis.__mock!.hold(c), cmd),
+  release: (cmd) => page.evaluate((c) => globalThis.__mock!.release(c), cmd),
   menu: (item, path) => page.evaluate(([i, p]) => globalThis.__mock!.menu(i, p), [item, path] as const),
   quit: () => page.evaluate(() => globalThis.__mock!.quit()),
   exited: () => page.evaluate(() => globalThis.__mock!.exited()),

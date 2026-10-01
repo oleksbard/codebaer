@@ -30,6 +30,10 @@ export type MockApi = {
   exited(): boolean;
   /** The next call to `cmd` rejects with `error`. */
   fail(cmd: string, error: AppError): void;
+  /** Calls to `cmd` wait, without an answer, until `release(cmd)`. A test that needs a command still running
+   *  holds it, instead of racing `&slow` on a slow runner. `idle()` waits for a held call too. */
+  hold(cmd: string): void;
+  release(cmd: string): void;
   state(): Snapshot;
   /** Someone else pushes `n` commits to `upstream`; the next fetch or pull brings them in. */
   remotePush(upstream: string, n: number): void;
@@ -107,6 +111,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let plain = sc.plain || sc.gitMissing;
   const calls: Call[] = [];
   const failures = new Map<string, AppError>();
+  const holds = new Map<string, { gate: Promise<void>; open(): void }>();
   let unsaved = false;
   let exited = false;
 
@@ -363,6 +368,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     begin();
     try {
       if (opts.latency) await sleep(opts.latency);
+      await holds.get(cmd)?.gate;
       const injected = failures.get(cmd);
       if (injected) {
         failures.delete(cmd);
@@ -394,6 +400,16 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     quit: async () => { if (unsaved) await emit('quit-requested'); else exited = true; },
     exited: () => exited,
     fail: (cmd, error) => { failures.set(cmd, error); },
+    hold: (cmd) => {
+      if (holds.has(cmd)) return;
+      let open = (): void => {};
+      const gate = new Promise<void>((r) => { open = r; });
+      holds.set(cmd, { gate, open });
+    },
+    release: (cmd) => {
+      holds.get(cmd)?.open();
+      holds.delete(cmd);
+    },
     state: () => repo.snapshot(),
     remotePush: (upstream, n) => repo.remotePush(upstream, n),
     terminalText: (id) => pty.text(id),
