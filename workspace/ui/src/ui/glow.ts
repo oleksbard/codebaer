@@ -1,32 +1,22 @@
+import { cubicBezier } from 'motion/react';
 import { DUR, EASE, heavyMotion, STAGGER } from './motion';
 import { longitudeOf, moonAt, moonShare, phasesAt, seasonAt, sunAt, type Phases } from './sky';
 
-/** One of the glow's seven lights in a scene. x and y are CSS lengths in the window (the background is fixed,
- *  so a percentage is of the window), r is the radius in px before the sky scales it, color is any CSS colour
- *  (a theme token), and k scales its strength. */
-export type GlowLight = { x: string; y: string; r: number; color: string; k: number };
+/** A place in the window: px from its left or top edge, or a percentage of its width or height. */
+export type GlowPos = number | `${number}%`;
+
+/** One of the glow's seven lights in a scene. r is the radius in px before the sky scales it, color is any CSS
+ *  colour (a theme token), and k scales its strength. */
+export type GlowLight = { x: GlowPos; y: GlowPos; r: number; color: string; k: number };
 
 export const LIGHTS = 7;
 
-const prop = (i: number, p: 'x' | 'y' | 'r' | 'c' | 'k') => `--glow-l${i + 1}-${p}`;
+/** An OKLab colour: lightness, a and b. */
+type Lab = readonly [number, number, number];
 
-/** Registered, so that an animation moves them through their values instead of flipping at the end. They do
- *  not inherit: each surface holds its own, so a frame of the flight restyles the two surfaces and nothing
- *  inside them. */
-function register(): void {
-  const css = globalThis.CSS as { registerProperty?: (def: object) => void } | undefined;
-  if (!css?.registerProperty) return;
-  const syntax = { x: '<length-percentage>', y: '<length-percentage>', r: '<length>', c: '<color>', k: '<number>' };
-  const initial = { x: '0px', y: '0px', r: '0px', c: 'transparent', k: '0' };
-  for (let i = 0; i < LIGHTS; i++) {
-    for (const p of ['x', 'y', 'r', 'c', 'k'] as const) {
-      // a second registration throws, which a hot reload of this module does
-      try {
-        css.registerProperty({ name: prop(i, p), syntax: syntax[p], inherits: false, initialValue: initial[p] });
-      } catch { /* already registered */ }
-    }
-  }
-}
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const mixLab = (p: Lab, q: Lab, t: number): Lab => [lerp(p[0], q[0], t), lerp(p[1], q[1], t), lerp(p[2], q[2], t)];
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 // ---- the sky ----
 
@@ -55,10 +45,15 @@ const BREATHS = [23, 31, 41, 53, 67, 79, 89];
 
 const SEASON_SHARE = 0.3;
 
-export type SkyVars = Record<string, string>;
+/** The time of day as the glow shows it. x and y place the wide light in percent of the window, washR is its
+ *  radius as a share of the window's width, and dx and dy are the slow drift of every light in px. */
+export type Sky = {
+  x: number; y: number; washR: number; wash: Lab; washK: number;
+  size: number; stretch: number; strength: number; tint: Lab; tintShare: number;
+  dx: number; dy: number; breaths: number[];
+};
 
-/** Every root variable glow.css reads for the time of day. */
-export function skyVars(now: Date): SkyVars {
+export function skyAt(now: Date): Sky {
   const lon = longitudeOf(now);
   const sun = sunAt(now, lon);
   const moon = moonAt(now);
@@ -78,55 +73,159 @@ export function skyVars(now: Date): SkyVars {
   const sunX = across(sun.azimuth);
   const moonX = across((sun.azimuth + 180) % 360);
   const m = moonShare(sun.elevation);
-  const x = sunX + (moonX - sunX) * m;
-  const y = height(sun.elevation) + (height(-sun.elevation) - height(sun.elevation)) * m;
-  const washR = 57 * (1 - w.night + w.night * (0.55 + 0.45 * moon));
 
   const minutes = now.getTime() / 60000;
   // standard time, not the clock: a daylight saving night would step the drift by an hour's worth
   const turn = (2 * Math.PI * (minutes / 60 + lon / 15)) / 24;
-  const vars: SkyVars = {
-    '--glow-x': `${x.toFixed(2)}%`,
-    '--glow-y': `${y.toFixed(2)}%`,
-    '--glow-wash-r': `${washR.toFixed(1)}vw`,
-    '--glow-a': blend((m) => ab(m.wash[0], m.wash[1])[0]!).toFixed(4),
-    '--glow-b': blend((m) => ab(m.wash[0], m.wash[1])[1]!).toFixed(4),
-    '--glow-k': (blend((m) => m.washK) - w.night * (1 - (0.2 + 0.8 * moon))).toFixed(3),
-    '--glow-size': blend((m) => m.size).toFixed(3),
-    '--glow-stretch': blend((m) => m.stretch).toFixed(3),
-    '--glow-strength': blend((m) => m.strength).toFixed(3),
-    '--glow-tint': `oklab(${blend((m) => m.tint[0]).toFixed(3)} `
-      + `${(tintA + (season.a - tintA) * SEASON_SHARE).toFixed(4)} `
-      + `${(tintB + (season.b - tintB) * SEASON_SHARE).toFixed(4)})`,
-    '--glow-tint-p': `${blend((m) => m.tintShare).toFixed(1)}%`,
-    '--glow-dx': `${(-48 * Math.sin(turn)).toFixed(1)}px`,
-    '--glow-dy': `${(18 * Math.sin(2 * turn)).toFixed(1)}px`,
+  return {
+    x: sunX + (moonX - sunX) * m,
+    y: height(sun.elevation) + (height(-sun.elevation) - height(sun.elevation)) * m,
+    washR: 0.57 * (1 - w.night + w.night * (0.55 + 0.45 * moon)),
+    wash: [0.75, blend((x) => ab(x.wash[0], x.wash[1])[0]!), blend((x) => ab(x.wash[0], x.wash[1])[1]!)],
+    washK: blend((x) => x.washK) - w.night * (1 - (0.2 + 0.8 * moon)),
+    size: blend((x) => x.size),
+    stretch: blend((x) => x.stretch),
+    strength: blend((x) => x.strength),
+    tint: [blend((x) => x.tint[0]), tintA + (season.a - tintA) * SEASON_SHARE,
+      tintB + (season.b - tintB) * SEASON_SHARE],
+    tintShare: blend((x) => x.tintShare) / 100,
+    dx: -48 * Math.sin(turn),
+    dy: 18 * Math.sin(2 * turn),
+    breaths: BREATHS.map((period, i) => Math.sin((2 * Math.PI * minutes) / period + 1.7 * i)),
   };
-  BREATHS.forEach((period, i) => {
-    vars[`--glow-b${i + 1}`] = Math.sin((2 * Math.PI * minutes) / period + 1.7 * i).toFixed(3);
-  });
-  return vars;
 }
 
-function paint(root: HTMLElement, now: Date): void {
-  for (const [name, value] of Object.entries(skyVars(now))) root.style.setProperty(name, value);
+// ---- the paint ----
+
+/** A scene's light at one moment, in px and OKLab. */
+export type Light = { x: number; y: number; r: number; lab: Lab; k: number };
+
+/** The strength of each light, of the wide light, and of the dark edges. A light theme's base shows a light
+ *  more than a dark one's, and its edges need less. */
+export type Scheme = { disc: number; wash: number; vignette: number };
+const SCHEMES = {
+  dark: { disc: 0.12, wash: 0.24, vignette: 0.16 },
+  light: { disc: 0.14, wash: 0.22, vignette: 0.04 },
+} satisfies Record<string, Scheme>;
+
+/** One radial gradient in window px: an ellipse with radii rx and ry, and its stops as a share of rx. */
+export type Paint = { x: number; y: number; rx: number; ry: number; stops: [number, Lab, number][] };
+
+/** Every gradient of the glow, bottom first: the wide light, the seven lights, then the dark edges. */
+export function paintsOf(lights: readonly Light[], sky: Sky, scheme: Scheme, accent: Lab, w: number,
+  h: number): Paint[] {
+  const sun = mixLab(sky.wash, accent, 0.25);
+  const wash = clamp01(scheme.wash * sky.washK);
+  const washR = sky.washR * w;
+  const paints: Paint[] = [{
+    x: (sky.x / 100) * w, y: (sky.y / 100) * h, rx: washR, ry: washR, stops: [[0, sun, wash], [1, sun, 0]],
+  }];
+  for (let i = lights.length - 1; i >= 0; i--) {
+    const l = lights[i]!;
+    const b = sky.breaths[i] ?? 0;
+    const size = l.r * sky.size * (1 + b * 0.12);
+    const alpha = clamp01(scheme.disc * sky.strength * l.k * (1 + b * 0.2));
+    const glow = mixLab(l.lab, sky.tint, sky.tintShare);
+    paints.push({
+      x: l.x + sky.dx, y: l.y + sky.dy, rx: size * sky.stretch, ry: size / sky.stretch,
+      stops: [[0, glow, alpha], [0.4, glow, alpha * 0.32], [1, glow, 0]],
+    });
+  }
+  const far = 0.66 * Math.max(w, h);
+  const black: Lab = [0, 0, 0];
+  paints.push({
+    x: w / 2, y: h / 2, rx: far, ry: far,
+    stops: [[Math.min(1, (0.35 * Math.min(w, h)) / far), black, 0], [1, black, scheme.vignette]],
+  });
+  return paints;
+}
+
+// ---- colours ----
+
+const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const toGamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+
+/** sRGB channels from 0 to 1 to OKLab, by Björn Ottosson's matrices. */
+export function labOfRgb(rgb: readonly [number, number, number]): Lab {
+  const [r, g, b] = rgb.map(toLinear) as [number, number, number];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+/** OKLab to sRGB channels from 0 to 255, clipped to the gamut. */
+export function rgbOfLab([L, a, b]: Lab): [number, number, number] {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((c) => Math.round(clamp01(toGamma(c)) * 255)) as [number, number, number];
+}
+
+const colors = new Map<string, Lab>();
+let probe: HTMLElement | null = null;
+let swatch: CanvasRenderingContext2D | null | undefined;
+
+/** A CSS colour as OKLab. The style resolves the theme's var() chain and the canvas any colour syntax the
+ *  engine knows; both answers are kept until the theme changes. */
+function labOf(color: string): Lab {
+  const known = colors.get(color);
+  if (known) return known;
+  swatch ??= document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  if (!swatch) return [0.7, 0, 0];
+  if (!probe?.isConnected) {
+    probe = document.createElement('i');
+    probe.style.display = 'none';
+    document.body.append(probe);
+  }
+  probe.style.color = color;
+  swatch.clearRect(0, 0, 1, 1);
+  swatch.fillStyle = getComputedStyle(probe).color;
+  swatch.fillRect(0, 0, 1, 1);
+  const [r = 0, g = 0, b = 0] = swatch.getImageData(0, 0, 1, 1).data;
+  const lab = labOfRgb([r / 255, g / 255, b / 255]);
+  colors.set(color, lab);
+  return lab;
 }
 
 // ---- scenes ----
 
-const surfaces = () => [...document.querySelectorAll<HTMLElement>('.glow')];
+/** A light's flight from where it was to its new place. `mid` is the focus pull's waypoint, at 45% of the way. */
+type Flight = { from: Light; mid: Light | null; start: number; delay: number };
 
-/** What each light was last sent to, so a glide can leave a light that did not change where it is. */
-let shown: readonly GlowLight[] = [];
+let scene: readonly GlowLight[] = [];
+let flights: (Flight | null)[] = [];
+const ease = cubicBezier(...EASE.out);
 
-type Values = Record<'x' | 'y' | 'r' | 'c' | 'k', string>;
+const resolve = (p: GlowPos, size: number) => (typeof p === 'number' ? p : (parseFloat(p) / 100) * size);
+const place = (l: GlowLight, w: number, h: number): Light =>
+  ({ x: resolve(l.x, w), y: resolve(l.y, h), r: l.r, lab: labOf(l.color), k: l.k });
+const between = (p: Light, q: Light, t: number): Light => ({
+  x: lerp(p.x, q.x, t), y: lerp(p.y, q.y, t), r: lerp(p.r, q.r, t), lab: mixLab(p.lab, q.lab, t), k: lerp(p.k, q.k, t),
+});
 
-const valuesOf = (l: GlowLight): Values => ({ x: l.x, y: l.y, r: `${l.r}px`, c: l.color, k: String(l.k) });
-
-function keyframe(i: number, v: Partial<Values>, offset?: number): Keyframe {
-  const frame: Keyframe = offset === undefined ? {} : { offset };
-  for (const [p, value] of Object.entries(v)) frame[prop(i, p as keyof Values)] = value;
-  return frame;
+/** Where light i is at time t. A flight that is done is dropped here. */
+function lightAt(i: number, t: number, w: number, h: number): Light {
+  const to = place(scene[i]!, w, h);
+  const f = flights[i];
+  if (!f) return to;
+  const run = (t - f.start - f.delay) / (DUR[5] * 1000);
+  if (run >= 1) {
+    flights[i] = null;
+    return to;
+  }
+  if (run <= 0) return f.from;
+  const p = ease(run);
+  if (!f.mid) return between(f.from, to, p);
+  return p < 0.45 ? between(f.from, f.mid, p / 0.45) : between(f.mid, to, (p - 0.45) / 0.55);
 }
 
 /** How a scene arrives. `pull` is a focus pull: each light shrinks and brightens as it leaves, swings along a
@@ -137,50 +236,126 @@ export function showGlowScene(lights: readonly GlowLight[], arrival: Arrival): v
   const still = document.documentElement.dataset.glow !== 'animated' || !heavyMotion()
     || globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const how = still ? 'cut' : arrival;
-  // a glide leaves a light whose target did not change alone, its flight in progress included
-  const moving = lights.map((l, i) => how !== 'ease' || JSON.stringify(shown[i]) !== JSON.stringify(l));
-  for (const el of surfaces()) {
+  const t = performance.now();
+  const w = globalThis.innerWidth;
+  const h = globalThis.innerHeight;
+  const next = lights.map((l, i): Flight | null => {
+    // a glide leaves a light whose target did not change alone, its flight in progress included
+    if (how === 'ease' && JSON.stringify(scene[i]) === JSON.stringify(l)) return flights[i] ?? null;
+    // a light that never had a place (the first scene) has nowhere to fly from
+    if (how === 'cut' || !scene[i]) return null;
     // a flight in progress is where the next one starts from
-    const style = how === 'cut' ? null : getComputedStyle(el);
-    const from = lights.map((_, i): Values => ({
-      x: style?.getPropertyValue(prop(i, 'x')) ?? '', y: style?.getPropertyValue(prop(i, 'y')) ?? '',
-      r: style?.getPropertyValue(prop(i, 'r')) ?? '', c: style?.getPropertyValue(prop(i, 'c')) ?? '',
-      k: style?.getPropertyValue(prop(i, 'k')) ?? '',
-    }));
-    for (const a of el.getAnimations()) {
-      const i = /^glow-(\d+)$/.exec(a.id)?.[1];
-      if (i !== undefined && moving[Number(i)]) a.cancel();
+    const from = lightAt(i, t, w, h);
+    if (how === 'ease') return { from, mid: null, start: t, delay: 0 };
+    const to = place(l, w, h);
+    // every other light swings the other way, so the flight looks like a swirl, not a slide
+    const mid = { ...between(from, to, 0.45), x: (from.x + to.x) / 2 + (i % 2 ? 60 : -60), y: (from.y + to.y) / 2,
+      r: Math.min(from.r, to.r) * 0.55, k: Math.max(from.k, to.k) * 1.6 };
+    return { from, mid, start: t, delay: i * STAGGER * 1000 };
+  });
+  scene = lights;
+  flights = next;
+  draw();
+}
+
+// ---- the surfaces ----
+
+/** Bitmap px per CSS px. The lights are soft enough that the browser's smooth upscale of a quarter size bitmap
+ *  shows them as sharp as full size gradients would. Where nothing composites the page (WebKitGTK without a GPU),
+ *  each frame of an animation over a surface paints its background again: nine gradients the size of the window
+ *  halved the frame rate, and so did a canvas element; one image in the background costs nothing to see. */
+const SCALE = 0.25;
+
+/** Each surface's bitmap, the image it last asked to show, and the numbers of the last image asked for and shown. */
+type Surface = { canvas: HTMLCanvasElement; url: string; asked: number; shown: number };
+const surfaces = new Map<HTMLElement, Surface>();
+let sky = skyAt(new Date());
+let frame = 0;
+
+/** Draws on the next frame, so every change in one frame shares one bitmap: encoding one cost WebKitGTK about
+ *  10ms. A flight asks for the frame after. The image shows only once decoded, so a first frame waits anyway. */
+function draw(): void {
+  if (frame || !surfaces.size) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    paint();
+    if (flights.some(Boolean)) draw();
+  });
+}
+
+function fill(ctx: CanvasRenderingContext2D, p: Paint, w: number, h: number): void {
+  const sy = p.ry / p.rx;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(1, sy);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, p.rx);
+  for (const [at, lab, alpha] of p.stops) g.addColorStop(at, `rgba(${rgbOfLab(lab).join(', ')}, ${alpha})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(-p.x, -p.y / sy, w, h / sy);
+  ctx.restore();
+}
+
+/** The new image replaces the old one once it is decoded, so the surface never paints a frame without one. Any
+ *  image newer than the one shown replaces it: in a flight, a decode slower than a frame would otherwise always
+ *  be too late, and the lights would jump to the end. */
+function show(el: HTMLElement, surface: Surface, url: string): void {
+  if (url === surface.url) return;
+  surface.url = url;
+  const n = ++surface.asked;
+  const img = new Image();
+  img.src = url;
+  img.decode().then(() => {
+    if (n <= surface.shown) return;
+    surface.shown = n;
+    el.style.setProperty('--glow-image', `url("${url}")`);
+  }, () => {
+    if (surface.url === url) surface.url = '';
+  });
+}
+
+function paint(): void {
+  if (!on() || !surfaces.size) return;
+  const w = globalThis.innerWidth;
+  const h = globalThis.innerHeight;
+  const t = performance.now();
+  const lights = scene.map((_, i) => lightAt(i, t, w, h));
+  const scheme = SCHEMES[document.documentElement.dataset.scheme === 'light' ? 'light' : 'dark'];
+  const paints = paintsOf(lights, sky, scheme, labOf('var(--accent)'), w, h);
+  for (const [el, surface] of surfaces) {
+    const { canvas } = surface;
+    const box = el.getBoundingClientRect();
+    const ctx = box.width && box.height ? canvas.getContext('2d') : null;
+    if (!ctx) continue;
+    const cw = Math.ceil(box.width * SCALE);
+    const ch = Math.ceil(box.height * SCALE);
+    // setting the size clears the bitmap even when it is the same
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = cw;
+      canvas.height = ch;
+    } else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cw, ch);
     }
-    lights.forEach((l, i) => {
-      if (!moving[i]) return;
-      for (const [p, value] of Object.entries(valuesOf(l))) el.style.setProperty(prop(i, p as keyof Values), value);
-    });
-    if (how === 'cut') continue;
-    lights.forEach((l, i) => {
-      const a = from[i]!;
-      const b = valuesOf(l);
-      // a light that never had a place (the first scene) has nowhere to fly from
-      if (!moving[i] || !a.r || parseFloat(a.r) === 0) return;
-      const frames = [keyframe(i, a)];
-      if (how === 'pull') {
-        const r = Math.min(parseFloat(a.r), l.r) * 0.55;
-        const k = Math.max(parseFloat(a.k) || 0, l.k) * 1.6;
-        // every other light swings the other way, so the flight looks like a swirl, not a slide
-        const swing = i % 2 ? 60 : -60;
-        frames.push(keyframe(i, {
-          x: `calc((${a.x} + ${b.x}) / 2 + ${swing}px)`, y: `calc((${a.y} + ${b.y}) / 2)`, r: `${r.toFixed(1)}px`,
-          k: k.toFixed(3),
-        }, 0.45));
-      }
-      frames.push(keyframe(i, b));
-      const anim = el.animate(frames, {
-        duration: DUR[5] * 1000, delay: how === 'pull' ? i * STAGGER * 1000 : 0,
-        easing: `cubic-bezier(${EASE.out.join(',')})`, fill: 'backwards',
-      });
-      anim.id = `glow-${i}`;
-    });
+    // window px onto this surface's bitmap: each surface shows its own part of one glow
+    const kx = cw / box.width;
+    const ky = ch / box.height;
+    ctx.setTransform(kx, 0, 0, ky, -box.left * kx, -box.top * ky);
+    for (const p of paints) fill(ctx, p, w, h);
+    show(el, surface, canvas.toDataURL());
   }
-  shown = lights;
+}
+
+/** The ref of each surface: drawn from its first frame, and again whenever its box changes size. */
+export function glowLayer(el: HTMLElement | null): (() => void) | undefined {
+  if (!el) return undefined;
+  surfaces.set(el, { canvas: document.createElement('canvas'), url: '', asked: 0, shown: 0 });
+  const resized = new ResizeObserver(() => draw());
+  resized.observe(el);
+  draw();
+  return () => {
+    resized.disconnect();
+    surfaces.delete(el);
+  };
 }
 
 // ---- the switch ----
@@ -191,26 +366,44 @@ const MODES: readonly string[] = ['off', 'on', 'animated'] satisfies GlowMode[];
 
 const KEY = 'codebaer.glow';
 const on = (): boolean => document.documentElement.dataset.glow !== 'off';
-// every style change on the root restyles the whole page, so a hidden window waits until it is shown
-const due = (): boolean => on() && !document.hidden;
 
 /** The settings file owns the choice; the copy in localStorage only lets the first paint use it. */
 export function setGlow(mode: GlowMode): void {
   const root = document.documentElement;
   if (root.dataset.glow === mode) return;
-  if (mode !== 'off' && !on()) paint(root, new Date());
+  const was = on();
   root.dataset.glow = mode;
   localStorage.setItem(KEY, mode);
+  if (mode !== 'animated' && flights.some(Boolean)) {
+    flights = [];
+    draw();
+  }
+  if (!was && on()) {
+    sky = skyAt(new Date());
+    draw();
+  }
 }
 
 /** Twenty seconds move the sky by too little to see as a step, even while the wide light crosses the window at
  *  dusk. */
 export function initGlow(): void {
   const root = document.documentElement;
-  register();
+  // as an inherited property, each new image would restyle everything inside the surface
+  try {
+    (globalThis.CSS as { registerProperty?: (def: object) => void } | undefined)
+      ?.registerProperty?.({ name: '--glow-image', syntax: '*', inherits: false });
+  } catch { /* a hot reload registers it again, which throws */ }
   const stored = localStorage.getItem(KEY);
   root.dataset.glow = stored !== null && MODES.includes(stored) ? stored : 'animated';
-  paint(root, new Date());
-  setInterval(() => { if (due()) paint(root, new Date()); }, 20_000);
-  document.addEventListener('visibilitychange', () => { if (due()) paint(root, new Date()); });
+  const repaint = () => {
+    if (!on() || document.hidden) return;
+    sky = skyAt(new Date());
+    draw();
+  };
+  setInterval(repaint, 20_000);
+  document.addEventListener('visibilitychange', repaint);
+  new MutationObserver(() => {
+    colors.clear();
+    draw();
+  }).observe(root, { attributeFilter: ['data-theme', 'data-scheme'] });
 }

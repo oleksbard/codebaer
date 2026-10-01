@@ -7,6 +7,7 @@ import { Gutter, Header, SideHandle } from './Shell';
 import { useGlowScene } from './glow';
 import { ActivityBar, Sidebar } from './Sidebar';
 import { useApp } from '#kernel/store';
+import { glowLayer } from '#ui/glow';
 
 export function App() {
   const s = useApp();
@@ -16,7 +17,7 @@ export function App() {
     + (s.tab === 'terminals' ? ' terminals' : '');
   return (
     <>
-      <div className={cls} id="shell" style={style}>
+      <div className={cls} id="shell" style={style} ref={glowLayer}>
         <Header />
         <ActivityBar />
         <div className="frame">

@@ -40,9 +40,9 @@ describe('glow scenes', () => {
       ...S, settings: animated, tab: 'terminals', activeTerm: 2,
       terminals: [info(1, 'zsh'), info(9, 'npm test', true), info(2, 'claude')],
     }, new Map([[1, 350], [2, 420], [7, 490]]));
-    expect(scene[0]).toMatchObject({ y: '420px', color: 'var(--agent-claude)' });
+    expect(scene[0]).toMatchObject({ y: 420, color: 'var(--agent-claude)' });
     expect(Math.max(...scene.map((l) => l.k))).toBe(scene[0]!.k);
-    expect(scene[1]).toMatchObject({ y: '350px', color: 'var(--accent)' });
+    expect(scene[1]).toMatchObject({ y: 350, color: 'var(--accent)' });
   });
 
   // a closed session's tile stays in the window while it leaves, with an id no session has
@@ -50,7 +50,7 @@ describe('glow scenes', () => {
     const scene = sceneFor({ ...S, settings: animated, tab: 'terminals', activeTerm: 2,
       terminals: [info(1, 'zsh'), info(2, 'claude')] },
       new Map([[1, 350], [5, 420], [2, 490]]));
-    expect(scene.slice(0, 2).map((l) => l.y)).toEqual(['490px', '350px']);
+    expect(scene.slice(0, 2).map((l) => l.y)).toEqual([490, 350]);
   });
 
   it('moves the lights to the header when there is no terminal', () => {

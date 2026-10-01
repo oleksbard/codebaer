@@ -1,105 +1,15 @@
-/* The shell glow: seven out-of-focus lights and one wide light. glow.ts paints the sky's values on the root each
-   minute, and each scene's --glow-lN-x, -y, -r, -c and -k values on every surface. Each surface sets --glow-base.
-   The attachment is fixed, so the lights line up across the surfaces as if one light shone through all of them. */
-:root {
-  /* the sky's values hold these until glow.ts first paints */
-  --glow-x: 19%;
-  --glow-y: 11%;
-  --glow-wash-r: 57vw;
-  --glow-a: -0.008;
-  --glow-b: -0.09;
-  --glow-k: 1;
-  --glow-size: 1;
-  --glow-stretch: 1;
-  --glow-strength: 1;
-  --glow-tint: oklab(0.9 0 0);
-  --glow-tint-p: 20%;
-  --glow-dx: 0px;
-  --glow-dy: 0px;
-  --glow-b1: 0;
-  --glow-b2: 0;
-  --glow-b3: 0;
-  --glow-b4: 0;
-  --glow-b5: 0;
-  --glow-b6: 0;
-  --glow-b7: 0;
-
-  /* the strength of each light, of the wide light, and of the dark edges */
-  --glow-disc: 12%;
-  --glow-wash: 24%;
-  --glow-vignette: 0.16;
+/* The shell glow. glow.ts draws seven out-of-focus lights, one wide light and the dark edges into a bitmap for
+   each surface, its own part of one glow, and sets it as --glow-image. The grain stays here, at the screen's
+   resolution, which the bitmap does not have. Its alpha is low, as an overlay blend would leave it: the blend
+   itself cost WebKitGTK a fifth of its frame rate in each animation over a surface. */
+.glow {
+  background-color: var(--glow-base);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='2.6 0 0 0 -0.8 2.6 0 0 0 -0.8 2.6 0 0 0 -0.8 0 0 0 0 0.02'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), var(--glow-image, none);
+  background-size: auto, 100% 100%;
+  background-repeat: repeat, no-repeat;
+  background-origin: border-box;
 }
 
 :root[data-glow="off"] .glow {
   background: var(--glow-base);
-}
-
-:root[data-scheme="light"] {
-  --glow-disc: 14%;
-  --glow-wash: 22%;
-  --glow-vignette: 0.04;
-}
-
-.glow {
-  --glow-sun: color-mix(in oklab, oklab(0.75 var(--glow-a) var(--glow-b)) 75%, var(--accent));
-  /* each light: its size and strength after the sky and its breath, and its colour after the sky's tint */
-  --glow-l1-size: calc(var(--glow-l1-r) * var(--glow-size) * (1 + var(--glow-b1) * 0.12));
-  --glow-l1-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l1-k) * (1 + var(--glow-b1) * 0.2));
-  --glow-l1-glow: color-mix(in oklab, var(--glow-l1-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l2-size: calc(var(--glow-l2-r) * var(--glow-size) * (1 + var(--glow-b2) * 0.12));
-  --glow-l2-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l2-k) * (1 + var(--glow-b2) * 0.2));
-  --glow-l2-glow: color-mix(in oklab, var(--glow-l2-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l3-size: calc(var(--glow-l3-r) * var(--glow-size) * (1 + var(--glow-b3) * 0.12));
-  --glow-l3-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l3-k) * (1 + var(--glow-b3) * 0.2));
-  --glow-l3-glow: color-mix(in oklab, var(--glow-l3-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l4-size: calc(var(--glow-l4-r) * var(--glow-size) * (1 + var(--glow-b4) * 0.12));
-  --glow-l4-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l4-k) * (1 + var(--glow-b4) * 0.2));
-  --glow-l4-glow: color-mix(in oklab, var(--glow-l4-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l5-size: calc(var(--glow-l5-r) * var(--glow-size) * (1 + var(--glow-b5) * 0.12));
-  --glow-l5-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l5-k) * (1 + var(--glow-b5) * 0.2));
-  --glow-l5-glow: color-mix(in oklab, var(--glow-l5-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l6-size: calc(var(--glow-l6-r) * var(--glow-size) * (1 + var(--glow-b6) * 0.12));
-  --glow-l6-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l6-k) * (1 + var(--glow-b6) * 0.2));
-  --glow-l6-glow: color-mix(in oklab, var(--glow-l6-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-  --glow-l7-size: calc(var(--glow-l7-r) * var(--glow-size) * (1 + var(--glow-b7) * 0.12));
-  --glow-l7-alpha: calc(var(--glow-disc) * var(--glow-strength) * var(--glow-l7-k) * (1 + var(--glow-b7) * 0.2));
-  --glow-l7-glow: color-mix(in oklab, var(--glow-l7-c) calc(100% - var(--glow-tint-p)), var(--glow-tint));
-
-  background-color: var(--glow-base);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='2.6 0 0 0 -0.8 2.6 0 0 0 -0.8 2.6 0 0 0 -0.8 0 0 0 0 0.085'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-    radial-gradient(circle at 50% 50%, transparent 35vmin, oklch(0 0 0 / var(--glow-vignette)) 66vmax),
-    radial-gradient(calc(var(--glow-l1-size) * var(--glow-stretch)) calc(var(--glow-l1-size) / var(--glow-stretch))
-      at calc(var(--glow-l1-x) + var(--glow-dx)) calc(var(--glow-l1-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l1-glow) var(--glow-l1-alpha), transparent),
-      color-mix(in oklab, var(--glow-l1-glow) calc(var(--glow-l1-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l2-size) * var(--glow-stretch)) calc(var(--glow-l2-size) / var(--glow-stretch))
-      at calc(var(--glow-l2-x) + var(--glow-dx)) calc(var(--glow-l2-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l2-glow) var(--glow-l2-alpha), transparent),
-      color-mix(in oklab, var(--glow-l2-glow) calc(var(--glow-l2-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l3-size) * var(--glow-stretch)) calc(var(--glow-l3-size) / var(--glow-stretch))
-      at calc(var(--glow-l3-x) + var(--glow-dx)) calc(var(--glow-l3-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l3-glow) var(--glow-l3-alpha), transparent),
-      color-mix(in oklab, var(--glow-l3-glow) calc(var(--glow-l3-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l4-size) * var(--glow-stretch)) calc(var(--glow-l4-size) / var(--glow-stretch))
-      at calc(var(--glow-l4-x) + var(--glow-dx)) calc(var(--glow-l4-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l4-glow) var(--glow-l4-alpha), transparent),
-      color-mix(in oklab, var(--glow-l4-glow) calc(var(--glow-l4-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l5-size) * var(--glow-stretch)) calc(var(--glow-l5-size) / var(--glow-stretch))
-      at calc(var(--glow-l5-x) + var(--glow-dx)) calc(var(--glow-l5-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l5-glow) var(--glow-l5-alpha), transparent),
-      color-mix(in oklab, var(--glow-l5-glow) calc(var(--glow-l5-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l6-size) * var(--glow-stretch)) calc(var(--glow-l6-size) / var(--glow-stretch))
-      at calc(var(--glow-l6-x) + var(--glow-dx)) calc(var(--glow-l6-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l6-glow) var(--glow-l6-alpha), transparent),
-      color-mix(in oklab, var(--glow-l6-glow) calc(var(--glow-l6-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(calc(var(--glow-l7-size) * var(--glow-stretch)) calc(var(--glow-l7-size) / var(--glow-stretch))
-      at calc(var(--glow-l7-x) + var(--glow-dx)) calc(var(--glow-l7-y) + var(--glow-dy)),
-      color-mix(in oklab, var(--glow-l7-glow) var(--glow-l7-alpha), transparent),
-      color-mix(in oklab, var(--glow-l7-glow) calc(var(--glow-l7-alpha) * 0.32), transparent) 40%, transparent),
-    radial-gradient(circle var(--glow-wash-r) at var(--glow-x) var(--glow-y),
-      color-mix(in oklab, var(--glow-sun) calc(var(--glow-wash) * var(--glow-k)), transparent), transparent);
-  background-attachment: fixed;
-  /* one value for each layer above: a shorter list repeats, which would put the grain's blend on a light */
-  background-blend-mode: overlay, normal, normal, normal, normal, normal, normal, normal, normal, normal;
 }

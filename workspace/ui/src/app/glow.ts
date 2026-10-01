@@ -5,14 +5,14 @@ import type { DeepReadonly, State } from '#kernel/store';
 import { type GlowLight, LIGHTS, showGlowScene } from '#ui/glow';
 
 /** A place across the sidebar, as a fraction of its width; the window's left column is 72px. */
-const side = (f: number) => `calc(72px + var(--side-w, 272px) * ${f})`;
+const across = (sideW: number) => (f: number) => 72 + sideW * f;
 
 /** The middle of each terminal tile in the activity bar, in px from the window's top, by session id. */
 export type Tiles = ReadonlyMap<number, number>;
 
 /** Changes: the diff's own colours along the queue, one bright light at its head. More to review is a fuller
  *  light; an empty queue is a calm one. */
-function changes(unstaged: number): GlowLight[] {
+function changes(unstaged: number, side: (f: number) => number): GlowLight[] {
   const load = Math.min(1, unstaged / 6);
   const k = 0.55 + 0.45 * load;
   const r = 0.85 + 0.15 * load;
@@ -28,7 +28,7 @@ function changes(unstaged: number): GlowLight[] {
 }
 
 /** Files: cooler, smaller lights in a loose column down the tree. */
-function files(): GlowLight[] {
+function files(side: (f: number) => number): GlowLight[] {
   return [
     { x: side(0.3), y: '14%', r: 240, color: 'var(--info)', k: 0.9 },
     { x: side(0.7), y: '30%', r: 220, color: 'var(--hue-blue)', k: 0.9 },
@@ -51,11 +51,11 @@ function terminals(s: DeepReadonly<State>, tiles: Tiles): GlowLight[] {
   const lead = sessions.findIndex((t) => t.id === s.activeTerm);
   const lights: GlowLight[] = [];
   const leadY = sessions[lead] && tiles.get(sessions[lead].id);
-  if (leadY !== undefined) lights.push({ x: '36px', y: `${leadY}px`, r: 325, color: color(lead), k: 2 });
+  if (leadY !== undefined) lights.push({ x: 36, y: leadY, r: 325, color: color(lead), k: 2 });
   sessions.forEach((t, i) => {
     const y = tiles.get(t.id);
     if (i === lead || y === undefined || lights.length >= 4) return;
-    lights.push({ x: '36px', y: `${y}px`, r: 160, color: color(i), k: 0.55 });
+    lights.push({ x: 36, y, r: 160, color: color(i), k: 0.55 });
   });
   const header = LIGHTS - lights.length;
   for (let i = 0; i < header; i++) {
@@ -69,12 +69,13 @@ function terminals(s: DeepReadonly<State>, tiles: Tiles): GlowLight[] {
 
 /** Only Animated gives each tab its own scene; Enabled keeps the Changes lights in place on every tab. */
 export function sceneFor(s: DeepReadonly<State>, tiles: Tiles): GlowLight[] {
+  const side = across(s.sideWidth ?? 272);
   if (s.settings['appearance.glow'] !== 'animated') {
-    return changes(s.status ? buildQueue(s.status).unstaged.length : 0);
+    return changes(s.status ? buildQueue(s.status).unstaged.length : 0, side);
   }
   if (s.tab === 'terminals') return terminals(s, tiles);
-  if (s.tab === 'files') return files();
-  return changes(s.status ? buildQueue(s.status).unstaged.length : 0);
+  if (s.tab === 'files') return files(side);
+  return changes(s.status ? buildQueue(s.status).unstaged.length : 0, side);
 }
 
 /** Layout places, not painted ones: a tile that pops in or slides up is measured where it will settle. A tile
@@ -106,5 +107,5 @@ export function useGlowScene(s: DeepReadonly<State>): void {
     last.current = { key, focus };
     if (prev?.key === key) return;
     showGlowScene(scene, !prev ? 'cut' : prev.focus !== focus ? 'pull' : 'ease');
-  }, [s.tab, s.activeTerm, unstaged, sessions, mode]);
+  }, [s.tab, s.activeTerm, unstaged, sessions, mode, s.sideWidth]);
 }

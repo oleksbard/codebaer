@@ -1,37 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { setGlow, skyVars } from './glow';
-
-const css = Object.values(import.meta.glob<string>('./glow.css', {
-  query: '?raw', import: 'default', eager: true,
-}))[0]!;
-
-const num = (v: string | undefined) => parseFloat(v ?? 'NaN');
+import { labOfRgb, type Light, paintsOf, rgbOfLab, setGlow, skyAt } from './glow';
 
 describe('shell glow sky', () => {
-  it('sets every value glow.css reads, with a unit where it needs one', () => {
-    const v = skyVars(new Date(2026, 9, 1, 12));
-    for (const name of [...css.matchAll(/var\((--glow-[a-z0-9-]+)\)/g)].map((m) => m[1]!)) {
-      if (/^--glow-l\d/.test(name) || ['--glow-base', '--glow-sun', '--glow-disc', '--glow-wash', '--glow-vignette']
-        .includes(name)) continue;
-      expect(v[name], name).toBeDefined();
-    }
-    expect(v['--glow-x']).toMatch(/%$/);
-    expect(v['--glow-wash-r']).toMatch(/vw$/);
-    expect(v['--glow-dx']).toMatch(/px$/);
-    expect(v['--glow-tint']).toMatch(/^oklab\(/);
-  });
-
-  // a minute repaints the root, so the sky must never move far enough in one to see as a step
+  // the sky moves every twenty seconds, so it must never move far enough in a minute to see as a step
   it('changes by a small amount from one minute to the next, all year', () => {
     for (const month of [0, 3, 6, 9]) {
-      let prev = skyVars(new Date(2026, month, 1));
+      let prev = skyAt(new Date(2026, month, 1));
       for (let m = 1; m <= 24 * 60; m++) {
-        const next = skyVars(new Date(2026, month, 1, 0, m));
-        for (const p of ['--glow-x', '--glow-y']) {
-          expect(Math.abs(num(next[p]) - num(prev[p])), `${p} ${month}/${m}`).toBeLessThan(3);
+        const next = skyAt(new Date(2026, month, 1, 0, m));
+        for (const p of ['x', 'y'] as const) {
+          expect(Math.abs(next[p] - prev[p]), `${p} ${month}/${m}`).toBeLessThan(3);
         }
-        for (const p of ['--glow-size', '--glow-stretch', '--glow-k', '--glow-strength']) {
-          expect(Math.abs(num(next[p]) - num(prev[p])), `${p} ${month}/${m}`).toBeLessThan(0.08);
+        for (const p of ['size', 'stretch', 'washK', 'strength'] as const) {
+          expect(Math.abs(next[p] - prev[p]), `${p} ${month}/${m}`).toBeLessThan(0.08);
         }
         prev = next;
       }
@@ -39,33 +20,54 @@ describe('shell glow sky', () => {
   });
 
   it('makes small points at night and stretched lights at the golden hour', () => {
-    const night = skyVars(new Date(2026, 5, 21, 1));
-    const noon = skyVars(new Date(2026, 5, 21, 13));
-    expect(num(night['--glow-size'])).toBeLessThan(0.6);
-    expect(num(noon['--glow-size'])).toBeGreaterThan(1.1);
+    expect(skyAt(new Date(2026, 5, 21, 1)).size).toBeLessThan(0.6);
+    expect(skyAt(new Date(2026, 5, 21, 13)).size).toBeGreaterThan(1.1);
     let widest = 0;
-    for (let m = 0; m < 24 * 60; m += 5) {
-      widest = Math.max(widest, num(skyVars(new Date(2026, 5, 21, 0, m))['--glow-stretch']));
-    }
+    for (let m = 0; m < 24 * 60; m += 5) widest = Math.max(widest, skyAt(new Date(2026, 5, 21, 0, m)).stretch);
     expect(widest).toBeGreaterThan(1.7);
   });
 
   it('lets the moon phase set the night light', () => {
-    // a new moon and a full moon in 2026, both at local midnight in June-like dark
-    const newMoon = skyVars(new Date(2026, 0, 18, 23, 30));
-    const fullMoon = skyVars(new Date(2026, 0, 3, 23, 30));
-    expect(num(fullMoon['--glow-k'])).toBeGreaterThan(num(newMoon['--glow-k']) + 0.5);
-    expect(num(fullMoon['--glow-wash-r'])).toBeGreaterThan(num(newMoon['--glow-wash-r']));
+    // a new moon and a full moon in 2026, both just before local midnight
+    const newMoon = skyAt(new Date(2026, 0, 18, 23, 30));
+    const fullMoon = skyAt(new Date(2026, 0, 3, 23, 30));
+    expect(fullMoon.washK).toBeGreaterThan(newMoon.washK + 0.5);
+    expect(fullMoon.washR).toBeGreaterThan(newMoon.washR);
+  });
+});
+
+describe('shell glow paint', () => {
+  const sky = skyAt(new Date(2026, 9, 1, 12));
+  const scheme = { disc: 0.12, wash: 0.24, vignette: 0.16 };
+  const light = (k: number): Light => ({ x: 100, y: 50, r: 200, lab: [0.7, 0.1, 0], k });
+
+  it('paints the wide light first, the lights in reverse, and the dark edges last', () => {
+    const paints = paintsOf([light(1), { ...light(1), x: 300 }], sky, scheme, [0.7, 0, 0], 1280, 820);
+    expect(paints).toHaveLength(4);
+    expect(paints[1]!.x).toBeCloseTo(300 + sky.dx);
+    expect(paints[2]!.x).toBeCloseTo(100 + sky.dx);
+    expect(paints[3]!.stops.at(-1)).toEqual([1, [0, 0, 0], 0.16]);
   });
 
-  // a shorter blend list repeats from its start, which would give a light the grain's overlay blend
-  it('lists one blend mode for each background layer', () => {
-    const rule = /^\.glow \{([\s\S]*?)\n\}/m.exec(css)![1]!;
-    const images = /background-image:([\s\S]*?);/.exec(rule)![1]!;
-    const layers = images.match(/url\("|radial-gradient\(/g)!.length;
-    const blends = /background-blend-mode:([^;]*);/.exec(rule)![1]!.split(',').length;
-    expect(layers).toBe(10);
-    expect(blends).toBe(layers);
+  it('keeps a light\'s strength a valid alpha however bright the scene asks for', () => {
+    const [, bright] = paintsOf([light(40)], sky, scheme, [0.7, 0, 0], 1280, 820);
+    expect(bright!.stops[0]![2]).toBe(1);
+    const [, dark] = paintsOf([light(-1)], sky, scheme, [0.7, 0, 0], 1280, 820);
+    expect(dark!.stops[0]![2]).toBe(0);
+  });
+
+  it('stretches a light sideways by the sky\'s stretch', () => {
+    const golden = { ...sky, stretch: 1.8, size: 1, breaths: [0] };
+    const [, p] = paintsOf([light(1)], golden, scheme, [0.7, 0, 0], 1280, 820);
+    expect(p!.rx).toBeCloseTo(200 * 1.8);
+    expect(p!.ry).toBeCloseTo(200 / 1.8);
+  });
+
+  it('converts between sRGB and OKLab both ways', () => {
+    for (const rgb of [[255, 255, 255], [0, 0, 0], [200, 120, 40], [30, 140, 220]] as const) {
+      expect(rgbOfLab(labOfRgb([rgb[0] / 255, rgb[1] / 255, rgb[2] / 255]))).toEqual(rgb);
+    }
+    expect(labOfRgb([1, 1, 1])[0]).toBeCloseTo(1, 3);
   });
 });
 
@@ -73,17 +75,14 @@ describe('the glow switch', () => {
   beforeEach(() => {
     localStorage.removeItem('codebaer.glow');
     delete document.documentElement.dataset.glow;
-    document.documentElement.removeAttribute('style');
   });
 
-  it('writes the root attribute and localStorage, and paints the sky when it turns on', () => {
+  it('writes the root attribute and localStorage', () => {
     setGlow('off');
     expect(document.documentElement.dataset.glow).toBe('off');
     expect(localStorage.getItem('codebaer.glow')).toBe('off');
-    expect(document.documentElement.style.getPropertyValue('--glow-x')).toBe('');
     setGlow('on');
     expect(document.documentElement.dataset.glow).toBe('on');
-    expect(document.documentElement.style.getPropertyValue('--glow-x')).toMatch(/%$/);
     setGlow('animated');
     expect(localStorage.getItem('codebaer.glow')).toBe('animated');
   });

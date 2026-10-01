@@ -21,13 +21,15 @@ const rangeProto = Range.prototype as unknown as Record<string, unknown>;
 rangeProto.getClientRects = () => [];
 rangeProto.getBoundingClientRect = () => new DOMRect();
 
+// jsdom's own canvas logs that it is not implemented on each call; the glow draws without a context
+HTMLCanvasElement.prototype.getContext = () => null;
+
 // jsdom has PointerEvent but no pointer capture, no scrollIntoView, no ResizeObserver;
 // the gutter, the palette list, and Radix ask for them
 HTMLElement.prototype.setPointerCapture ??= () => {};
 HTMLElement.prototype.hasPointerCapture ??= () => false;
 HTMLElement.prototype.releasePointerCapture ??= () => {};
 Element.prototype.scrollIntoView ??= () => {};
-Element.prototype.getAnimations ??= () => [];
 // nor the Web Animations API. The hunk ghost calls it directly and awaits `finished`; Motion detects
 // WAAPI support from `Element.prototype.animate` alone and then drives its own completion off `onfinish`,
 // so the stub has to call that too, or an AnimatePresence exit never resolves and its node never unmounts.

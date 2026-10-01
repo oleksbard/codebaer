@@ -15,6 +15,7 @@ import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
 import { Count } from '#ui/Count';
 import { inertOnClose, keepFocus } from '#ui/focus';
+import { glowLayer } from '#ui/glow';
 import { Kbd } from '#ui/Kbd';
 import { LayoutGroup } from '#ui/List';
 import { Tabs } from '#ui/Tabs';
@@ -115,7 +116,7 @@ export function Sidebar() {
   const [open, setOpen] = useState<Record<QueueSection, boolean>>({ unstaged: true, staged: true, commits: true });
   const q = s.status ? buildQueue(s.status) : { unstaged: [], staged: [] };
   return (
-    <aside className="side glow">
+    <aside className="side glow" ref={glowLayer}>
       {s.folderOnly
         ? <div className="side-note">
           {s.gitMissing === null ? 'This folder has no git repository' : 'git is not installed'}
