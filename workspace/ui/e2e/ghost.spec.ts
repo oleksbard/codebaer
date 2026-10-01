@@ -28,25 +28,39 @@ const union = (boxes: { y: number; height: number }[]): Rect => {
 
 const closeTo = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1);
 
-/** The ghost's own rect, read from the inline style `place()` sets and never rewrites (the Web Animations API
- *  animates the used value, not the style attribute), so this is stable regardless of how far its exit has
- *  played by the time this reads it. Polled in the page on each frame: the ghost lives for one exit only, which
- *  a slow runner can spend on two round trips from the test. A ghost still in the page matches too, so a caller
- *  waits for the last one to go first. */
-async function ghostRect(page: Page, selector: string): Promise<Rect> {
-  const handle = await page.waitForFunction((sel) => {
-    const el = document.querySelector<HTMLElement>(sel);
-    if (!el?.parentElement) return null;
-    const parent = el.parentElement.getBoundingClientRect();
-    return { top: parent.top + parseFloat(el.style.top), height: parseFloat(el.style.height) };
-  }, selector, { polling: 'raf', timeout: 2000 });
-  return (await handle.jsonValue())!;
+type Ghosted = { __ghost?: Rect };
+
+/** Records the rect of the next ghost that matches `selector`, from the inline style `place()` sets and never
+ *  rewrites (the Web Animations API animates the used value, not the style attribute). A MutationObserver sees
+ *  it in the task that adds it: the ghost lives for one exit only, and a slow runner can paint no frame in that
+ *  time, so a poll on each frame can miss it. */
+async function watchGhost(page: Page, selector: string): Promise<() => Promise<Rect>> {
+  await page.evaluate((sel) => {
+    const w = window as Ghosted;
+    delete w.__ghost;
+    const seen = new MutationObserver((records) => {
+      for (const node of records.flatMap((r) => [...r.addedNodes])) {
+        if (!(node instanceof HTMLElement) || !node.matches(sel) || !node.parentElement) continue;
+        const parent = node.parentElement.getBoundingClientRect();
+        w.__ghost = { top: parent.top + parseFloat(node.style.top), height: parseFloat(node.style.height) };
+        seen.disconnect();
+        return;
+      }
+    });
+    seen.observe(document.body, { childList: true, subtree: true });
+  }, selector);
+  return async () => {
+    const handle = await page.waitForFunction(() => (window as Ghosted).__ghost, undefined, { timeout: 2000 });
+    return (await handle.jsonValue())!;
+  };
 }
 
 /** Accepts through `accept`, checks the ghost it leaves against `expected` (captured before the click, since
  *  the accept removes the chunk this measures), and waits for the ghost to be gone. */
 async function acceptAndCheckGhost(page: Page, accept: Locator, selector: string, expected: Rect) {
-  const [box] = await Promise.all([ghostRect(page, selector), accept.click()]);
+  const ghostRect = await watchGhost(page, selector);
+  await accept.click();
+  const box = await ghostRect();
   const ghost = page.locator(selector).first();
   closeTo(box.top, expected.top);
   closeTo(box.height, expected.height);
@@ -60,8 +74,9 @@ test('the hunk ghost covers the deletion widget and the changed lines, in unifie
   await row(page, 'unstaged', 'package.json').click();
   await mock.idle();
 
-  // the chunk that only deletes ("dev") comes first in the document
-  const deleteOnly = page.locator('.cm-deletedChunk').first();
+  // the chunk that only deletes ("dev"); found by its text, since a busy runner can still show the file open
+  // before package.json when the mock is idle
+  const deleteOnly = page.locator('.cm-deletedChunk', { hasText: '"dev"' });
   const beforeDeleteOnly = rectOf((await deleteOnly.boundingBox())!);
   await acceptAndCheckGhost(page, deleteOnly.locator('button[name=accept]'), '.cm-ghost.accept', beforeDeleteOnly);
 
@@ -85,7 +100,7 @@ test('the hunk ghost covers the changed lines in each pane, side by side', async
   await mock.idle();
 
   // the delete-only chunk shows only on the left: nothing changed on the right to ghost there
-  const deletedLeft = page.locator('.cm-merge-a .cm-changedLine').first();
+  const deletedLeft = page.locator('.cm-merge-a .cm-changedLine', { hasText: '"dev"' });
   const beforeLeft = rectOf((await deletedLeft.boundingBox())!);
   await acceptAndCheckGhost(page, page.locator('.cm-merge-b .cm-deletedChunk').first().locator('button[name=accept]'),
     '.cm-merge-a .cm-ghost.accept', beforeLeft);

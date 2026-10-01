@@ -2,7 +2,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { getChunks } from '@codemirror/merge';
 import { buildQueue, rejectSpecialCase, rowKey, type Row } from '#core/model';
-import { closeFile, openRow, refresh, selectChunk } from '#core/session';
+import { closeFile, gitAction, openRow, refresh, selectChunk } from '#core/session';
 import { foldToChanges } from '#editor/context-view';
 import {
   buildState, chunkCount, chunkIndexAtCursor, lineStat, rejectChunk, replaceDoc, replaceOriginal,
@@ -395,7 +395,7 @@ async function rejectIn(sec: Section): Promise<void> {
   if (special) {
     if (!live()) return;
     await queue(sec, async () => {
-      try { await git.revertPath(f.path); } catch (e) { toast(errText(e), 'err'); }
+      try { await gitAction(() => git.revertPath(f.path)); } catch (e) { toast(errText(e), 'err'); }
     });
     await refresh();
     return;

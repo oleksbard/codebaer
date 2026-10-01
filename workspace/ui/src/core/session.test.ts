@@ -1,7 +1,8 @@
 import { undo } from '@codemirror/commands';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  closeFile, closeRepo, flush, lastRepo, openPlain, openRepo, openRow, quit, refresh, reopenAtLaunch, view, viewChanges,
+  closeFile, closeRepo, flush, gitAction, guarded, lastRepo, openPlain, openRepo, openRow, quit, refresh,
+  reopenAtLaunch, view, viewChanges,
 } from '#core/session';
 import { core } from '#core/feature';
 import type { FileText } from '#ipc/git';
@@ -365,6 +366,37 @@ describe('switching repos', () => {
     expect(S.root).toBe('/Users/me/repos/other');
     expect(S.rootLabel).toBe('~/repos/other');
     expect(check).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a git action in flight', () => {
+  const OTHER = { root: '/Users/me/repos/other', label: '~/repos/other', title: 'other', git: true };
+  beforeEach(() => { S.toasts = []; S.root = '/Users/me/repos/this'; });
+
+  it('keeps the repo from switching or closing until it ends', async () => {
+    let end: () => void = () => {};
+    const push = guarded(() => new Promise<void>((r) => { end = r; }));
+    await openRepo(OTHER.root);
+    await closeRepo();
+    expect(g.openRepo!).not.toHaveBeenCalled();
+    expect(g.closeRepo!).not.toHaveBeenCalled();
+    expect(S.toasts.map((t) => t.message)).toEqual(Array(2).fill('Wait for the git action to finish'));
+
+    end();
+    await push;
+    g.openRepo!.mockResolvedValue(OTHER);
+    await openRepo(OTHER.root);
+    expect(S.root).toBe(OTHER.root);
+  });
+
+  it('counts one that keeps off the spinner, as a hunk accept, and one that failed lets the switch go', async () => {
+    const accept = gitAction(() => Promise.reject(new Error('StaleIndex')));
+    await openRepo(OTHER.root);
+    expect(g.openRepo!).not.toHaveBeenCalled();
+    await accept.catch(() => {});
+    g.openRepo!.mockResolvedValue(OTHER);
+    await openRepo(OTHER.root);
+    expect(S.root).toBe(OTHER.root);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { EditorView } from '@codemirror/view';
 import { acceptText, buildQueue, rejectSpecialCase, rowKey, unstageText } from '#core/model';
-import { flush, guarded, openRow, refresh, reload, saveFirst, selectChunk, view } from '#core/session';
+import { flush, gitAction, guarded, openRow, refresh, reload, saveFirst, selectChunk, view } from '#core/session';
 import {
   acceptChunk, chunkCount, chunkIndexAtCursor, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
   replaceDoc, replaceOriginal,
@@ -32,7 +32,7 @@ export async function stageChunk(v: EditorView, f: HunkFile, live: () => boolean
   acceptChunk(v);
   const text = acceptText(getOriginalDoc(v.state).toString(), f.baseline);
   try {
-    const r = await git.stageContent(f.path, text, f.eol, f.originalOid);
+    const r = await gitAction(() => git.stageContent(f.path, text, f.eol, f.originalOid));
     f.originalOid = r.oid;
     f.originalExists = r.oid !== null;
     return true;
@@ -72,7 +72,7 @@ export async function reject(): Promise<void> {
       if (!(await confirmDialog(`Restore ${o.path}?${unsavedNote(o.path)}`)) || S.open !== o) return;
       await reload();
     }
-    try { await git.revertPath(o.path); } catch (e) { toast(errText(e), 'err'); }
+    try { await gitAction(() => git.revertPath(o.path)); } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
   }
@@ -81,7 +81,11 @@ export async function reject(): Promise<void> {
     // a refresh can replace the record while the dialog is open; the blocking confirm() never let that happen
     if (S.open !== o) return;
     if (o.dirty) await reload();
-    try { await git.revertPath(o.path); o.baseline = null; o.dirty = false; } catch (e) { toast(errText(e), 'err'); }
+    try {
+      await gitAction(() => git.revertPath(o.path));
+      o.baseline = null;
+      o.dirty = false;
+    } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
   }
@@ -100,7 +104,7 @@ export async function unstageHunk(): Promise<void> {
   rejectChunk(view);
   const text = unstageText(view.state.doc.toString(), o.originalExists);
   try {
-    const r = await git.stageContent(o.path, text, o.eol, o.docOid);
+    const r = await gitAction(() => git.stageContent(o.path, text, o.eol, o.docOid));
     o.docOid = r.oid;
   } catch (e) {
     const idx = await git.readBlob('index', o.path).catch(() => null);

@@ -1,5 +1,5 @@
 import { pinDefaultBranches } from '#core/model';
-import { expandSide, guarded, offerSave, openRepo, refresh, withBusy } from '#core/session';
+import { expandSide, gitAction, guarded, offerSave, openRepo, refresh, withBusy } from '#core/session';
 import { errKind, errText, git, type Branch, type Stash, type StashKind } from '#ipc/git';
 import { logError } from '#ipc/log';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
@@ -38,7 +38,7 @@ export async function commit(): Promise<void> {
   S.committed = false;
   notify();
   try {
-    await git.commit(msg);
+    await gitAction(() => git.commit(msg));
     S.commitMessage = '';
     S.committed = true;
     const gen = ++committedGen;

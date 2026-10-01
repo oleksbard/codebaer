@@ -237,6 +237,26 @@ export async function quit(): Promise<void> {
   if (await settle()) await git.quit();
 }
 
+let gitDepth = 0;
+
+/** Wraps a git call that changes the repo, so a repo switch waits for it. withBusy() and guarded() already do;
+ *  this is for the ones that keep off the spinner. */
+export async function gitAction<T>(fn: () => Promise<T>): Promise<T> {
+  gitDepth++;
+  try {
+    return await fn();
+  } finally {
+    gitDepth--;
+  }
+}
+
+/** True, after a toast, while a git action runs: its result and its refresh belong to the repo it started in. */
+function switchRefused(): boolean {
+  if (gitDepth === 0) return false;
+  toast('Wait for the git action to finish', 'info');
+  return true;
+}
+
 let busyDepth = 0;
 let busyTimer: ReturnType<typeof setTimeout> = 0;
 
@@ -244,7 +264,7 @@ let busyTimer: ReturnType<typeof setTimeout> = 0;
 export async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
   if (++busyDepth === 1) busyTimer = setTimeout(() => { S.busy = true; notify(); }, 150);
   try {
-    return await fn();
+    return await gitAction(fn);
   } finally {
     if (--busyDepth === 0) {
       clearTimeout(busyTimer);
@@ -547,7 +567,8 @@ export const lastRepo = (): string | null => localStorage.getItem(LAST_REPO);
 export const reopenAtLaunch = (): string | null => (localStorage.getItem(LAST_CLOSED) ? null : lastRepo());
 
 export async function openRepo(path: string): Promise<void> {
-  if (!(await settleAll())) return;
+  // again after the prompt, which an action can start behind
+  if (switchRefused() || !(await settleAll()) || switchRefused()) return;
   try {
     // git installed since the launch, or since the last open
     if (S.gitMissing !== null) S.gitMissing = await git.gitVersion().then(() => null, (e: unknown) => errText(e));
@@ -586,8 +607,8 @@ export async function openRepo(path: string): Promise<void> {
 
 /** Leaves the window with no repository, as a cancelled folder picker does, after the same asks as a switch. */
 export async function closeRepo(): Promise<void> {
-  if (S.root === null) return;
-  if (!(await settleAll())) return;
+  if (S.root === null || switchRefused()) return;
+  if (!(await settleAll()) || switchRefused()) return;
   try {
     await git.closeRepo();
   } catch (e) {
@@ -608,6 +629,7 @@ export async function closeRepo(): Promise<void> {
 }
 
 export async function pickRepo(): Promise<void> {
+  if (switchRefused()) return;
   const dir = await pickFolder('Open a project folder');
   if (dir !== null) await openRepo(dir);
 }
