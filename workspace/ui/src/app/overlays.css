@@ -46,6 +46,8 @@
     &.on,
     &:hover { background: var(--sel); }
 
+    &.desc { cursor: default; background: none; }
+
     kbd { flex: none; align-self: center; }
     .note { flex: none; color: var(--muted); font-size: var(--fs-2); }
   }

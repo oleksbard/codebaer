@@ -407,7 +407,21 @@ export async function openRow(row: Row): Promise<void> {
   notify();
 }
 
-export async function openPlain(path: string): Promise<void> {
+/** A place in a file as search reports it: a 1-based line, a column in UTF-16 units and a length. */
+export type At = { line: number; col: number; len: number };
+
+/** Selects `at` in the open file and scrolls it to the middle. A file that changed since the search clamps it to
+ *  the line and the document. */
+export function selectAt(at: At): void {
+  const doc = view.state.doc;
+  const line = doc.line(Math.min(Math.max(1, at.line), doc.lines));
+  const from = Math.min(line.from + at.col, line.to);
+  const to = Math.min(from + at.len, line.to);
+  view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+}
+
+/** `at` selects a place in the file once it is open. */
+export async function openPlain(path: string, at?: At): Promise<void> {
   const keep = await leave(path, false);
   if (keep === false) return;
   const hand = handOver(keep);
@@ -427,6 +441,7 @@ export async function openPlain(path: string): Promise<void> {
     S.open = opened;
     view.setState(state);
     afterOpen();
+    if (at) selectAt(at);
   } catch (e) {
     if (!live()) return;
     if (hand.unsaved()) { keptOnFailure(e, was); return; }

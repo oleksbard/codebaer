@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import type { AiProvider, CustomCommand, HiddenScripts, Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
@@ -15,6 +15,11 @@ export type Recent = { path: string; name: string; label: string; favorite: bool
 export type Update = { version: string; page: string | null; keeps_terminals: boolean };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
 export type Listing = { files: string[]; ignored: string[] };
+/** `col` and `ranges` count UTF-16 units: `col` in the whole line, `ranges` in `text`, the preview. `cut` is true
+ *  when the preview starts past more than the line's indentation. */
+export type SearchHit = { line: number; col: number; text: string; ranges: [number, number][]; cut: boolean };
+export type SearchFile = { path: string; hits: SearchHit[] };
+export type SearchMsg = { t: 'Files'; files: SearchFile[] } | { t: 'Done'; truncated: boolean };
 export type BlameLine = { oid: string; author: string; time: number; summary: string };
 
 export type FileEntry = {
@@ -89,6 +94,12 @@ export function errText(e: unknown): string {
 export function staleText(e: unknown): FileText | null {
   return errKind(e) === 'Stale' ? (e as { detail: FileText }).detail : null;
 }
+
+let lastRun = 0;
+/** The backend keeps the highest run id it has seen and stops every search below it, so ids rise across a reload
+ *  of the page too: microseconds since the epoch fit a double exactly. */
+const nextRun = (): number =>
+  (lastRun = Math.max(lastRun + 1, Math.floor((performance.timeOrigin + performance.now()) * 1000)));
 
 export const git = {
   appVersion: () => invoke<string>('app_version'),
@@ -178,4 +189,12 @@ export const git = {
   undoCommit: (oid: string) => invoke<string>('undo_commit', { oid }),
   listFiles: () => invoke<Listing>('list_files'),
   listDir: (path: string) => invoke<string[]>('list_dir', { path }),
+  /** Streams the files that hold `query` to `onMsg`, then a Done; resolves once the search ends. `include` is
+   *  folders or globs, comma-separated, empty for the whole repo. Starting a search stops the one before, which
+   *  sends nothing more; an empty query only stops it. */
+  search: (query: string, include: string, onMsg: (m: SearchMsg) => void) => {
+    const out = new Channel<SearchMsg>();
+    out.onmessage = onMsg;
+    return invoke<void>('search', { query, include, run: nextRun(), out });
+  },
 };

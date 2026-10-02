@@ -31,4 +31,10 @@ libc = "0.2"
 portable-pty = "0.9"
 tempfile = "3"
 tauri-plugin-updater = "2"
+# the ripgrep engine, for the Search tab
+ignore = "0.4.33"
+grep-searcher = "0.1.17"
+grep-regex = "0.1.14"
+grep-matcher = "0.1.9"
+globset = "0.4.20"
 

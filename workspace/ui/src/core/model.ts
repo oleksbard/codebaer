@@ -89,6 +89,24 @@ export function buildTree(files: readonly string[]): TreeDir {
   return root;
 }
 
+export type TreeLine =
+  | { kind: 'dir'; dir: TreeDir; depth: number; parent: string }
+  | { kind: 'file'; path: string; depth: number; parent: string };
+
+/** The rows of the tree with the `open` folders expanded; nothing under a closed folder is visited. */
+export function flattenTree(root: TreeDir, open: ReadonlySet<string>): TreeLine[] {
+  const out: TreeLine[] = [];
+  const walk = (node: TreeDir, depth: number): void => {
+    for (const dir of node.dirs) {
+      out.push({ kind: 'dir', dir, depth, parent: node.path });
+      if (open.has(dir.path)) walk(dir, depth + 1);
+    }
+    for (const path of node.files) out.push({ kind: 'file', path, depth, parent: node.path });
+  };
+  walk(root, 0);
+  return out;
+}
+
 export function decideRefresh(disk: FileText, baseline: string | null, dirty: boolean): 'none' | 'replace' | 'badge' {
   const diskText = disk.exists ? disk.text : null;
   if (diskText === baseline) return 'none';

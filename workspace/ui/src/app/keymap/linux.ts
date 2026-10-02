@@ -40,6 +40,7 @@ export const LINUX: readonly Binding<CommandId>[] = [
   { keys: 'Mod+1', command: 'core.focusEditor' },
   { keys: 'Mod+Shift+1', command: 'core.focusEditor', in: 'terminal' },
   { keys: 'Mod+Shift+E', command: 'files.show', in: 'any' },
+  { keys: 'Mod+Shift+F', command: 'search.show', in: 'any' },
   { keys: 'Mod+Shift+T', command: 'terminals.show' },
   { keys: 'Mod+T', command: 'terminals.new' },
   // GNOME Terminal's new tab
@@ -47,6 +48,7 @@ export const LINUX: readonly Binding<CommandId>[] = [
   { keys: 'Mod+2', command: 'terminals.focus' },
   // the commit box, the comment box, the repo switcher and the terminal handle these
   { keys: 'Mod+Enter', command: 'git.commit', local: true },
+  { keys: 'Enter', command: 'search.run', local: true },
   { keys: 'Mod+Enter', command: 'comments.save', local: true },
   { keys: 'Mod+Shift+Enter', command: 'comments.send', local: true },
   { keys: 'Mod+Shift+C', command: 'terminals.copy', local: true },

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { closePalette, fuzzy } from '#kernel/pick';
 import { closeConfirm, closePrompt, holdToast, removeToast } from '#kernel/dialogs';
 import { AlertDialog } from '#ui/AlertDialog';
@@ -40,11 +40,16 @@ export function OverlayHost() {
   );
 }
 
+/** Go to File lists every file in the repository; past this many, typing narrows the list instead. */
+const SHOWN = 200;
+
 function CommandPalette({ req }: { req: DeepReadonly<PaletteRequest> }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
-  const shown = q ? req.items.filter((it) => fuzzy(it.label, q.toLowerCase())) : req.items;
+  const lower = useMemo(() => req.items.map((it) => it.label.toLowerCase()), [req.items]);
+  const matched = q ? req.items.filter((_, i) => fuzzy(lower[i]!, q.toLowerCase())) : req.items;
+  const shown = matched.slice(0, SHOWN);
   const cur = Math.min(sel, Math.max(0, shown.length - 1));
   useEffect(() => { listRef.current?.querySelector('li.on')?.scrollIntoView({ block: 'nearest' }); }, [cur, q]);
   const close = (v: unknown) => closePalette(req.id, v);
@@ -70,6 +75,13 @@ function CommandPalette({ req }: { req: DeepReadonly<PaletteRequest> }) {
               </li>
             ))
           : <li className="desc">No matching results</li>}
+        {matched.length > SHOWN
+          ? (
+            <li className="desc more">
+              {(matched.length - SHOWN).toLocaleString('en-US')} more. Type to narrow the list.
+            </li>
+          )
+          : null}
       </ul>
     </Dialog>
   );

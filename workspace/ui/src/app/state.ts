@@ -7,6 +7,7 @@ import { gitOpsState } from '#features/git-ops/state';
 import { orphansState } from '#features/orphans/state';
 import { reposState } from '#features/repos/state';
 import { reviewState } from '#features/review/state';
+import { searchState } from '#features/search/state';
 import { settingsState } from '#features/settings/state';
 import { tasksState } from '#features/tasks/state';
 import { terminalsState } from '#features/terminals/state';
@@ -26,7 +27,7 @@ const storedWidth = localStorage.getItem('codebaer.sideWidth');
 // its initial value fails tsc here
 const initial: Omit<State, 'palette' | 'confirm' | 'prompt' | 'toasts' | 'chord'> = {
   ...coreState(), ...gitOpsState(), ...reviewState(), ...commentsState(), ...terminalsState(), ...filesState(),
-  ...orphansState(), ...settingsState(), ...aiToolsState(), ...commandIconsState(), ...tasksState(),
+  ...searchState(), ...orphansState(), ...settingsState(), ...aiToolsState(), ...commandIconsState(), ...tasksState(),
   ...reposState(), ...updatesState(),
   sidebarHidden: localStorage.getItem('codebaer.sidebarHidden') === 'true',
   sideWidth: storedWidth ? Math.max(180, Number(storedWidth)) : null,

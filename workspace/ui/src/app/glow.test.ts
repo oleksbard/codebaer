@@ -14,16 +14,15 @@ describe('glow scenes', () => {
   it('keeps one scene on every tab unless the glow is animated', () => {
     const settings = { ...S.settings, 'appearance.glow': 'on' } as const;
     const terms = { terminals: [info(1, 'claude')], activeTerm: 1 };
-    const scenes = (['changes', 'files', 'terminals'] as const)
+    const scenes = (['changes', 'files', 'search', 'terminals'] as const)
       .map((tab) => sceneFor({ ...S, ...terms, settings, tab }, new Map([[1, 350]])));
-    expect(scenes[1]).toEqual(scenes[0]);
-    expect(scenes[2]).toEqual(scenes[0]);
+    for (const scene of scenes) expect(scene).toEqual(scenes[0]);
     const moved = sceneFor({ ...S, ...terms, settings: animated, tab: 'files' }, new Map());
     expect(moved).not.toEqual(scenes[0]);
   });
 
   it('gives every tab all seven lights', () => {
-    for (const tab of ['changes', 'files', 'terminals'] as const) {
+    for (const tab of ['changes', 'files', 'search', 'terminals'] as const) {
       expect(sceneFor({ ...S, settings: animated, tab }, new Map([[1, 100], [2, 170]]))).toHaveLength(LIGHTS);
     }
   });

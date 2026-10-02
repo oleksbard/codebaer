@@ -62,18 +62,18 @@ test('a menu command that focuses a terminal keeps that focus past the menu\'s o
   expect(focusedInTerminal).toBe(true);
 });
 
-test('a folder just opened animates its children in, but not again on a later render', async ({ page, open }) => {
+test('a folder opened shows all its children on the next frame, with motion on', async ({ page, open }) => {
   const mock = await open('review', { motion: 'on' });
   await page.getByRole('tab', { name: 'Files' }).click();
   await mock.idle();
   // the first change auto-opens and reveals src/, so src/api is the one still collapsed
-  await page.locator('details[data-dir="src/api"] > summary').click();
-  await mock.idle();
-  await expect(page.locator('details[data-dir="src/api"] .entering').first()).toBeVisible();
-
-  await page.getByRole('tab', { name: /^Changes/ }).click();
-  await mock.idle();
-  await page.getByRole('tab', { name: 'Files' }).click();
-  await mock.idle();
-  await expect(page.locator('details[data-dir="src/api"] .entering')).toHaveCount(0);
+  const shown = await page.evaluate(async () => {
+    document.querySelector<HTMLElement>('.side [data-dir="src/api"]')!.click();
+    await new Promise(requestAnimationFrame);
+    const kids = [...document.querySelectorAll<HTMLElement>('.side .row.f')]
+      .filter((r) => r.dataset.path?.startsWith('src/api/'));
+    return kids.map((r) => getComputedStyle(r).opacity);
+  });
+  expect(shown.length).toBeGreaterThan(0);
+  expect(new Set(shown)).toEqual(new Set(['1']));
 });

@@ -1,6 +1,6 @@
 import type {
-  AppError, BlameLine, Blob, Branch, Commit, DiffStat, Eol, FileEntry, FileText, Listing, Outgoing, StageResult, Stash,
-  StashKind, Status,
+  AppError, BlameLine, Blob, Branch, Commit, DiffStat, Eol, FileEntry, FileText, Listing, Outgoing, SearchFile,
+  SearchHit, StageResult, Stash, StashKind, Status,
 } from '#ipc/git';
 
 export type Version = { text: string; eol: Eol };
@@ -87,6 +87,79 @@ const ZERO = '0'.repeat(40);
 const OUTGOING = 100;
 const AUTHORS = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds'];
 const EPOCH = 1_789_000_000;
+
+/** As search.rs, counted in UTF-16 units rather than bytes. */
+export const MAX_HITS = 20_000;
+const PREVIEW = 240;
+const LEAD = 12;
+
+/** A glob as globset reads it, as a whole-path RegExp: `*` stays inside one folder, `**` crosses them, `{a,b}` is
+ *  either and `[ab]` a class. A brace left open is the error search.rs gives. */
+function globRe(glob: string): string {
+  let out = '';
+  let depth = 0;
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (glob.startsWith('**/', i)) { out += '(?:.*/)?'; i += 2; }
+    else if (glob.startsWith('/**', i) && i + 3 === glob.length) { out += '(?:/.*)?'; i += 2; }
+    else if (glob.startsWith('**', i)) { out += '.*'; i += 1; }
+    else if (c === '*') out += '[^/]*';
+    else if (c === '?') out += '[^/]';
+    else if (c === '{') { depth++; out += '(?:'; }
+    else if (c === '}') {
+      if (!depth) fail({ kind: 'InvalidPath', detail: `error parsing glob '${glob}': unopened alternate group` });
+      depth--;
+      out += ')';
+    } else if (c === '\\' && i + 1 < glob.length) out += glob[++i]!.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    else if (c === ',' && depth) out += '|';
+    else if (c === '[') {
+      const end = glob.indexOf(']', i + 2);
+      if (end < 0) fail({ kind: 'InvalidPath', detail: `error parsing glob '${glob}': unclosed character class` });
+      out += `[${glob.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
+      i = end;
+    } else out += c.replace(/[.+^$()|\\\]}]/g, '\\$&');
+  }
+  if (depth) fail({ kind: 'InvalidPath', detail: `error parsing glob '${glob}': unclosed alternate group` });
+  return out;
+}
+
+/** `patterns` in search.rs: split at the commas outside braces. */
+function patterns(include: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < include.length; i++) {
+    const c = include[i];
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (c === ',' && depth <= 0) { out.push(include.slice(from, i)); from = i + 1; }
+  }
+  return [...out, include.slice(from)];
+}
+
+/** `includes` in search.rs: a name with no slash at any depth, one with a slash (a leading one, or `./`) from the
+ *  root, each with everything under it. */
+function includes(include: string): RegExp | null {
+  const pats = patterns(include).flatMap((given) => {
+    const raw = given.trim();
+    const bare = raw.replace(/^(\.\/)+/, '').replace(/\/+$/, '');
+    const p = bare.replace(/^\/+/, '');
+    if (!p) return [];
+    return raw.startsWith('./') || bare.includes('/') ? [p, `${p}/**`] : [`**/${p}`, `**/${p}/**`];
+  });
+  return pats.length ? new RegExp(`^(?:${pats.map(globRe).join('|')})$`) : null;
+}
+
+function searchHit(line: number, text: string, ranges: [number, number][]): SearchHit {
+  const first = ranges[0]?.[0] ?? 0;
+  const indent = text.length - text.trimStart().length;
+  const start = first > LEAD + indent ? first - LEAD : Math.min(indent, first);
+  const end = Math.min(text.length, start + PREVIEW);
+  return {
+    line, col: first, text: text.slice(start, end), cut: start > indent,
+    ranges: ranges.filter(([a]) => a < end).map(([a, b]) => [Math.max(a, start) - start, Math.min(b, end) - start]),
+  };
+}
 
 function fromSeed(s: FileSeed): Entry {
   const eol = s.eol ?? 'lf';
@@ -408,6 +481,33 @@ export function createRepo(seed: RepoSeed) {
     },
 
     listDir: (path: string): string[] => seed.dirs[path] ?? [],
+
+    /** `search_impl` in search.rs over the working tree: literal, smart case, no binary files. */
+    search(query: string, include: string): { files: SearchFile[]; truncated: boolean } {
+      const only = includes(include);
+      const fold = query === query.toLowerCase();
+      const needle = fold ? query.toLowerCase() : query;
+      const out: SearchFile[] = [];
+      let found = 0;
+      for (const [path, e] of [...files].sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (!e.work || e.kind === 'binary' || (only && !only.test(path))) continue;
+        const hits: SearchHit[] = [];
+        e.work.text.split('\n').forEach((text, i) => {
+          if (found + hits.length > MAX_HITS) return;
+          const hay = fold ? text.toLowerCase() : text;
+          const ranges: [number, number][] = [];
+          for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) {
+            ranges.push([at, at + needle.length]);
+          }
+          if (ranges.length) hits.push(searchHit(i + 1, text.replace(/\r$/, ''), ranges));
+        });
+        const kept = hits.slice(0, Math.max(0, MAX_HITS - found));
+        if (kept.length) out.push({ path, hits: kept });
+        found += hits.length;
+        if (found > MAX_HITS) break;
+      }
+      return { files: out, truncated: found > MAX_HITS };
+    },
 
     blame(path: string, line: number, contents: string): BlameLine {
       const text = contents.split('\n')[line - 1];

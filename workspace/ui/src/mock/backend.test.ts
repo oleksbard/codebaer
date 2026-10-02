@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import lib from '../../../backend/src/lib.rs?raw';
-import { errKind, type Blob, type FileText, type Status } from '#ipc/git';
+import { errKind, type Blob, type FileText, type SearchFile, type SearchMsg, type Status } from '#ipc/git';
 import type { Settings } from '#ipc/settings';
 import type { ServerMsg } from '#ipc/terminal';
 import { createBackend } from './backend';
@@ -287,3 +287,61 @@ test('terminalWrite prints into the given session, into the newest one for no id
     expect(b.api.terminalText(3)).toContain('two\r\n');
     expect(b.api.terminalText(2)).not.toContain('three');
   });
+
+describe('search, as search.rs answers it', () => {
+  let run = 0;
+  /** The paths found, after the Done that ends the search. */
+  async function find(query: string, include = ''): Promise<{ paths: string[]; truncated: boolean }> {
+    const files: SearchFile[] = [];
+    let truncated: boolean | null = null;
+    const out = new Channel<SearchMsg>();
+    out.onmessage = (m) => { if (m.t === 'Files') files.push(...m.files); else truncated = m.truncated; };
+    await invoke('search', { query, include, run: ++run, out });
+    await vi.waitFor(() => expect(truncated).not.toBeNull());
+    return { paths: files.map((f) => f.path), truncated: truncated! };
+  }
+
+  test('a name with no slash is a folder at any depth, one with a slash starts at the root, and * stays in a folder',
+    async () => {
+      boot('big');
+      const pkg = 'apps/apps-3/src/hooks/hooks-5';
+      expect((await find('hooks5x7', pkg)).paths).toEqual([`${pkg}/file-7.ts`]);
+      expect((await find('hooks5x7', `./${pkg}/`)).paths).toEqual([`${pkg}/file-7.ts`]);
+      expect((await find('hooks5x7', 'hooks-5')).paths).toHaveLength(50);
+      expect((await find('hooks5x7', 'apps/*.ts')).paths).toEqual([]);
+      expect((await find('hooks5x7', 'apps/**/file-7.ts, packages/packages-0')).paths).toHaveLength(26);
+    });
+
+  test('a leading slash or ./ starts at the root, braces, classes and escapes are globs, a bad one is InvalidPath',
+    async () => {
+      boot('big');
+      expect((await find('hooks5x7', '/hooks-5')).paths).toEqual([]);
+      expect((await find('hooks5x7', './hooks-5')).paths).toEqual([]);
+      expect((await find('hooks5x7', '/apps/apps-3')).paths).toHaveLength(1);
+      expect((await find('hooks5x7', 'apps/apps-{3,4}/src, x')).paths).toHaveLength(2);
+      expect((await find('hooks5x7', 'apps/apps-[34]')).paths).toHaveLength(2);
+      await expect(find('x', 'src/{a')).rejects.toMatchObject({ kind: 'InvalidPath' });
+      await expect(find('x', 'src/[a')).rejects.toMatchObject({ kind: 'InvalidPath' });
+      await expect(find('x', 'src}')).rejects.toMatchObject({ kind: 'InvalidPath' });
+      expect((await find('hooks5x7', 'apps/\\*')).paths).toEqual([]);
+    });
+
+  test('answers nothing to a run older than one it has started', async () => {
+    boot();
+    await find('lineitem');
+    const sent: SearchMsg[] = [];
+    const out = new Channel<SearchMsg>();
+    out.onmessage = (m) => sent.push(m);
+    await invoke('search', { query: 'lineitem', include: '', run: run - 1, out });
+    expect(sent).toEqual([]);
+  });
+
+  test('ignores case unless the query has a capital, and stops at the cap', async () => {
+    boot();
+    expect((await find('linetotal')).paths).toEqual([]);
+    expect((await find('lineitem')).paths).toEqual((await find('LineItem')).paths);
+    expect((await find('LINEITEM')).paths).toEqual([]);
+    boot('big');
+    expect(await find('shared')).toMatchObject({ truncated: true });
+  });
+});

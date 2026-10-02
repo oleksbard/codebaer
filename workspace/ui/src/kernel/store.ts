@@ -42,6 +42,7 @@ export type DeepReadonly<T> =
 export const refs = {
   commit: null as HTMLTextAreaElement | null,
   list: null as HTMLElement | null,
+  search: null as HTMLInputElement | null,
 };
 
 // ponytail: one version counter re-renders the whole shell; per-slice selectors if re-render cost is ever measured

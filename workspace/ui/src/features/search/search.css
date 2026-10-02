@@ -1,0 +1,69 @@
+.search {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 4px;
+}
+
+.search-field {
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-2)/1.4 var(--ui);
+  padding: 5px 9px;
+  outline: none;
+
+  &::placeholder { color: var(--faint); }
+  &:focus { border-color: var(--accent); }
+}
+
+.search-note {
+  padding: 2px 16px 4px;
+  min-height: 1.4em;
+  color: var(--muted);
+  font-size: var(--fs-1);
+}
+
+/* the path's folder after its name, as the Changes queue shows it */
+.sec.sfile .l {
+  min-width: 0;
+
+  .ficon { flex: none; }
+  .name { flex: none; max-width: 70%; }
+
+  .dir {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: var(--fs-1);
+  }
+}
+
+.row.hit {
+  display: flex;
+
+  .text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+    font: var(--fs-1) var(--mono);
+    color: var(--muted);
+  }
+
+  mark {
+    background: var(--accent-soft);
+    color: var(--text);
+    border-radius: var(--r-1);
+  }
+}

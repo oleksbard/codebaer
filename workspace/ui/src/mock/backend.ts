@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Outgoing,
-  Recent, RepoItem, Rev, Scripts, StageResult, Stash, StashKind, Status, Update } from '#ipc/git';
+  Recent, RepoItem, Rev, Scripts, SearchMsg, StageResult, Stash, StashKind, Status, Update } from '#ipc/git';
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
@@ -90,6 +90,8 @@ function wordIcon(words: Record<string, string>, text: string, sets: IconSet[]):
     ?? null;
 }
 
+/** Files per message, so a search over the big scenario streams as the real one does. */
+const SEARCH_BATCH = 200;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const basename = (p: string): string => p.split('/').at(-1) ?? p;
 /** `recents::label`, with the home folder read off the path since a browser has no $HOME. */
@@ -107,6 +109,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   let icons: Record<string, string> = {};
   const favorites = new Set(sc.favorites);
   let closed = false;
+  let searches = 0;
   /** `find` answers Folder for the scenario's root: until `git_init`, or for good with no git. */
   let plain = sc.plain || sc.gitMissing;
   const calls: Call[] = [];
@@ -294,6 +297,23 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     list_files: (): Listing => repo.listFiles(),
     list_dir: ({ path }: { path: string }): string[] => repo.listDir(path),
+    // as search.rs: a new search stops the one before, and an empty query only does that, even with no repo open
+    search: async ({ query, include, run, out }: {
+      query: string; include: string; run: number; out: Channel<SearchMsg>;
+    }) => {
+      const gen = run;
+      if (run <= searches) return;
+      searches = run;
+      if (!query) return;
+      if (closed || plain) throw { kind: 'NotARepo' } satisfies AppError;
+      const { files, truncated } = repo.search(query, include);
+      for (let i = 0; i < files.length; i += SEARCH_BATCH) {
+        if (gen !== searches) return;
+        out.onmessage({ t: 'Files', files: files.slice(i, i + SEARCH_BATCH) });
+        await sleep(0);
+      }
+      if (gen === searches) out.onmessage({ t: 'Done', truncated });
+    },
     push: () => net(() => repo.push()),
     pull: () => net(() => repo.pull()),
     fetch: () => net(() => repo.fetch()),

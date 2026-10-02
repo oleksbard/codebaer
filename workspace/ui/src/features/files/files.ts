@@ -6,23 +6,10 @@ import { pick } from '#kernel/pick';
 import { notify, S } from '#kernel/store';
 
 export function toggleDir(path: string, open: boolean, unlisted = false): void {
-  // React replays a nested details' onToggle on every open ancestor too, so only a real closed-to-open
-  // transition marks the entrance; the replay finds path already open.
-  if (open) { if (!S.filesOpen.has(path)) S.filesEntering = path; S.filesOpen.add(path); }
-  else { S.filesOpen.delete(path); if (S.filesEntering === path) S.filesEntering = null; }
+  if (open) S.filesOpen.add(path);
+  else S.filesOpen.delete(path);
   notify();
   if (open && unlisted) void expandIgnored(path);
-}
-
-/** True once, right after `toggleDir` opens `path`. */
-export function isJustOpened(path: string): boolean {
-  return S.filesEntering === path;
-}
-
-/** `FilesTree` calls this once it has read `isJustOpened`, so a later remount of the same
- *  directory (a tab switch) does not replay the entrance. */
-export function consumeEntering(path: string): void {
-  if (S.filesEntering === path) { S.filesEntering = null; notify(); }
 }
 
 /** A directory read off disk knows nothing of git, so a path git has since started tracking

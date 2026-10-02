@@ -6,7 +6,8 @@
   outline: none;
 }
 
-summary.sec {
+summary.sec,
+.sec.d {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -38,13 +39,13 @@ summary.sec {
 /* listed so the tree matches the working copy, dimmed because git is not tracking them; only the label,
    so the icon keeps its colour */
 .row.ignored .name,
-summary.ignored .l {
+.sec.ignored .l {
   color: var(--faint);
 }
 
 /* an indent guide per ancestor folder, under its chevron: each row draws the part beside it, so the
    hover and selection fills above are background-color only and leave this layer alone */
-summary.sec.d,
+.sec.d,
 .row.f {
   background-image: repeating-linear-gradient(90deg, var(--guide, var(--line)) 0 1px, transparent 1px 12px);
   background-position: 14px 0;
@@ -90,7 +91,8 @@ summary::-webkit-details-marker {
   .r { display: flex; align-items: center; gap: 6px; }
 }
 
-details:not([open])>.sec .l::before {
+details:not([open])>.sec .l::before,
+.sec[aria-expanded="false"] .l::before {
   rotate: -90deg;
 }
 
@@ -195,22 +197,16 @@ details:not([open])>.sec .l::before {
   &[data-st="!"] { box-shadow: 0 0 0 3px var(--del-bg); }
 }
 
-/* the Files tree's own children, right after the folder that holds them is opened by the user */
-.row.entering,
-summary.sec.entering {
-  animation: tree-in var(--dur-2) var(--ease-out) calc(var(--i, 0) * var(--stagger)) backwards;
+/* VirtualList draws only the rows in view below a spacer, so every row has to be the height it counts with */
+.vlist { position: relative; }
+
+.vlist-body > * {
+  height: var(--row-h);
+  min-height: 0;
 }
 
-@keyframes tree-in {
-  from { opacity: 0; transform: translateY(2px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .row.entering,
-  summary.sec.entering { animation: none; }
-}
-
-:root[data-motion="lite"] {
-  .row.entering,
-  summary.sec.entering { animation: none; }
+/* the row the arrow keys are on, when it is not already the selected one, or the list while no such row shows */
+.vlist:focus-visible .cur:not(.sel),
+.vlist:focus-visible:not(:has(.cur)) {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }

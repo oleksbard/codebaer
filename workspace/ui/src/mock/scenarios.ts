@@ -387,6 +387,35 @@ const CONFLICTED_CART = CART_HEAD.replace(`  let total = 0;
   return cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
 >>>>>>> origin/main`);
 
+const AREAS = ['components', 'hooks', 'services', 'utils', 'models', 'pages', 'api', 'store'];
+
+/** Deterministic, so a test can name a path: `<kind>/<kind>-<p>/src/<area>/<area>-<d>/file-<f>.ts`. */
+function monorepo(): Pick<RepoSeed, 'files' | 'ignored' | 'dirs'> {
+  const files: Record<string, FileSeed> = {};
+  const ignored: string[] = [];
+  const dirs: Record<string, string[]> = {};
+  for (const kind of ['apps', 'packages']) {
+    for (let p = 0; p < 25; p++) {
+      const pkg = `${kind}/${kind}-${p}`;
+      files[`${pkg}/package.json`] = { head: `{ "name": "@acme/${kind}-${p}" }\n` };
+      for (const area of AREAS) {
+        for (let d = 0; d < 12; d++) {
+          for (let f = 0; f < 10; f++) {
+            const name = `${area}${d}x${f}`;
+            files[`${pkg}/src/${area}/${area}-${d}/file-${f}.ts`] = {
+              head: `import { shared } from '@acme/core';\n\nexport function ${name}(n: number): number {\n`
+                + `  return shared(n) + ${p * 1000 + d * 10 + f};\n}\n`,
+            };
+          }
+        }
+      }
+      ignored.push(`${pkg}/node_modules/`, `${pkg}/dist/`, `${pkg}/.turbo/`, `${pkg}/coverage/`, `${pkg}/.next/`);
+      dirs[`${pkg}/node_modules`] = Array.from({ length: 400 }, (_, i) => `${pkg}/node_modules/dep-${i}/`);
+    }
+  }
+  return { files, ignored, dirs };
+}
+
 /** Built per call: each backend mutates its own copy, and `since_ms` counts from page load. */
 export const SCENARIOS: Record<string, () => Scenario> = {
   review,
@@ -465,6 +494,21 @@ export const SCENARIOS: Record<string, () => Scenario> = {
 
   // a project folder with no repository: the terminals and tasks work, the review waits for Git: Init Repository
   plain: () => ({ ...review(), plain: true }),
+
+  // a monorepo of about 50,000 files and 500 ignored folders, for the Files and Search performance
+  big: () => {
+    const s = review();
+    const { files, ignored, dirs } = monorepo();
+    return {
+      ...s,
+      repo: {
+        ...s.repo,
+        files: { ...s.repo.files, ...files },
+        ignored: [...s.repo.ignored, ...ignored],
+        dirs: { ...s.repo.dirs, ...dirs },
+      },
+    };
+  },
 
   // a release is out: Check for Updates… in the palette finds it
   update: () => ({

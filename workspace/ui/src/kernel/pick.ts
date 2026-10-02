@@ -7,9 +7,10 @@ export type Item<T> = {
   sub?: string | undefined; value: T;
 };
 
+/** Both lowercase: the palette lowers each label once, not on every keystroke. */
 export function fuzzy(label: string, q: string): boolean {
   let i = 0;
-  for (const c of label.toLowerCase()) if (c === q[i]) i++;
+  for (const c of label) if (c === q[i]) i++;
   return i === q.length;
 }
 

@@ -8,6 +8,7 @@ import { gitOps } from '#features/git-ops';
 import { orphans } from '#features/orphans';
 import { repos } from '#features/repos';
 import { review } from '#features/review';
+import { search } from '#features/search';
 import { settings } from '#features/settings';
 import { tasks } from '#features/tasks';
 import { terminals } from '#features/terminals';
@@ -29,7 +30,7 @@ const app = defineFeature({
 
 /** Palette order, hook order and repo-change order follow this list. */
 export const FEATURES = [
-  core, gitOps, review, comments, repos, terminals, files, orphans, settings, aiTools, commandIcons, tasks, updates,
-  app,
+  core, gitOps, review, comments, repos, terminals, files, search, orphans, settings, aiTools, commandIcons, tasks,
+  updates, app,
 ] as const;
 export type CommandId = CommandIds<typeof FEATURES>;

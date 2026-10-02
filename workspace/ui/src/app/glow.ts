@@ -40,6 +40,19 @@ function files(side: (f: number) => number): GlowLight[] {
   ];
 }
 
+/** Search: one bright light at the fields, then a dimmer trail down the results. */
+function search(side: (f: number) => number): GlowLight[] {
+  return [
+    { x: side(0.5), y: '8%', r: 300, color: 'var(--accent)', k: 1 },
+    { x: side(0.25), y: '28%', r: 220, color: 'var(--hue-yellow)', k: 0.8 },
+    { x: side(0.7), y: '46%', r: 210, color: 'var(--info)', k: 0.8 },
+    { x: side(0.3), y: '66%', r: 200, color: 'var(--hue-orange)', k: 0.75 },
+    { x: side(0.65), y: '86%', r: 220, color: 'var(--hue-purple)', k: 0.75 },
+    { x: '26%', y: '0%', r: 340, color: 'var(--hue-yellow)', k: 0.8 },
+    { x: '70%', y: '0%', r: 360, color: 'var(--info)', k: 0.8 },
+  ];
+}
+
 /** Terminals: the activity bar and the header are all that is lit, so the lights gather there. Each session's
  *  tile gets a light in its agent's colour, the selected one the brightest; the rest go along the header. */
 function terminals(s: DeepReadonly<State>, tiles: Tiles): GlowLight[] {
@@ -75,6 +88,7 @@ export function sceneFor(s: DeepReadonly<State>, tiles: Tiles): GlowLight[] {
   }
   if (s.tab === 'terminals') return terminals(s, tiles);
   if (s.tab === 'files') return files(side);
+  if (s.tab === 'search') return search(side);
   return changes(s.status ? buildQueue(s.status).unstaged.length : 0, side);
 }
 

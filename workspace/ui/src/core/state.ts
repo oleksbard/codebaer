@@ -1,7 +1,7 @@
 import type { Eol, FileText, Status } from '#ipc/git';
 import type { ViewKind } from '#editor/editor';
 
-export type Tab = 'changes' | 'files' | 'terminals';
+export type Tab = 'changes' | 'files' | 'search' | 'terminals';
 
 export type Open = {
   path: string;

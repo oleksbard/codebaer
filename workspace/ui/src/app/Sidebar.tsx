@@ -5,6 +5,7 @@ import type { Tab } from '#core/state';
 import { openAiTools } from '#features/ai-tools';
 import { FilesList } from '#features/files';
 import { CommitBox } from '#features/git-ops';
+import { SearchPane } from '#features/search';
 import { findOrphans } from '#features/orphans';
 import { allChangesShown, QueueList, type QueueSection } from '#features/review';
 import { openSettings } from '#features/settings';
@@ -40,6 +41,16 @@ function FilesIcon() {
       <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
       <path d="M9.5 1.75V5h3.25" />
       <path d="M10 14.25H4.75A.75.75 0 0 1 4 13.5V4.5" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25 13.5 13.5" />
     </svg>
   );
 }
@@ -95,6 +106,7 @@ export function ActivityBar() {
       ),
     },
     { value: 'files', label: 'Files', caption: 'Files', icon: <FilesIcon /> },
+    { value: 'search', label: 'Search', caption: 'Search', icon: <SearchIcon /> },
   ];
   // one id, so the current-item fill slides between here and the terminal rail's own current tile
   const indicatorId = useId();
@@ -123,8 +135,9 @@ export function Sidebar() {
         </div>
         : s.tab === 'files'
           ? <FilesList files={s.files} ignored={s.ignored} active={s.open?.path ?? null} />
-          : <QueueList q={q} selected={s.selected} open={open} allChanges={allChangesShown(s)}
-            onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
+          : s.tab === 'search' ? <SearchPane />
+            : <QueueList q={q} selected={s.selected} open={open} allChanges={allChangesShown(s)}
+              onToggle={(sec, v) => setOpen((o) => ({ ...o, [sec]: v }))} />}
       <CommitBox staged={q.staged.length} hidden={s.tab !== 'changes' || s.folderOnly} />
     </aside>
   );
