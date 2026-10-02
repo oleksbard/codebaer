@@ -833,7 +833,8 @@ pub fn head_entry(root: &Path, rel: &str) -> Result<Option<(String, String)>, Ap
     }))
 }
 
-pub fn read_blob_impl(root: &Path, rev: Rev, rel: &str) -> Result<Blob, AppError> {
+/// The oid of a regular file's blob at `rev` no bigger than `max` bytes, None when the path is not there.
+fn blob_oid(root: &Path, rev: Rev, rel: &str, max: u64) -> Result<Option<String>, AppError> {
     if is_conflicted(root, rel)? {
         return Err(AppError::Conflicted);
     }
@@ -841,19 +842,65 @@ pub fn read_blob_impl(root: &Path, rev: Rev, rel: &str) -> Result<Blob, AppError
         Rev::Index => index_entry(root, rel)?,
         Rev::Head => head_entry(root, rel)?,
     };
-    let Some((mode, oid)) = entry else {
-        return Ok(Blob { text: String::new(), eol: Eol::Lf, oid: None, exists: false });
-    };
+    let Some((mode, oid)) = entry else { return Ok(None) };
     if mode != "100644" && mode != "100755" {
         return Err(AppError::Special);
     }
     let size_s = String::from_utf8_lossy(&run(root, &["cat-file", "-s", &oid], None, Some(LOCAL))?.stdout).trim().to_string();
     let size: u64 = size_s.parse().map_err(|_| AppError::Git(format!("unparsable blob size: {size_s:?}")))?;
-    if size > MAX_BYTES {
+    if size > max {
         return Err(AppError::TooLarge);
     }
+    Ok(Some(oid))
+}
+
+pub fn read_blob_impl(root: &Path, rev: Rev, rel: &str) -> Result<Blob, AppError> {
+    let Some(oid) = blob_oid(root, rev, rel, MAX_BYTES)? else {
+        return Ok(Blob { text: String::new(), eol: Eol::Lf, oid: None, exists: false });
+    };
     let ft = text_from_bytes(run(root, &["cat-file", "blob", &oid], None, Some(LOCAL))?.stdout)?;
     Ok(Blob { text: ft.text, eol: ft.eol, oid: Some(oid), exists: true })
+}
+
+/// The image preview reads whole files, which the editor's MAX_BYTES would turn away.
+pub const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// A working-tree file the image preview may read; None when it is not there.
+fn image_meta(full: &Path) -> Result<Option<std::fs::Metadata>, AppError> {
+    match std::fs::symlink_metadata(full) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+        Ok(md) if !md.is_file() => Err(AppError::Special),
+        Ok(md) if md.len() > MAX_IMAGE_BYTES => Err(AppError::TooLarge),
+        Ok(md) => Ok(Some(md)),
+    }
+}
+
+/// Changes whenever the bytes `read_bytes_impl` returns change, for a fraction of the cost: the blob oid at a stage,
+/// and the inode, size and modification time in the working tree. None when the file is not there.
+pub fn bytes_stamp_impl(root: &Path, rev: Option<Rev>, rel: &str) -> Result<Option<String>, AppError> {
+    let full = resolve(root, rel)?;
+    if let Some(rev) = rev {
+        return blob_oid(root, rev, rel, MAX_IMAGE_BYTES);
+    }
+    Ok(image_meta(&full)?.map(|md| format!("{}:{}:{}.{}", md.ino(), md.len(), md.mtime(), md.mtime_nsec())))
+}
+
+/// The bytes of the file in the working tree (`rev` None), the index or HEAD; None when it is not there.
+pub fn read_bytes_impl(root: &Path, rev: Option<Rev>, rel: &str) -> Result<Option<Vec<u8>>, AppError> {
+    let full = resolve(root, rel)?;
+    if let Some(rev) = rev {
+        let Some(oid) = blob_oid(root, rev, rel, MAX_IMAGE_BYTES)? else { return Ok(None) };
+        return Ok(Some(run(root, &["cat-file", "blob", &oid], None, Some(LOCAL))?.stdout));
+    }
+    if image_meta(&full)?.is_none() {
+        return Ok(None);
+    }
+    match std::fs::read(&full) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 #[tauri::command(async)]
@@ -861,6 +908,20 @@ pub fn read_blob(state: State<AppState>, rev: Rev, path: String) -> Result<Blob,
     let root = state.root()?;
     resolve(&root, &path)?;
     read_blob_impl(&root, rev, &path)
+}
+
+/// Raw bytes, which reach the webview as an ArrayBuffer; an empty one for a file that is not there, which
+/// `image_stamp` tells apart from an empty file.
+#[tauri::command(async)]
+pub fn read_image(state: State<AppState>, rev: Option<Rev>, path: String) -> Result<tauri::ipc::Response, AppError> {
+    let root = state.root()?;
+    Ok(tauri::ipc::Response::new(read_bytes_impl(&root, rev, &path)?.unwrap_or_default()))
+}
+
+#[tauri::command(async)]
+pub fn image_stamp(state: State<AppState>, rev: Option<Rev>, path: String) -> Result<Option<String>, AppError> {
+    let root = state.root()?;
+    bytes_stamp_impl(&root, rev, &path)
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

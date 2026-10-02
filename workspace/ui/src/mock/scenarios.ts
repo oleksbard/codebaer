@@ -127,6 +127,25 @@ export const roundCents = (value: number): number => Math.round(value);
 
 const RELEASE = '@echo off\npnpm install --frozen-lockfile\npnpm build\n';
 
+/** Base64, the form the mock keeps a binary file in: the logo before and after the agent recoloured it. */
+const LOGO_HEAD = 'iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAYAAAB1ovlvAAAB5klEQVR42u3duxHCMBBAQYqiFIZaKICC6BByEsDY99Htm3Esi9tR'
+  + 'hnU6SZIkSZIkSZIkSZIkSZIkSdO6Xc/Pbx/7VcogVhjMtP0uO4yOQ5m23+WH0Wko0/Y7ZhhbhtJxPQgL4/s0lCPXzFybpkL43ocS'
+  + 'sVaFd6CqGMBpD1XwQQgggGoE8HG//P0ACGA4uqoY6SoM8Eh4VSDSVRBgJLxsiHQVApgJLwsiXQUAVoIXDZGuZICV8UUgpCsRYAd8'
+  + 'RyOkKwFgJ3hHQ6QrGGFnfHsjpCoY4Ar49kRIVTBCAOFLQ7gSvn8RUhSMcEV8WxHSE4xwZXy/IqQmASGA8KUhnIDvG4SUAAggfBAK'
+  + 'QAAnAJyI7xNCWpx+TkGnn1NQAAIIIICCD0IAARSAAAIIoAAEEEAABSCAAAIoAAEEEEABCCCAAApAAAEEUAACCCCAAAIIIITwAQgg'
+  + 'gAACCCCE/hfsFHT6AejbMAACCCCEvg8IH4AAQgifAAQQQviUBXDqTUlUQAgfhPMAUgAhfADOvDHd9Jsg7AbRfXAQwqd5COEbgrAa'
+  + 'RHcAD0WYDdHt5xCmQPz13UwTRPAUh3BPjFvXNjUI0x7TAhE8zYFoGiCCpxkY/coKBelXlCRJkiRJkiRJkiRJkiRJkiRJ0kq9ACTc'
+  + 'yuLMCmtrAAAAAElFTkSuQmCC';
+const LOGO_WORK = 'iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAYAAAB1ovlvAAACKElEQVR42u3dwW0DIRBAUZeTSlJEinBNOeecwtKBc48i7S4LzMC8'
+  + 'L3HGhCfWkh3zeEiSJEmSJEmSJEmSJEmSJEnV+ny+vc4O61XIRuywMdXWu+1mrLgp1da7/WastCnV1ltmM1o2ZcX5IEyM72hTRs4Z'
+  + 'OTdNifD93ZQZc2V4DVQlA1htUAUfhAACqIUA/ny/3x4AAjgdXVaMdCUGOBJeFoh0JQQ4E140RLoSAYyEFwWRrgQAM8GbDZGuYICZ'
+  + '8c1ASFcgwBXwjUZIVwDAleCNhkjXZIQr4+uNkKrJAHfA1xMhVZMRAghfGMKd8N1FSNFkhDvia0VIz2SEO+O7ipCaAIQAwheGsAK+'
+  + 'MwgpARBA+CAUgABWAFgR3xFCWpx+TkGnn1NQAAIIIICCD0IAARSAAAIIoAAEEEAABSCAAAIoAAEEEEABCCCAAApAAAEEUAACCCCA'
+  + 'AAIIIITwAQgggAACCCCE/i/YKej0A9BvwwAIIIAQ+n1A+AAEEEL4BCCAEMKnKIBVb0r67+/08fV8HQ2aIAzDB6FHcfdH7xV4IELY'
+  + '/X0fgB7FYY/eO/ggHIhwNYgt98H1wAchhM2XEQIIYehNmAAuhDAbxB53AAO4IMJoiD1vPwdwYYSzIV59bWfWCyCIIfAA3BBhT4yt'
+  + 'c19dI4CbIowYLesDEMQQeD4JATEcXi+EVBSDOGI9AMKY4pvL4AEZ/lV5+CRJkiRJkiRJkiRJkiRJkiRJktS7X2A+1zv8DkwlAAAA'
+  + 'AElFTkSuQmCC';
+
 const UNCHANGED: Record<string, FileSeed> = {
   '.gitignore': { head: 'node_modules/\ndist/\n' },
   'README.md': { head: README },
@@ -154,7 +173,7 @@ const REPO: RepoSeed = {
     'src/money.ts': { head: MONEY, work: null },
     'src/utils/money.ts': { work: MONEY_NEW },
     'tools/release.cmd': { head: RELEASE, work: RELEASE.replace('pnpm build', 'pnpm test\npnpm build'), eol: 'crlf' },
-    'static/logo.png': { head: 'PNG v1', work: 'PNG v2', kind: 'binary' },
+    'static/logo.png': { head: LOGO_HEAD, work: LOGO_WORK, kind: 'binary' },
   },
   branch: 'cart-discounts',
   upstream: 'origin/cart-discounts',

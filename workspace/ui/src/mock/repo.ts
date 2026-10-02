@@ -211,6 +211,26 @@ export function createRepo(seed: RepoSeed) {
       return { text: v.text, eol: v.eol, oid: oidOfVersion(v), exists: true };
     },
 
+    /** `read_bytes_impl`. A binary file holds base64 text, which this decodes; anything else reads as UTF-8. */
+    readImage(rev: 'index' | 'head' | null, path: string): ArrayBuffer {
+      const e = files.get(path);
+      if (rev && e?.conflicted) fail({ kind: 'Conflicted' });
+      const v = rev === 'index' ? e?.index : rev === 'head' ? e?.head : e?.work;
+      if (!e || !v) return new ArrayBuffer(0);
+      if (e.kind === 'binary') {
+        try { return Uint8Array.from(atob(v.text), (c) => c.charCodeAt(0)).buffer; } catch { /* not base64 */ }
+      }
+      return new TextEncoder().encode(v.text).buffer;
+    },
+
+    /** `bytes_stamp_impl`. */
+    imageStamp(rev: 'index' | 'head' | null, path: string): string | null {
+      const e = files.get(path);
+      if (rev && e?.conflicted) fail({ kind: 'Conflicted' });
+      const v = rev === 'index' ? e?.index : rev === 'head' ? e?.head : e?.work;
+      return v ? oidOfVersion(v) : null;
+    },
+
     /** `write_file_impl`: the write lands only on the text the caller last saw, or on no file for null. */
     writeFile(path: string, text: string, eol: Eol, expected: string | null): void {
       const current = readFile(path);

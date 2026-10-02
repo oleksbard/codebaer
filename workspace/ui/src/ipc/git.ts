@@ -115,6 +115,10 @@ export const git = {
   diffStat: () => invoke<DiffStat>('diff_stat'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
   readFile: (path: string) => invoke<FileText>('read_file', { path }),
+  /** Whole files up to 16 MB, from the working tree for a null `rev`; empty when the file is not there. */
+  readImage: (rev: Rev | null, path: string) => invoke<ArrayBuffer>('read_image', { rev, path }),
+  /** Changes when readImage's bytes do, and costs a stat or a lookup; null when the file is not there. */
+  imageStamp: (rev: Rev | null, path: string) => invoke<string | null>('image_stamp', { rev, path }),
   blame: (path: string, line: number, contents: string, eol: Eol) =>
     invoke<BlameLine>('blame', { path, line, contents, eol }),
   writeFile: (path: string, text: string, eol: Eol, expected: string | null) =>

@@ -15,6 +15,8 @@ import {
   showLarge, spy, toggleSection,
 } from './all-changes';
 import { acceptFile, rejectFile } from './hunks';
+import { ImageDiff } from './ImageDiff';
+import { previews } from './images';
 import { sideChosen } from './layout';
 import { LayoutButton, PANEL_TEXT, useDiffStat } from './ReviewPane';
 
@@ -119,6 +121,7 @@ function FileSection({ path, row, staged, collapsed, opened, side }: {
   opened: boolean;
   side: boolean;
 }) {
+  const { status } = useApp();
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     bindSection(path, ref.current);
@@ -132,7 +135,8 @@ function FileSection({ path, row, staged, collapsed, opened, side }: {
   const large = changed > LARGE && !opened;
   const hunks = v ? chunkCount(v.state) : 0;
   const folded = collapsed || !row;
-  const note = folded || !sec ? null
+  const image = !folded && !!sec && previews(path, sec.panel);
+  const note = folded || !sec || image ? null
     : sec.panel === 'Conflicted' ? 'conflict, open the file to resolve the markers'
       : sec.panel === 'Large' ? 'large file'
         : sec.panel ? `${PANEL_TEXT[sec.panel] ?? sec.error ?? sec.panel}, whole-file actions only`
@@ -164,6 +168,7 @@ function FileSection({ path, row, staged, collapsed, opened, side }: {
       </header>
       <div className={side ? 'fbody split' : 'fbody'} hidden={folded || !v || !hunks || large} />
       {waiting && <div className="fwait" />}
+      {image && <ImageDiff path={path} view="unstaged" tick={status} />}
       {note && <div className="fnote">{note}
         {gate ? <Button onClick={() => showLarge(path)}>Show diff</Button> : null}</div>}
     </section>

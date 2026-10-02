@@ -109,3 +109,9 @@
   color: var(--muted);
   font-size: var(--fs-2);
 }
+
+.fsec > .img-diff {
+  padding: 12px 16px;
+
+  .img-box img { max-height: 420px; }
+}

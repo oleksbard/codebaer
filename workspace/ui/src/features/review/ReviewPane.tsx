@@ -21,6 +21,8 @@ import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { Pill } from '#ui/Pill';
 import { acceptFile, nextHunk, rejectFile, unstageFile, unstageHunk } from './hunks';
+import { ImageDiff } from './ImageDiff';
+import { previews } from './images';
 import { mainPane, mainSide, sideChosen } from './layout';
 
 export const PANEL_TEXT: Record<string, string> = {
@@ -104,8 +106,12 @@ function TitleBar() {
       <span className="dot" /><span className="x">✕</span></IconButton>
     : <IconButton label="Close file" className="close" onClick={() => void closeFile()}>✕</IconButton>;
   if (o.panel) {
-    return <div className="tbar">{title}<span className="pos">{PANEL_TEXT[o.panel] ?? o.panel}</span>
-      <div className="right"><PendingPill />{badge}{close}</div></div>;
+    const image = previews(o.path, o.panel) && !o.conflicted;
+    const changes = image && o.view === 'plain' && hasUnstaged(o.path)
+      ? <Button onClick={() => void viewChanges(o.path)}>View changes</Button>
+      : null;
+    return <div className="tbar">{title}<span className="pos">{image ? 'image' : PANEL_TEXT[o.panel] ?? o.panel}</span>
+      <div className="right"><PendingPill />{badge}{changes}{close}</div></div>;
   }
   if (o.conflicted) {
     const total = conflicts(view.state).length;
@@ -215,6 +221,14 @@ function Blank() {
   // git refuses revert_path and stage_content on an unmerged path, so a conflicted
   // record gets the panel text and nothing to press
   const btns = o.conflicted || o.view === 'plain' ? null : <WholeFileButtons path={o.path} kind={o.view} />;
+  if (previews(o.path, o.panel) && !o.conflicted) {
+    return (
+      <div className="image-pane">
+        <ImageDiff path={o.path} view={o.view} tick={s.status} />
+        {btns ? <p className="image-btns">{btns}</p> : null}
+      </div>
+    );
+  }
   return (
     <div className="blank">
       <div>

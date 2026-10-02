@@ -1,5 +1,5 @@
 use codebaer_lib::eol::Eol;
-use codebaer_lib::git::{blame_impl, discover, find, found, init_impl, head_entry, read_blob_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
+use codebaer_lib::git::{blame_impl, discover, find, found, init_impl, head_entry, bytes_stamp_impl, read_blob_impl, read_bytes_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{outgoing_impl, undo_commit_guarded, undo_commit_impl, OUTGOING};
@@ -284,6 +284,61 @@ fn read_blob_index_head_absent_and_unborn() {
     let u = tempfile::tempdir().unwrap();
     sh(u.path(), &["init", "-q"]);
     assert!(!read_blob_impl(u.path(), Rev::Head, "x.txt").unwrap().exists);
+}
+
+#[test]
+fn read_bytes_reads_every_stage_whole_and_refuses_what_it_cannot_show() {
+    let d = repo();
+    let r = d.path();
+    let png = |n: u8| [&b"\x89PNG\r\n\x1a\n\0\0"[..], &[n; 3000]].concat();
+    fs::write(r.join("i.png"), png(1)).unwrap();
+    sh(r, &["add", "i.png"]);
+    sh(r, &["commit", "-qm", "image"]);
+    fs::write(r.join("i.png"), png(2)).unwrap();
+    sh(r, &["add", "i.png"]);
+    fs::write(r.join("i.png"), png(3)).unwrap();
+    assert_eq!(read_bytes_impl(r, Some(Rev::Head), "i.png").unwrap(), Some(png(1)));
+    assert_eq!(read_bytes_impl(r, Some(Rev::Index), "i.png").unwrap(), Some(png(2)));
+    assert_eq!(read_bytes_impl(r, None, "i.png").unwrap(), Some(png(3)));
+    assert_eq!(read_bytes_impl(r, None, "nope.png").unwrap(), None);
+    assert_eq!(read_bytes_impl(r, Some(Rev::Index), "nope.png").unwrap(), None);
+    // the editor's 2 MB cap does not apply here
+    let big = fs::File::create(r.join("big.png")).unwrap();
+    big.set_len(3 * 1024 * 1024).unwrap();
+    assert_eq!(read_bytes_impl(r, None, "big.png").unwrap().map(|b| b.len()), Some(3 * 1024 * 1024));
+    big.set_len(16 * 1024 * 1024 + 1).unwrap();
+    assert_eq!(read_bytes_impl(r, None, "big.png").unwrap_err(), AppError::TooLarge);
+    std::os::unix::fs::symlink(r.join("i.png"), r.join("link.png")).unwrap();
+    assert_eq!(read_bytes_impl(r, None, "link.png").unwrap_err(), AppError::Special);
+    assert!(read_bytes_impl(r, None, "../outside.png").is_err());
+}
+
+#[test]
+fn bytes_stamp_moves_with_the_bytes_and_is_none_for_a_missing_file() {
+    let d = repo();
+    let r = d.path();
+    fs::write(r.join("i.png"), b"\x89PNG\0one").unwrap();
+    sh(r, &["add", "i.png"]);
+    let index = bytes_stamp_impl(r, Some(Rev::Index), "i.png").unwrap();
+    assert_eq!(index.as_deref(), Some(sh(r, &["rev-parse", ":i.png"]).trim()));
+    assert_eq!(bytes_stamp_impl(r, Some(Rev::Head), "i.png").unwrap(), None);
+    let work = bytes_stamp_impl(r, None, "i.png").unwrap().unwrap();
+    assert_eq!(bytes_stamp_impl(r, None, "i.png").unwrap().unwrap(), work);
+    fs::write(r.join("i.png"), b"\x89PNG\0two!").unwrap();
+    assert_ne!(bytes_stamp_impl(r, None, "i.png").unwrap().unwrap(), work);
+    // an empty file is there, unlike a missing one
+    fs::write(r.join("e.png"), b"").unwrap();
+    assert!(bytes_stamp_impl(r, None, "e.png").unwrap().is_some());
+    assert_eq!(bytes_stamp_impl(r, None, "nope.png").unwrap(), None);
+}
+
+#[test]
+fn bytes_refuse_a_conflicted_stage_but_read_its_working_tree() {
+    let d = conflicted_repo();
+    let r = d.path();
+    assert_eq!(read_bytes_impl(r, Some(Rev::Index), "a.txt").unwrap_err(), AppError::Conflicted);
+    assert_eq!(bytes_stamp_impl(r, Some(Rev::Head), "a.txt").unwrap_err(), AppError::Conflicted);
+    assert!(read_bytes_impl(r, None, "a.txt").unwrap().is_some());
 }
 
 #[test]

@@ -199,7 +199,7 @@ describe('the All changes page', () => {
   it('a binary file and a conflict get a note instead of a diff; a large diff waits behind Show diff', async () => {
     const big = Array.from({ length: LARGE + 1 }, (_, i) => `line ${i}`).join('\n');
     seed({
-      'logo.png': { index: blob('', 'il'), disk: { fail: { kind: 'Binary' } } },
+      'data.bin': { index: blob('', 'il'), disk: { fail: { kind: 'Binary' } } },
       'c.txt': { entry: { conflicted: true } },
       'big.txt': { index: blob('', 'ib'), disk: file(`${big}\n`) },
     });
@@ -207,7 +207,7 @@ describe('the All changes page', () => {
     seeAll();
 
     await vi.waitFor(() => expect(sec('big.txt')!.querySelector('.fnote')).not.toBe(null));
-    expect(sec('logo.png')!.querySelector('.fnote')!.textContent).toBe('binary file, whole-file actions only');
+    expect(sec('data.bin')!.querySelector('.fnote')!.textContent).toBe('binary file, whole-file actions only');
     expect(sec('c.txt')!.querySelector('.fnote')!.textContent).toBe('conflict, open the file to resolve the markers');
     expect(sec('c.txt')!.textContent).not.toContain('Accept file');
     const body = sec('big.txt')!.querySelector<HTMLElement>('.fbody')!;
@@ -366,6 +366,19 @@ describe('the All changes page', () => {
     button('huge.txt', 'Show diff').click();
 
     await vi.waitFor(() => expect(editorOf('huge.txt')).not.toBe(null));
+  });
+
+  it('an image shows its index and working tree pictures in place of the note', async () => {
+    seed({ 'logo.png': { index: blob('', 'il'), disk: { fail: { kind: 'Binary' } } } });
+    g.imageStamp!.mockResolvedValue('s1');
+    g.readImage!.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    await openPage();
+    seeAll();
+
+    await vi.waitFor(() => expect(sec('logo.png')!.querySelectorAll('.img-side img')).toHaveLength(2));
+    expect(new Set(g.readImage!.mock.calls.map((c) => c[0]))).toEqual(new Set(['index', null]));
+    expect(sec('logo.png')!.querySelector('.fnote')).toBe(null);
+    expect(button('logo.png', 'Accept file')).toBeDefined();
   });
 
   it('a file that fails to open elsewhere still ends the page', async () => {

@@ -212,7 +212,7 @@ describe('the blank panel', () => {
   it('offers whole-file actions for a staged or unstaged panel and none in the plain view', async () => {
     const { notify } = await import('#kernel/store');
     S.open = {
-      path: 'logo.png', view: 'plain', eol: 'lf', baseline: null, originalOid: null,
+      path: 'data.bin', view: 'plain', eol: 'lf', baseline: null, originalOid: null,
       originalExists: false, docOid: null, dirty: false, badge: null, panel: 'Binary', conflicted: false,
     };
     notify();
@@ -225,6 +225,118 @@ describe('the blank panel', () => {
     await tick();
     expect([...document.querySelectorAll('.blank p')].map((p) => p.textContent))
       .toEqual(['Whole-file actions only.', 'Reject file Accept file']);
+  });
+});
+
+describe('an image', () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0]).buffer;
+  const sides = () => [...document.querySelectorAll<HTMLElement>('.img-side')];
+  const revs = (fn: 'readImage' | 'imageStamp') => new Set(g[fn]!.mock.calls.map((c) => c[0]));
+  const openImage = async (view: 'plain' | 'unstaged' | 'staged', panel = 'Binary') => {
+    const { notify } = await import('#kernel/store');
+    // a pane left mounted from the last test would keep its picture
+    S.open = null;
+    notify();
+    await tick();
+    S.open = {
+      path: 'art/Logo.PNG', view, eol: 'lf', baseline: null, originalOid: null,
+      originalExists: false, docOid: null, dirty: false, badge: null, panel, conflicted: false,
+    };
+    notify();
+    await vi.waitFor(() => expect(document.querySelector('.img-side img, .img-side .img-none')).not.toBeNull());
+  };
+
+  beforeEach(() => {
+    g.imageStamp!.mockResolvedValue('s1');
+    g.readImage!.mockResolvedValue(PNG);
+  });
+
+  it('shows the stage it came from and the one it goes to, with the whole-file actions under them', async () => {
+    g.imageStamp!.mockImplementation((rev) => Promise.resolve(rev === 'index' ? null : 's1'));
+    await openImage('unstaged');
+
+    expect(revs('imageStamp')).toEqual(new Set(['index', null]));
+    expect(revs('readImage')).toEqual(new Set([null]));
+    expect(sides().map((f) => f.querySelector('figcaption')!.textContent)).toEqual(['Before', 'After']);
+    expect(sides()[0]!.querySelector('.img-none')!.textContent).toBe('new file');
+    await vi.waitFor(() => expect(sides()[1]!.querySelector('img')!.src).toMatch(/^data:image\/png;base64,/));
+    expect(sides()[1]!.querySelector('.img-meta')!.textContent).toBe('6 B');
+    expect(document.querySelector('.tbar .pos')!.textContent).toBe('image');
+    expect(document.querySelector('.image-btns')!.textContent).toBe('Reject file Accept file');
+    expect(document.querySelector('.blank')).toBeNull();
+  });
+
+  it('compares HEAD with the index when staged, and shows the working tree alone in the plain view', async () => {
+    await openImage('staged');
+    expect(revs('readImage')).toEqual(new Set(['head', 'index']));
+    expect(document.querySelector('.image-btns')!.textContent).toBe('Unstage file');
+
+    g.readImage!.mockClear();
+    await openImage('plain', 'TooLarge');
+    expect(g.readImage!.mock.calls).toEqual([[null, 'art/Logo.PNG']]);
+    expect(sides()).toHaveLength(1);
+    expect(sides()[0]!.querySelector('figcaption')).toBeNull();
+    expect(document.querySelector('.image-btns')).toBeNull();
+  });
+
+  it('tells an empty file from a missing one, and says why a stage could not be read', async () => {
+    g.readImage!.mockResolvedValue(new ArrayBuffer(0));
+    await openImage('plain');
+    expect(sides()[0]!.querySelector('.img-none')!.textContent).toBe('empty file');
+
+    g.imageStamp!.mockRejectedValue({ kind: 'TooLarge' });
+    await openImage('plain');
+    expect(sides()[0]!.querySelector('.img-none')!.textContent).toBe('over 16 MB, too large to show');
+  });
+
+  it('takes the stamp on every refresh and reads the picture again only when it moved', async () => {
+    const { notify } = await import('#kernel/store');
+    await openImage('plain');
+    const refreshed = async () => {
+      const stamps = g.imageStamp!.mock.calls.length;
+      S.status = status('art/Logo.PNG');
+      notify();
+      await vi.waitFor(() => expect(g.imageStamp!.mock.calls.length).toBe(stamps + 1));
+      await tick();
+    };
+    await refreshed();
+    expect(g.readImage!).toHaveBeenCalledTimes(1);
+
+    g.imageStamp!.mockResolvedValue('s2');
+    await refreshed();
+    expect(g.readImage!).toHaveBeenCalledTimes(2);
+  });
+
+  it('a slow read is not started again by the refreshes that come while it runs', async () => {
+    const { notify } = await import('#kernel/store');
+    await openImage('plain');
+    let finish!: (b: ArrayBuffer) => void;
+    g.readImage!.mockReturnValue(new Promise<ArrayBuffer>((r) => { finish = r; }));
+    g.imageStamp!.mockResolvedValue('s2');
+    for (let i = 0; i < 3; i++) {
+      const stamps = g.imageStamp!.mock.calls.length;
+      S.status = status('art/Logo.PNG');
+      notify();
+      await vi.waitFor(() => expect(g.imageStamp!.mock.calls.length).toBe(stamps + 1));
+      await tick();
+    }
+    expect(g.readImage!).toHaveBeenCalledTimes(2);
+
+    finish(new Uint8Array([0x89, 0x50, 0x4e]).buffer);
+
+    await vi.waitFor(() => expect(sides()[0]!.querySelector('.img-meta')!.textContent).toBe('3 B'));
+  });
+
+  it('a file that is not an image keeps the panel', async () => {
+    const { notify } = await import('#kernel/store');
+    S.open = {
+      path: 'Logo.png', view: 'unstaged', eol: 'lf', baseline: null, originalOid: null,
+      originalExists: false, docOid: null, dirty: false, badge: null, panel: 'Special', conflicted: false,
+    };
+    notify();
+    await tick();
+    expect(document.querySelector('.blank h2')!.textContent).toBe('not a regular file');
+    expect(g.readImage!).not.toHaveBeenCalled();
   });
 });
 

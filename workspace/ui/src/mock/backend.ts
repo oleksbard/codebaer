@@ -76,10 +76,10 @@ const REPO_WORDS: Record<string, string> = { shop: 'lucide:shopping-cart', route
 const AI_ICONS_OFF: AppError = { kind: 'Ai', detail: 'AI icons are off. Turn them on in Settings.' };
 /** What `AppState::root` fails for after `close_repo`, until the next `open_repo`, and in a folder with no repo. */
 const NEEDS_REPO = new Set([
-  'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'blame', 'stage_content', 'stage_path',
-  'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit', 'branches',
-  'switch_branch', 'create_branch', 'stash_push', 'stash_list', 'stash_pop', 'outgoing', 'undo_commit', 'list_files',
-  'list_dir', 'push', 'pull', 'fetch', 'fetch_background', 'ai_commit_message', 'ai_stash_description',
+  'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'read_image', 'image_stamp', 'blame', 'stage_content',
+  'stage_path', 'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit',
+  'branches', 'switch_branch', 'create_branch', 'stash_push', 'stash_list', 'stash_pop', 'outgoing', 'undo_commit',
+  'list_files', 'list_dir', 'push', 'pull', 'fetch', 'fetch_background', 'ai_commit_message', 'ai_stash_description',
 ]);
 /** What `AppState::cwd` fails for: only after `close_repo`. */
 const NEEDS_FOLDER = new Set(['package_scripts', 'task_run']);
@@ -261,6 +261,8 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     write_file: ({ path, text, eol, expected }: { path: string; text: string; eol: Eol; expected: string | null }) =>
       mutate(() => repo.writeFile(path, text, eol, expected)),
     read_blob: ({ rev, path }: { rev: Rev; path: string }): Blob => repo.readBlob(rev, path),
+    read_image: ({ rev, path }: { rev: Rev | null; path: string }): ArrayBuffer => repo.readImage(rev, path),
+    image_stamp: ({ rev, path }: { rev: Rev | null; path: string }): string | null => repo.imageStamp(rev, path),
     blame: ({ path, line, contents }: { path: string; line: number; contents: string }): BlameLine =>
       repo.blame(path, line, contents),
     stage_content: (a: { path: string; text: string | null; eol: Eol; expectedOid: string | null }): StageResult =>

@@ -7,8 +7,7 @@ test('the All changes page stacks every file and stages a hunk from it', async (
   await mock.idle();
   const cart = page.locator('.fsec[data-path="src/cart.ts"]');
   await expect(page.locator('.fsec')).toHaveCount(6);
-  await expect(page.locator('.fsec[data-path="static/logo.png"] .fnote'))
-    .toHaveText('binary file, whole-file actions only');
+  await expect(page.locator('.fsec[data-path="static/logo.png"] .img-side img')).toHaveCount(2);
 
   await cart.locator('button[name="accept"]').first().click();
   await mock.idle();
