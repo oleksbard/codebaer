@@ -1,8 +1,6 @@
-/* top-anchored like the palette: each section is as tall as its content, and a switch moves only the
-   bottom edge, never the nav under the pointer */
+/* every section gets the same size, the largest the window allows, so a switch never moves an edge */
 .settings {
-  width: min(760px, calc(100vw - 32px));
-  margin-top: max(32px, 10vh);
+  width: min(960px, calc(100vw - 64px));
 }
 
 .settings .dialog-x { top: 14px; right: 14px; }
@@ -10,7 +8,7 @@
 .settings-body {
   display: flex;
   min-height: 280px;
-  max-height: min(620px, calc(100vh - max(32px, 10vh) - 32px));
+  height: min(760px, calc(100vh - 64px));
 }
 
 /* --chrome is below --panel in every theme, light ones included, so the eye lands on the options first */
