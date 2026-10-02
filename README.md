@@ -6,10 +6,6 @@ A small, fast desktop app for macOS, and for Linux as a beta, for reviewing what
 
 ![CodeBär demo](https://github.com/user-attachments/assets/a563d1a6-d363-4ee7-acc4-300daca14d70)
 
-With sound:
-
-https://github.com/user-attachments/assets/5e3c275c-a7c6-49f6-89df-9890b97df348
-
 ## Why
 
 Git tools assume you wrote the change yourself. With an agent, someone else is editing your working tree, often while you read it. CodeBär is built for that case.
