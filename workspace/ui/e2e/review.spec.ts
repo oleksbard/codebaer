@@ -115,3 +115,29 @@ test('the Files tab shows an image from the working tree, and follows the agent'
 
   await expect(side.locator('.img-meta')).toHaveText(/^1 × 1 · \d+ B · shown at 128×$/);
 });
+
+test('a tall image fits inside its box', async ({ page, open }) => {
+  const mock = await open();
+  const tall = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    canvas.getContext('2d')!.fillRect(0, 0, 1080, 1920);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  await mock.agentEdit('static/logo.png', tall);
+  await page.keyboard.press('ControlOrMeta+Shift+E');
+  await page.keyboard.press('ControlOrMeta+P');
+  await page.keyboard.type('logo.png');
+  await page.keyboard.press('Enter');
+  await mock.idle();
+  const side = page.locator('.img-side');
+  await expect(side.locator('.img-meta')).toHaveText(/^1080 × 1920 · /);
+
+  const box = (await side.locator('.img-box').boundingBox())!;
+  const img = (await side.locator('img').boundingBox())!;
+  expect(img.height).toBeGreaterThan(0);
+  expect(img.y).toBeGreaterThanOrEqual(box.y);
+  expect(img.y + img.height).toBeLessThanOrEqual(box.y + box.height);
+  expect(img.width / img.height).toBeCloseTo(1080 / 1920, 2);
+});

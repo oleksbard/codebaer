@@ -89,6 +89,8 @@
   flex: 1;
   min-height: 160px;
   display: grid;
+  /* a definite track, or an auto row grows to a tall image and max-height: 100% never limits it */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   padding: 12px;
   border: 1px solid var(--line);
