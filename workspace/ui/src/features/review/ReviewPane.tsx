@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import { blameShort, blameText, buildQueue, plural, split } from '#core/model';
+import type { Tab } from '#core/state';
 import {
   closeFile, hasUnstaged, keepMine, reload, toggleChangesOnly, view, viewChanges,
 } from '#core/session';
@@ -200,10 +201,14 @@ function QueueStat({ files }: { files: number }) {
   );
 }
 
+const MASCOT: Partial<Record<Tab, string>> = { files: '/logo-files.png', search: '/logo-search.png' };
+
 function Blank() {
   const s = useApp();
   const o = s.open;
   if (!o) {
+    const mascot = MASCOT[s.tab];
+    if (mascot) return <div className="blank"><div><img src={mascot} alt="" /></div></div>;
     const n = s.status ? buildQueue(s.status).unstaged.length : 0;
     return (
       <div className="blank">
