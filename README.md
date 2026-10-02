@@ -4,6 +4,10 @@
 
 A small, fast desktop app for macOS, and for Linux as a beta, for reviewing what an AI agent changed in a local git working tree. Run the agent in the app's built-in terminal or in your own. The app shows the unstaged changes as a queue of hunks, one file at a time or every file on one page. You accept, reject, or edit each hunk, then commit.
 
+![CodeBär demo](https://github.com/user-attachments/assets/a563d1a6-d363-4ee7-acc4-300daca14d70)
+
+With sound:
+
 https://github.com/user-attachments/assets/5e3c275c-a7c6-49f6-89df-9890b97df348
 
 ## Why
