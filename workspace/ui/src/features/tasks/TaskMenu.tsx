@@ -10,6 +10,7 @@ import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
 import { inertOnClose, keepFocus } from '#ui/focus';
+import { Tip } from '#ui/Tip';
 import { useLatest } from '#ui/useLatest';
 import { closeTask, openTask, promoteTask, runTask, taskMenu } from './runner';
 import { outcome, withoutSharedPrefix } from './tasks';
@@ -79,17 +80,19 @@ export function TaskMenu() {
   const label = running ? `Commands - ${running} running` : 'Commands';
   return (
     <DropdownMenu.Root onOpenChange={(open) => { if (open) void load(); }}>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className="rail-item task-b" aria-label={label} title={label}>
-          <span className="tile">
-            <span className={launched ? 'tab-icon launch' : 'tab-icon'} key={launched}>
-              <PlayIcon />
-              {running > 0 && <span className="tab-count" aria-hidden="true">{running}</span>}
+      <Tip label={label} side="right">
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="rail-item task-b" aria-label={label}>
+            <span className="tile">
+              <span className={launched ? 'tab-icon launch' : 'tab-icon'} key={launched}>
+                <PlayIcon />
+                {running > 0 && <span className="tab-count" aria-hidden="true">{running}</span>}
+              </span>
             </span>
-          </span>
-          <span className="cap">Commands</span>
-        </button>
-      </DropdownMenu.Trigger>
+            <span className="cap">Commands</span>
+          </button>
+        </DropdownMenu.Trigger>
+      </Tip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu term-menu task-menu" side="right" align="start" sideOffset={6}
           collisionPadding={8} ref={inertOnClose} onCloseAutoFocus={keepFocus}>
@@ -111,12 +114,14 @@ export function TaskMenu() {
             {saved.map((c, i) => {
               const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
               return (
-                <DropdownMenu.Item key={i} className="menu-item" title={c.command}
-                  onSelect={() => run({ t: 'Custom', ...c }, { name: c.name, command: c.command, icon: c.icon })}>
-                  {commandTitle(c) === c.command
-                    ? <span className="name wide">{icon}{c.command}</span>
-                    : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
-                </DropdownMenu.Item>
+                <Tip key={i} label={c.command} side="right" mono slow>
+                  <DropdownMenu.Item className="menu-item"
+                    onSelect={() => run({ t: 'Custom', ...c }, { name: c.name, command: c.command, icon: c.icon })}>
+                    {commandTitle(c) === c.command
+                      ? <span className="name wide">{icon}{c.command}</span>
+                      : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
+                  </DropdownMenu.Item>
+                </Tip>
               );
             })}
             {here?.error && <div className="menu-empty">{here.error}</div>}
@@ -125,13 +130,15 @@ export function TaskMenu() {
                 <DropdownMenu.Separator className="menu-sep" />
                 <div className="menu-label">package.json · {here.scripts.runner}</div>
                 {scripts.map((sc, i) => (
-                  <DropdownMenu.Item key={sc.name} className="menu-item" title={sc.command}
-                    onSelect={() => run({ t: 'Script', name: sc.name }, { ...sc, icon: null })}>
-                    <span className="name">
-                      <CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}
-                    </span>
-                    <Command text={shown[i] ?? sc.command} />
-                  </DropdownMenu.Item>
+                  <Tip key={sc.name} label={sc.command} side="right" mono slow>
+                    <DropdownMenu.Item className="menu-item"
+                      onSelect={() => run({ t: 'Script', name: sc.name }, { ...sc, icon: null })}>
+                      <span className="name">
+                        <CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}
+                      </span>
+                      <Command text={shown[i] ?? sc.command} />
+                    </DropdownMenu.Item>
+                  </Tip>
                 ))}
               </>
             )}
@@ -183,10 +190,9 @@ export function TaskDialog({ session: s }: { session: DeepReadonly<Info> }) {
         <span className={`task-state ${tone(s)}`}>{state}</span>
         <span className="task-acts">
           {running && <Button onClick={() => void killTerminal(s.id)}>Stop</Button>}
-          <Button onClick={() => void promoteTask(s.id)}
-            title="Keep this session in the terminal rail, where it stays after it ends">
-            Move to Terminals
-          </Button>
+          <Tip label="Keep this session in the terminal rail, where it stays after it ends">
+            <Button onClick={() => void promoteTask(s.id)}>Move to Terminals</Button>
+          </Tip>
         </span>
       </div>
       <TaskTerm id={s.id} />

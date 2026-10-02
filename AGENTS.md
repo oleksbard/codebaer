@@ -37,9 +37,9 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 
 `workspace/ui/mock.html` runs the real frontend in a browser on a fake backend, so a UI change can be seen and tested without Tauri. `workspace/ui/src/mock/boot.ts` installs `mockIPC` from `@tauri-apps/api/mocks`, then loads `main.tsx` unchanged. `vite build` bundles only `index.html`, so nothing under `workspace/ui/src/mock/` ships.
 
-- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `hold`, `release`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`, `terminalWrite`.
+- `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `hold`, `release`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`, `terminalWrite`, `terminalAgent`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
-- `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`). An agent session echoes a bracketed paste, which is how a comment arrives, once as a block and gives the Enter that submits it no answer; `__mock.terminalWrite` prints its reply.
+- `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`). An agent session echoes a bracketed paste, which is how a comment arrives, once as a block and gives the Enter that submits it no answer; `__mock.terminalWrite` prints its reply. A claude session carries the agent state that its hooks would report, `__mock.terminalAgent` sets it, and Esc, Ctrl+C and an answer to an approval change it as `typed()` in `agent.rs` does.
 - `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` (no git on the machine), `plain` (a folder with no repository, until Git: Init Repository), `big` (a monorepo of about 48,000 files and 500 ignored folders, for the Files and Search tabs) or `update` (a newer release that Check for Updates… finds). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome, `&motion=off` turns every animation off (see Motion).
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
@@ -48,7 +48,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 Agents can use browser mode to render any screen of the app with mock data and look at it. You do not need Tauri, a real repository or a display. Use it to check a UI change before you call it done, and to see a screen before you change it.
 
 - One screenshot: `pnpm shot <scenario> [--theme id] [--out file]` starts Vite, renders the scenario in headless WebKit, waits until the fake backend is idle, and saves a PNG (default `workspace/ui/test-results/shots/<scenario>.png`; pnpm runs the script in `workspace/ui/`, so a relative `--out` is relative to that folder). Read the PNG to see the page.
-- Another screen: add `--do` steps, which run in order and each wait for idle again. `press:<keys>` sends a key chord, `click:<selector>` clicks a Playwright locator, and `type:<text>` types. For example, `pnpm shot review --do press:Meta+Shift+T` shows the terminals, and `pnpm shot review --do press:Meta+Shift+P` shows the palette.
+- Another screen: add `--do` steps, which run in order and each wait for idle again. `press:<keys>` sends a key chord, `click:<selector>` clicks a Playwright locator, `type:<text>` types, and `hover:<selector>` hovers a locator and waits for its tooltip. For example, `pnpm shot review --do press:Meta+Shift+T` shows the terminals, and `pnpm shot review --do press:Meta+Shift+P` shows the palette.
 - Other data: pick the scenario that has what you need, or add a scenario to `scenarios.ts` when none has it. Add `--theme <id>` to check a light or dark theme, and `--browser chromium` to compare engines.
 - Interactive: run `pnpm ui` and open `http://localhost:1430/mock.html?scenario=<name>` with the Playwright MCP server or any browser tool. Call `window.__mock` to change the data while the page is open, for example `agentEdit` to simulate an agent writing a file.
 - `pnpm shot` exits non-zero when the page logs an error, so a broken render cannot pass as a clean screenshot.
@@ -140,7 +140,10 @@ workspace/backend/src/   Rust backend
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),
-                         proto.rs (wire protocol), osc133.rs, ring.rs, shells.rs
+                         proto.rs (wire protocol), osc133.rs, ring.rs, shells.rs,
+                         agent.rs (what claude is doing: the host starts it with a settings file whose hooks
+                         run this binary as `--agent-hook`, which reports to the host's `.hook` socket; the
+                         host also reads Esc, Ctrl+C and an approval's answer from the input)
 ```
 
 Data flow: the watcher emits `repo-changed`, which reaches core's `repo-changed` event handler (subscribed by `listenAll()` in `app/bootstrap.ts`). That calls `refresh()` in `core/session.ts`, which calls `git.status()` (`ipc/git.ts`) (Rust `status` command, then `git status`, then `status::parse`). The result goes into `S.status`, `notify()` fires, and the components re-render and read the state through `useApp()`.
@@ -193,7 +196,8 @@ Motion ships with the feature, not in a later pass, and most of it comes from th
 - Durations and curves are the tokens in `ui/tokens.css` (`--dur-*`, `--ease-*`, `--stagger`), and `DUR`, `EASE`, `STAGGER` and `SPRING` (which has no CSS token) in `ui/motion.ts` for JavaScript. `ui/motion.test.ts` fails on a literal time or a `cubic-bezier` in any other CSS file, and on a `DUR`, `EASE` or `STAGGER` value that is not equal to its token.
 - Lint allows a `motion` import only in `src/ui/**` and `test-setup.ts`. `editor/` uses the Web Animations API (`editor/ghost.ts`). A feature animates through the primitives:
   - a dialog: `Dialog` or `AlertDialog`, in the overlay host's `Presence`, which plays the exit. A registered overlay renders after its store field is null, so it reads its data through `useLatest()`. The palette is the one exception: it has no exit and closes at once.
-  - a menu or a tooltip: the `.menu` and `.tip` classes, and `keepFocus` and `inertOnClose` from `ui/focus.ts` on a menu's content.
+  - a menu: the `.menu` class, and `keepFocus` and `inertOnClose` from `ui/focus.ts` on its content.
+  - a hover hint: `Tip` from `ui/Tip.tsx` (`attachTip()` from `ui/domTip.ts` for plain DOM), never a native `title`, which `ui/tips.test.ts` fails on. The shortcut goes in `kbd`, a list row is `slow`, a path or a command is `mono`.
   - UI that appears after an action or a background event: `<Reveal when>`, not `{cond && …}`. Its children take their data from props.
   - a number that changes: `<Count value>`.
   - the current item of a group: `Segmented`, `Tabs` or `TabIndicator`.

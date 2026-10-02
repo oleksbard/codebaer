@@ -1,8 +1,8 @@
 // Screenshots browser mode: starts Vite on a free port, opens mock.html, waits for the fake backend to go
 // idle, and saves a PNG.
 //   pnpm shot [scenario] [--theme id] [--platform linux] [--motion on] [--out file] [--browser chromium]
-//             [--do press:Meta+Shift+T --do click:text=Pull]
-// Each --do step runs in order and waits for the backend to go idle again. Motion is off by default, so a
+//             [--do press:Meta+Shift+T --do click:text=Pull --do hover:.rail-b]
+// Each --do step runs in order and waits for the backend to go idle again; hover: also waits for the tip it opens. Motion is off by default, so a
 // shot shows the end state; --motion on keeps it.
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -54,7 +54,10 @@ try {
     if (kind === 'press') await page.keyboard.press(arg);
     else if (kind === 'click') await page.locator(arg).first().click();
     else if (kind === 'type') await page.keyboard.type(arg);
-    else throw new Error(`unknown step ${step}: use press:, click: or type:`);
+    else if (kind === 'hover') {
+      await page.locator(arg).first().hover();
+      await page.locator('.tip').first().waitFor({ state: 'visible', timeout: 3000 });
+    } else throw new Error(`unknown step ${step}: use press:, click:, type: or hover:`);
     await settle();
   }
   mkdirSync(dirname(out), { recursive: true });

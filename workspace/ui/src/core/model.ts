@@ -146,13 +146,14 @@ const ZERO_OID = /^0+$/;
 
 /** A line that is not in HEAD blames to the zero oid, where git's own author and summary read
  *  "External file (--contents)" and "Version of <file> from standard input". */
-export function blameText(b: BlameLine): string {
-  if (ZERO_OID.test(b.oid)) return 'uncommitted';
+export function blameTip(b: BlameLine): { label: string; detail?: string } {
+  if (ZERO_OID.test(b.oid)) return { label: 'uncommitted' };
   const date = new Date(b.time * 1000).toISOString().slice(0, 10);
-  return [b.oid.slice(0, 7), b.author, date, b.summary].filter(Boolean).join(' · ');
+  const detail = [b.oid.slice(0, 7), b.author, date].filter(Boolean).join(' · ');
+  return b.summary ? { label: b.summary, detail } : { label: detail };
 }
 
-/** What the file bar shows of `blameText`, which it keeps for the hover. */
+/** What the file bar shows of `blameTip`, which it keeps for the hover. */
 export function blameShort(b: BlameLine, nowMs: number): string {
   if (ZERO_OID.test(b.oid)) return 'uncommitted';
   return [b.author, ago(nowMs / 1000 - b.time)].filter(Boolean).join(' · ');

@@ -7,6 +7,7 @@ import { CHECK, REFRESH, StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { Spinner } from '#ui/Spinner';
+import { Tip } from '#ui/Tip';
 import { aiMessage, cancel, checkout, commit, network, setCommitMessage } from './git-ops';
 
 const PULL = 'M8 2v8M4.75 6.75 8 10l3.25-3.25M2.75 13.5h10.5';
@@ -57,16 +58,18 @@ function BranchBar() {
     : <span>no upstream</span>;
   return (
     <div className="branch">
-      <button type="button" className="co" title="Checkout to…" onClick={() => void checkout()}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4"
-          aria-hidden="true">
-          <circle cx="4.5" cy="3.5" r="1.5" />
-          <circle cx="4.5" cy="12.5" r="1.5" />
-          <circle cx="11.5" cy="5.5" r="1.5" />
-          <path d="M4.5 5v6M11.5 7a3.5 3.5 0 0 1-3.5 3.5H4.5" />
-        </svg>
-        <span className="nm">{branch}</span>{ab}
-      </button>
+      <Tip label="Checkout to…" side="top">
+        <button type="button" className="co" onClick={() => void checkout()}>
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4"
+            aria-hidden="true">
+            <circle cx="4.5" cy="3.5" r="1.5" />
+            <circle cx="4.5" cy="12.5" r="1.5" />
+            <circle cx="11.5" cy="5.5" r="1.5" />
+            <path d="M4.5 5v6M11.5 7a3.5 3.5 0 0 1-3.5 3.5H4.5" />
+          </svg>
+          <span className="nm">{branch}</span>{ab}
+        </button>
+      </Tip>
       {/* the remote actions are disabled while busy, so the spinner takes their place in the narrow row */}
       {s.busy
         ? <span className="busy"><Spinner />
@@ -138,10 +141,12 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
         <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
         <span className="r">
           {/* a disabled .ico takes no pointer events, so the reason sits on a wrapper that does */}
-          <span className="ai-wrap" title={aiOn ? undefined : AI_OFF}>
-            <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={s.aiBusy}
-              disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
-          </span>
+          <Tip label={aiOn ? '' : AI_OFF} side="top">
+            <span className="ai-wrap">
+              <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={s.aiBusy}
+                disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
+            </span>
+          </Tip>
           <Button variant="primary" id="commit-btn" busy={s.committing || s.committed}
             disabled={staged === 0 || !message.trim() || s.committing} onClick={() => void commit()}>
             {s.committing ? <><Spinner />Committing…</>

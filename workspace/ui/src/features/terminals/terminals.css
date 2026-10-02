@@ -88,8 +88,26 @@
   background: var(--faint);
 
   &.run { background: var(--accent); }
+  /* a ring, not a fill: in a theme whose accent is amber, a colour alone would read as running */
+  &.wait { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
   &.idle { background: var(--add); }
   &.off { background: var(--faint); }
+}
+
+.term-tip {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+
+  > span { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .tt-head { gap: 8px; margin-bottom: 1px; }
+  .tt-where { color: var(--faint); font: var(--fs-1) var(--mono); overflow-wrap: anywhere; }
+  .term-dot { align-self: center; }
+  .tt-text { overflow-wrap: anywhere; }
+  .tt-time { margin-left: auto; padding-left: 8px; color: var(--muted); font: var(--fs-1) var(--mono); }
+  .tt-about { padding-left: 13px; color: var(--muted); font: var(--fs-1) var(--mono); overflow-wrap: anywhere; }
+  .tt-sub { padding-left: 13px; color: var(--muted); }
+  .tt-warn { padding-left: 13px; color: var(--warn); }
 }
 
 .term-menu {

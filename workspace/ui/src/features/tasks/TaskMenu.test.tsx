@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { icons as lucide } from '@iconify-json/lucide';
 import type { Info, TermState } from '#ipc/terminal';
-import { tick } from '#test-setup';
+import { tick, tipOf } from '#test-setup';
 
 vi.mock('./runner', () => ({
   closeTask: vi.fn(), openTask: vi.fn(), promoteTask: vi.fn(),
@@ -78,7 +78,7 @@ it('lists this repo\'s commands, the global ones and the package.json scripts, a
   expect(document.querySelector('.task-menu')!.textContent).toContain('package.json · pnpm');
 });
 
-it('shows each script\'s command without the words they all start with, and the full one as the title', async () => {
+it('shows each script\'s command without the words they all start with, and the full one in a tip', async () => {
   vi.mocked(c.taskMenu).mockResolvedValue({
     runner: 'pnpm', scripts: [
       { name: 'dev', command: 'pnpm --filter ui dev' }, { name: 'e2e', command: 'pnpm --filter ui e2e --ci' },
@@ -87,7 +87,8 @@ it('shows each script\'s command without the words they all start with, and the 
   const items = await openMenu();
   const scripts = items.filter((i) => ['dev', 'e2e'].includes(i.querySelector('.name')?.textContent ?? ''));
   expect(scripts.map((i) => i.querySelector('.detail')!.textContent)).toEqual(['… dev', '… e2e --ci']);
-  expect(scripts.map((i) => i.title)).toEqual(['pnpm --filter ui dev', 'pnpm --filter ui e2e --ci']);
+  expect([await tipOf(scripts[0]!), await tipOf(scripts[1]!)])
+    .toEqual(['pnpm --filter ui dev', 'pnpm --filter ui e2e --ci']);
   // a saved command with no name of its own is its own label, across both columns
   expect(item(items, 'make deploy').querySelector('.name.wide')!.textContent).toBe('make deploy');
 });

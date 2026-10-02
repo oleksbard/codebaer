@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import type { AppError, Scripts, Status } from '#ipc/git';
 import type { CustomCommand } from '#ipc/settings';
-import type { Info, Menu, Orphans, ServerMsg, SpawnKind, Task, TermState } from '#ipc/terminal';
+import type { AgentState, Info, Menu, Orphans, ServerMsg, SpawnKind, Task, TermState } from '#ipc/terminal';
 
 /** `id` is handed out in order; `transcript` is what the host's ring holds, replayed on subscribe. */
 export type SessionSeed = Omit<Info, 'id' | 'cwd'> & { cwd?: string; transcript?: string };
@@ -22,16 +22,54 @@ type Session = {
   info: Info; line: string; ring: Uint8Array[]; ringSize: number; cancel?: (() => void) | undefined;
   /** A bracketed paste was echoed and the Enter that submits it has not come yet. */
   pasted: boolean;
+  /** The option claude's permission prompt has selected, as `Agent::pick` in agent.rs holds it. */
+  pick: number;
 };
 
 /** `PROTO` in workspace/backend/src/pty/proto.rs. */
-const PROTO = 3;
+const PROTO = 4;
 const RING_MAX = 256 * 1024;
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
 const enc = new TextEncoder();
 
 const color = (code: number, text: string): string => `\x1b[${code}m${text}\x1b[0m`;
+
+/** `Agent::new` in workspace/backend/src/pty/agent.rs: what the host holds after claude's SessionStart hook. */
+export const idleAgent = (now: number): AgentState => ({
+  phase: 'idle', since_ms: now, turn_ms: null, took_ms: null, end: null, actions: 0, calls: [], last: null, ask: null,
+  subagents: 0, rev: 0,
+});
+
+/** `NO` in workspace/backend/src/pty/agent.rs: the mock's permission prompt always offers all three options. */
+const NO = 2;
+
+/** `typed` in workspace/backend/src/pty/agent.rs; null when the keys change nothing. */
+function typed(s: Session, a: AgentState, data: string, now: number): AgentState | null {
+  const stop = (): AgentState | null => {
+    if (a.phase === 'idle') return null;
+    if (a.phase === 'compacting' && a.end !== null) return { ...a, phase: 'idle', since_ms: now, rev: a.rev + 1 };
+    const took = a.turn_ms === null ? null : Math.max(0, now - a.turn_ms);
+    return {
+      ...a, phase: 'idle', since_ms: now, took_ms: took, end: 'interrupted', calls: [], ask: null, subagents: 0,
+      rev: a.rev + 1,
+    };
+  };
+  const yes = (): AgentState => {
+    s.pick = 0;
+    return { ...a, phase: 'working', since_ms: now, ask: null, rev: a.rev + 1 };
+  };
+  if (data === '\x1b' || data === '\x03') return stop();
+  if (a.phase !== 'approval') return null;
+  switch (data) {
+    case '\x1b[A': case '\x1bOA': s.pick = Math.max(0, s.pick - 1); return null;
+    case '\x1b[B': case '\x1bOB': s.pick = Math.min(NO, s.pick + 1); return null;
+    case '1': case '2': case 'y': case 'Y': return yes();
+    case '3': case 'n': case 'N': return stop();
+    case '\r': return s.pick >= NO ? stop() : yes();
+    default: return null;
+  }
+}
 const running = (command: string | null): TermState => ({ t: 'Running', command, since_ms: Date.now() });
 
 /** The frame `route()` in features/terminals/xterm.ts reads: a little-endian session id, then the bytes. */
@@ -84,7 +122,7 @@ export function createPty(d: PtyDeps) {
     write(s, `${color(32, name)} ${color(90, d.status().branch ?? '')} $ `);
   };
   const add = (info: Omit<Info, 'id'>, transcript = ''): Session => {
-    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0, pasted: false };
+    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0, pasted: false, pick: 0 };
     sessions.set(s.info.id, s);
     if (transcript) write(s, transcript);
     return s;
@@ -174,6 +212,7 @@ export function createPty(d: PtyDeps) {
         pid: 50_000 + nextId, title: shell?.name ?? (kind.t === 'Command' ? kind.argv0 : 'sh'), cwd: d.root,
         tier: kind.t === 'Shell' ? 'marks' : 'process',
         state: kind.t === 'Shell' ? { t: 'Starting' } : running(null),
+        ...(kind.t === 'Command' && kind.argv0 === 'claude' ? { agent: idleAgent(Date.now()) } : {}),
       });
       start(s, req, kind.t === 'Shell'
         ? color(2, 'Browser mode: a pretend shell. Try echo, ls, git status, sleep 5, exit.\n')
@@ -224,6 +263,11 @@ export function createPty(d: PtyDeps) {
     input(id: number, data: string): void {
       const s = sessions.get(id);
       if (!s || s.info.state.t === 'Exited') return;
+      const agent = s.info.agent && typed(s, s.info.agent, data, Date.now());
+      if (agent) {
+        s.info.agent = agent;
+        send({ t: 'Agent', id, agent });
+      }
       if (s.info.tier === 'process' && !s.info.task && data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
         const [first = '', ...rest] = data.slice(PASTE_START.length, -PASTE_END.length).split('\r');
         write(s, `${[first, ...rest.map((l) => (l ? `  ${l}` : l))].join('\n')}\n\n`);
@@ -281,6 +325,17 @@ export function createPty(d: PtyDeps) {
     print(text: string, id?: number): void {
       const s = sessionOf(id);
       if (s && s.info.state.t !== 'Exited') write(s, text);
+    },
+
+    /** Sets what claude's hooks reported, over the session's current state; the newest session for no id. */
+    agent(patch: Partial<AgentState>, id?: number): void {
+      const s = sessionOf(id);
+      if (!s || s.info.state.t === 'Exited') return;
+      const before = s.info.agent ?? idleAgent(Date.now());
+      const agent = { ...before, ...patch, rev: patch.rev ?? before.rev + 1 };
+      if (agent.phase === 'approval' && before.phase !== 'approval') s.pick = 0;
+      s.info.agent = agent;
+      send({ t: 'Agent', id: s.info.id, agent });
     },
 
     /** What the session printed, as the host's ring holds it; the newest session for no id. */

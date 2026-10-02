@@ -191,7 +191,7 @@ test('terminals: subscribe says hello, a spawn is announced after its req, and o
   const ev = new Channel<ServerMsg>();
   ev.onmessage = (m) => events.push(m);
   await invoke('term_subscribe', { out, ev });
-  expect(events[0]).toMatchObject({ t: 'Hello', proto: 3 });
+  expect(events[0]).toMatchObject({ t: 'Hello', proto: 4 });
   expect(frames.some((f) => f.id === 1 && f.text.includes('pnpm test'))).toBe(true);
 
   const req = await invoke<number>('term_spawn', { kind: { t: 'Shell', path: '/bin/zsh' }, cols: 80, rows: 24 });
@@ -287,6 +287,36 @@ test('terminalWrite prints into the given session, into the newest one for no id
     expect(b.api.terminalText(3)).toContain('two\r\n');
     expect(b.api.terminalText(2)).not.toContain('three');
   });
+
+test('a claude session answers its approval with a key and stops on Esc, as typed() in agent.rs does', async () => {
+  const b = boot('review');
+  const events: ServerMsg[] = [];
+  const ev = new Channel<ServerMsg>();
+  ev.onmessage = (m) => events.push(m);
+  await invoke('term_subscribe', { out: new Channel(), ev });
+  const agent = () => events.filter((m) => m.t === 'Agent').at(-1);
+  b.api.terminalAgent({ phase: 'approval', turn_ms: Date.now() }, 2);
+  await invoke('term_input', { id: 2, data: '\x1b[B' });
+  expect(agent()).toMatchObject({ id: 2, agent: { phase: 'approval' } });
+  await invoke('term_input', { id: 2, data: '\r' });
+  expect(agent()).toMatchObject({ agent: { phase: 'working', ask: null } });
+  await invoke('term_input', { id: 2, data: '\x1b' });
+  expect(agent()).toMatchObject({ agent: { phase: 'idle', end: 'interrupted' } });
+
+  for (const keys of [['3'], ['\x1b[B', '\x1b[B', '\r']]) {
+    b.api.terminalAgent({ phase: 'approval', end: null }, 2);
+    for (const data of keys) await invoke('term_input', { id: 2, data });
+    expect(agent(), keys.join(' ')).toMatchObject({ agent: { phase: 'idle', end: 'interrupted' } });
+  }
+  const rev = agent()?.t === 'Agent' ? agent()!.agent.rev : -1;
+  b.api.terminalAgent({ phase: 'approval' }, 2);
+  await invoke('term_input', { id: 2, data: 'x' });
+  expect(agent()).toMatchObject({ agent: { phase: 'approval', rev: rev + 1 } });
+
+  b.api.terminalAgent({ phase: 'compacting', end: 'done', took_ms: 5000 }, 2);
+  await invoke('term_input', { id: 2, data: '\x1b' });
+  expect(agent(), 'a /compact between turns').toMatchObject({ agent: { phase: 'idle', end: 'done', took_ms: 5000 } });
+});
 
 describe('search, as search.rs answers it', () => {
   let run = 0;

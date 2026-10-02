@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { icons as lucide } from '@iconify-json/lucide';
 import type { Info } from '#ipc/terminal';
-import { tick } from '#test-setup';
+import { tick, tipOf } from '#test-setup';
 
 vi.mock('./sessions', () => ({
   closeTerminal: vi.fn(), killTerminal: vi.fn(), newTerminal: vi.fn(), selectTerminal: vi.fn(),
@@ -156,4 +156,26 @@ it('draws the agent\'s mark while one runs in a shell that has an icon', () => {
   flushSync(() => root.render(<TerminalRail />));
   expect(button(1).querySelector('.agent.claude')).not.toBeNull();
   expect(button(1).querySelector('.pick')).toBeNull();
+});
+
+it('shows what claude is doing in its tooltip, and what an approval waits on', async () => {
+  const now = Date.now();
+  const ask = { id: 't', tool: 'Bash', detail: 'Build the blog', since_ms: now - 12_000 };
+  S.terminals = [{
+    ...session(1, '/Users/me/projects/x'), title: 'claude', tier: 'process',
+    state: { t: 'Running', command: null, since_ms: now - 40_000 },
+    agent: {
+      phase: 'approval', since_ms: now - 12_000, turn_ms: now - 40_000, took_ms: null, end: null, actions: 2,
+      calls: [ask], last: ask, ask, subagents: 0, rev: 3,
+    },
+  }];
+  flushSync(() => root.render(<TerminalRail />));
+
+  expect(button(1).getAttribute('aria-label')).toBe('claude:1 · Waiting for your approval 12s');
+  expect(button(1).classList.contains('busy')).toBe(false);
+  expect(button(1).querySelector('.term-dot.wait')).not.toBeNull();
+  const tip = await tipOf(button(1));
+  expect(tip).toContain('Waiting for your approval');
+  expect(tip).toContain('Build the blog');
+  expect(tip).toContain('Turn 40s · 2 actions');
 });

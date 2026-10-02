@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick } from '#test-setup';
+import { tick, tipOf } from '#test-setup';
 import type { FileEntry, Status } from '#ipc/git';
 import type { Row } from '#core/model';
 
@@ -134,8 +134,9 @@ describe('AI commit message button', () => {
     expect(btn().disabled).toBe(true);
     const reason = 'Turn on an AI provider in Settings to write commit messages';
     expect(btn().getAttribute('aria-label')).toBe(reason);
-    // a disabled .ico takes no pointer events, so its own title would never show
-    expect(btn().parentElement!.getAttribute('title')).toBe(reason);
+    // a disabled .ico takes no pointer events, so its own tip would never show
+    expect(btn().hasAttribute('title')).toBe(false);
+    expect(await tipOf(btn().parentElement!)).toBe(reason);
 
     S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' }; notify(); await tick();
     expect(btn().disabled).toBe(false);

@@ -10,6 +10,7 @@ import { Dialog } from '#ui/Dialog';
 import { REFRESH, StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Pill } from '#ui/Pill';
+import { Tip } from '#ui/Tip';
 import { useLatest } from '#ui/useLatest';
 import { closeOrphans, orphanAction, rescan } from './actions';
 
@@ -108,7 +109,7 @@ export function OrphansDialog({ scan }: { scan: DeepReadonly<OrphanScan> }) {
                       </td>
                       <td className="num">{r.pid ?? ''}</td>
                       <td className="num">{r.tty}</td>
-                      <td className="cmd" title={r.command}>{r.command}</td>
+                      <Tip label={r.command} mono slow align="start"><td className="cmd">{r.command}</td></Tip>
                       <td className="host">{r.host}</td>
                       <td className="actions">
                         {r.why && <span className="why">{r.why}</span>}

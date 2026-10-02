@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick } from '#test-setup';
+import { tick, tipOf } from '#test-setup';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
 import { Kbd } from './Kbd';
@@ -16,6 +16,7 @@ import { ContextMenu } from './ContextMenu';
 import { FileIcon } from './FileIcon';
 import { DiffStat, diffBlocks } from './DiffStat';
 import { InfoTip } from './InfoTip';
+import { Tip } from './Tip';
 
 const roots: Root[] = [];
 function mount(el: ReactElement): HTMLElement {
@@ -70,12 +71,33 @@ describe('primitives', () => {
     expect(bs[1]!.disabled).toBe(true);
   });
 
-  it('IconButton needs a label and shows it as aria-label and title; busy adds the class', () => {
-    const h = mount(<IconButton label="Stage" busy>+</IconButton>);
-    const b = h.querySelector('button')!;
-    expect(b.getAttribute('aria-label')).toBe('Stage');
-    expect(b.title).toBe('Stage');
-    expect(b.className).toBe('ico busy');
+  it('IconButton names itself with aria-label and shows its label and shortcut in a tip; busy adds the class',
+    async () => {
+      const h = mount(<IconButton label="Stage" kbd="⌘Y" busy>+</IconButton>);
+      const b = h.querySelector('button')!;
+      expect(b.getAttribute('aria-label')).toBe('Stage');
+      expect(b.hasAttribute('title')).toBe(false);
+      expect(b.className).toBe('ico busy');
+      expect(await tipOf(b)).toBe('Stage⌘Y');
+      expect(document.querySelector('.tip-s kbd')?.textContent).toBe('⌘Y');
+    });
+
+  it('Tip leaves the data-state of the trigger it wraps alone', async () => {
+    const h = mount(<Tabs value="a" onValueChange={() => {}} vertical
+      items={[{ value: 'a', label: 'A', icon: <i /> }, { value: 'b', label: 'B', icon: <i /> }]} />);
+    const tabs = [...h.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs.map((t) => t.dataset['state'])).toEqual(['active', 'inactive']);
+    expect(await tipOf(tabs[0]!)).toBe('A');
+    expect(tabs[0]!.dataset['state']).toBe('active');
+  });
+
+  it('Tip renders its child alone with no label, and keeps line breaks and a detail line', async () => {
+    const h = mount(<><Tip label=""><button type="button" id="a">a</button></Tip>
+      <Tip label={'Line one\nline two'} detail="more" slow><button type="button" id="b">b</button></Tip></>);
+    expect(await tipOf(h.querySelector('#a')!)).toBeNull();
+    const b = h.querySelector<HTMLButtonElement>('#b')!;
+    expect(await tipOf(b)).toBe('Line one\nline twomore');
+    expect(document.querySelector('.tip-detail')?.textContent).toBe('more');
   });
 
   it('Kbd, Pill, Badge, Spinner render their classes', () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { exitTick, setValue, tick } from '#test-setup';
+import { exitTick, setValue, tick, tipOf } from '#test-setup';
 
 vi.mock('#core/session', () => ({ pickRepo: vi.fn(), openRepo: vi.fn(), closeRepo: vi.fn(), lastRepo: vi.fn() }));
 vi.mock('#ipc/git', async () => {
@@ -83,7 +83,7 @@ describe('header repo switcher', () => {
   it('names the repo by its folder, with the full path on hover', async () => {
     await openHere();
     expect(trigger()!.querySelector('.name')!.textContent).toBe('reviewbaer');
-    expect(trigger()!.title).toBe('~/projects/reviewbaer - switch project');
+    expect(await tipOf(trigger()!)).toBe('Switch project~/projects/reviewbaer');
   });
 
   it('prefers the repo title over the folder name', async () => {

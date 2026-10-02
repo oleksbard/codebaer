@@ -2,8 +2,12 @@ import { vi } from 'vitest';
 import './app/state';
 import './app/keymap';
 import { setMotion } from './ui/motion';
+import { TIP_DELAY } from './ui/Tip';
 
 setMotion('off');
+TIP_DELAY.open = 0;
+TIP_DELAY.skip = 0;
+TIP_DELAY.slow = 0;
 
 // @xterm/addon-unicode-graphemes 0.4.0 decodes its width table with Buffer when Buffer exists, then reads the
 // table's header through a DataView over the whole Buffer pool, not over the table. In Node the header then comes
@@ -82,6 +86,14 @@ export const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
  *  React to commit the unmount `safeToRemove` triggers. `tick` (a macrotask) is not enough. */
 export const exitTick = (): Promise<void> =>
   new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+/** Hovers `el` and resolves to the text of the tip it opens, or null when it opens none. */
+export async function tipOf(el: Element): Promise<string | null> {
+  el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+  await tick();
+  await tick();
+  return document.querySelector('[role="tooltip"]')?.textContent ?? null;
+}
 
 /**
  * React's value tracker swallows an `input` event whose value was set through the

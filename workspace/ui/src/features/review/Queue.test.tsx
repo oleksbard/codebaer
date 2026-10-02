@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick } from '#test-setup';
+import { tick, tipOf } from '#test-setup';
 import { headerItem } from '#test-app';
 import type { FileEntry, Status } from '#ipc/git';
 import type { Row } from '#core/model';
@@ -109,7 +109,7 @@ describe('row layout', () => {
     expect(r.querySelector('.tail > :last-child')!.className).toBe('st');
     expect(r.querySelector('.st')!.textContent).toBe('M');
     expect(r.dataset.st).toBe('M');
-    expect(r.title).toBe('src/lib/auth/login.ts');
+    expect(await tipOf(r)).toBe('src/lib/auth/login.ts');
   });
 
   it('a root-level file has an empty directory span', async () => {
@@ -125,13 +125,13 @@ describe('row layout', () => {
     expect(tail.querySelector('.st')!.textContent).toBe('!');
   });
 
-  it('a path with quotes and angle brackets renders as text in the name, the directory, the title and the key',
+  it('a path with quotes and angle brackets renders as text in the name, the directory, the tip and the key',
     async () => {
     await render([row('a "b"/c&d<e>.ts', 'M')]);
     const r = side.querySelector<HTMLElement>('.row')!;
     expect(r.querySelector('.path .name')!.textContent).toBe('c&d<e>.ts');
     expect(r.querySelector('.path .dir')!.textContent).toBe('a "b"');
-    expect(r.title).toBe('a "b"/c&d<e>.ts');
+    expect(await tipOf(r)).toBe('a "b"/c&d<e>.ts');
     expect(r.dataset.key).toBe('unstaged:a "b"/c&d<e>.ts');
   });
 
@@ -205,7 +205,7 @@ describe('sections', () => {
     await render([row('a', 'M')]);
     expect(headerButtons('unstaged')).toEqual(['menu', 'stage']);
     const stage = details('unstaged').querySelector<HTMLElement>('[data-all="stage"]')!;
-    expect(stage.title).toBe('Stage all changes (⌘⌥Y)');
+    expect(await tipOf(stage)).toBe('Stage all changes⌘⌥Y');
     const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
     stage.dispatchEvent(ev);
     expect(h.stageAll).toHaveBeenCalledOnce();
@@ -361,7 +361,7 @@ describe('commits', () => {
     expect(side.querySelector('details[data-sec="commits"]')).toBe(null);
   });
 
-  it('lists them in the order given, newest first, each summary a line of its own with the whole of it in the title',
+  it('lists them in the order given, newest first, each summary a line of its own with the whole of it in the tip',
     async () => {
       await render([], [row('b', 'M', 'staged')]);
       const long = 'A summary long enough to run past the edge of the sidebar and be cut short there';
@@ -370,7 +370,8 @@ describe('commits', () => {
       await tick();
       const rows = [...details('commits').querySelectorAll<HTMLElement>('.commit-row')];
       expect(rows.map((r) => r.querySelector('.summary')!.textContent)).toEqual([long, 'commit 2', 'commit 1']);
-      expect(rows[0]!.title.split('\n')[0]).toBe(long);
+      expect((await tipOf(rows[0]!))?.startsWith(long)).toBe(true);
+      expect(document.querySelector('.tip-detail')?.textContent).toMatch(/^3-fffff · /);
       expect(rows[0]!.querySelector('.oid')!.textContent).toBe('3-fffff');
       expect(details('commits').querySelector('summary .n')!.textContent).toBe('3');
     });

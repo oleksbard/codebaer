@@ -8,6 +8,7 @@ import { useGlowScene } from './glow';
 import { ActivityBar, Sidebar } from './Sidebar';
 import { useApp } from '#kernel/store';
 import { glowLayer } from '#ui/glow';
+import { TipProvider } from '#ui/Tip';
 
 export function App() {
   const s = useApp();
@@ -16,7 +17,7 @@ export function App() {
   const cls = `app glow${s.sidebarHidden ? ' nosidebar' : ''}${s.sideCollapsed ? ' sidecollapsed' : ''}`
     + (s.tab === 'terminals' ? ' terminals' : '');
   return (
-    <>
+    <TipProvider>
       <div className={cls} id="shell" style={style} ref={glowLayer}>
         <Header />
         <ActivityBar />
@@ -31,6 +32,6 @@ export function App() {
         </div>
       </div>
       <OverlayHost />
-    </>
+    </TipProvider>
   );
 }

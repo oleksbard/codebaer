@@ -14,11 +14,13 @@ import { heavyMotion } from '#ui/motion';
 import { Pop } from '#ui/Pop';
 import { Presence } from '#ui/Presence';
 import { TabIndicator } from '#ui/Tabs';
+import { Tip } from '#ui/Tip';
 import { ensureTermIcons, iconFor } from './icons';
 import { Away, OutsideBadge } from './OutsideBadge';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './sessions';
 import {
-  agentNamed, agentOf, awayLabel, homeFrom, isExited, statusLabel, termLabels, terminalsOf, type Agent,
+  agentNamed, agentOf, agentState, agentStatus, awayLabel, elapsed, homeFrom, isExited, shortCwd, statusLabel,
+  termLabels, terminalsOf, type Agent, type AgentTone,
 } from './status';
 import * as term from './xterm';
 
@@ -167,9 +169,49 @@ function Empty() {
   );
 }
 
+function toneOf(s: DeepReadonly<Info>): AgentTone | 'off' {
+  if (isExited(s)) return 'off';
+  const a = agentState(s);
+  if (a) return agentStatus(a, Date.now()).tone;
+  return s.state.t === 'Running' ? 'run' : 'idle';
+}
+
+/** A claude session whose hooks report says so; any other session has only its output to go by. */
+function working(s: DeepReadonly<Info>): boolean {
+  const a = agentState(s);
+  return a ? agentStatus(a, Date.now()).tone === 'run' : term.working(s.id);
+}
+
 function Dot({ session }: { session: DeepReadonly<Info> }) {
-  const tone = isExited(session) ? 'off' : session.state.t === 'Running' ? 'run' : 'idle';
-  return <span className={`term-dot ${tone}`} aria-hidden="true" />;
+  return <span className={`term-dot ${toneOf(session)}`} aria-hidden="true" />;
+}
+
+/** Mounted only while the tip shows, so its clock ticks only then. */
+function TermTip({ session, name, home, away, wants }: {
+  session: DeepReadonly<Info>; name: string; home: string | null; away: string | null; wants: boolean;
+}) {
+  useTick(true, 1000);
+  const now = Date.now();
+  const a = agentState(session);
+  const st = a && agentStatus(a, now);
+  const text = st ? st.text : session.state.t === 'Idle' ? 'At the prompt' : statusLabel(session, now, home);
+  return (
+    <span className="term-tip">
+      <span className="tt-head"><b>{name}</b><span className="tt-where">{shortCwd(session.cwd, home)}</span></span>
+      <span className="tt-state">
+        <span className={`term-dot ${toneOf(session)}`} aria-hidden="true" />
+        <span className="tt-text">{text}</span>
+        {st?.since != null && <span className="tt-time">{elapsed(now - st.since)}</span>}
+      </span>
+      {st?.about && <span className="tt-about">{st.about}</span>}
+      {st?.turn && <span className="tt-sub">{st.turn}</span>}
+      {a && a.subagents > 0 && (
+        <span className="tt-sub">{a.subagents} subagent{a.subagents === 1 ? '' : 's'} running</span>
+      )}
+      {away && <span className="tt-warn">{away.replace(/^o/, 'O')}</span>}
+      {wants && <span className="tt-sub">Wants your attention</span>}
+    </span>
+  );
 }
 
 export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
@@ -209,25 +251,27 @@ export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
                   { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
                 ]}
             >
-              <Pop
-                className={`rail-item rail-b${s.id === active ? ' on' : ''}${term.working(s.id) ? ' busy' : ''}`
-                  + `${away ? ' outside' : ''}`}
-                layoutDependency={sessionKey}
-                data-term={s.id}
-                aria-current={s.id === active || undefined}
-                aria-label={label}
-                title={label}
-                onClick={() => selectTerminal(s.id)}
-              >
-                <span className="tile">
-                  {s.id === active && <TabIndicator id={id} value={active} className="rail-ind" leaveOnExit />}
-                  <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
-                  {away && <Away />}
-                  <Dot session={s} />
-                  {wants && <span className="bell" aria-hidden="true" />}
-                </span>
-                <span className="cap">{name}</span>
-              </Pop>
+              <Tip side="right" align="start"
+                label={<TermTip session={s} name={name} home={home} away={away} wants={wants} />}>
+                <Pop
+                  className={`rail-item rail-b${s.id === active ? ' on' : ''}${working(s) ? ' busy' : ''}`
+                    + `${away ? ' outside' : ''}`}
+                  layoutDependency={sessionKey}
+                  data-term={s.id}
+                  aria-current={s.id === active || undefined}
+                  aria-label={label}
+                  onClick={() => selectTerminal(s.id)}
+                >
+                  <span className="tile">
+                    {s.id === active && <TabIndicator id={id} value={active} className="rail-ind" leaveOnExit />}
+                    <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
+                    {away && <Away />}
+                    <Dot session={s} />
+                    {wants && <span className="bell" aria-hidden="true" />}
+                  </span>
+                  <span className="cap">{name}</span>
+                </Pop>
+              </Tip>
             </ContextMenu>
           );
         })}
@@ -247,7 +291,7 @@ export function TermGlyph({ session, fallback = <TerminalIcon /> }: {
   const agent = agentOf(session);
   if (agent) {
     const Icon = ICONS[agent];
-    return <span className={`agent ${agent}`}><Icon busy={term.working(session.id)} /></span>;
+    return <span className={`agent ${agent}`}><Icon busy={working(session)} /></span>;
   }
   const it = iconFor(session, app.termIcons);
   const g = it && pickedGlyph(app.commandIcons, it);
@@ -258,13 +302,14 @@ function NewMenu() {
   const m = useApp().termMenu;
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className="rail-item rail-b new" title={`New terminal (${keyLabel('terminals.new')})`}
-          aria-label="New terminal">
-          <span className="tile"><PlusIcon /></span>
-          <span className="cap">New</span>
-        </button>
-      </DropdownMenu.Trigger>
+      <Tip label="New terminal" kbd={keyLabel('terminals.new')} side="right">
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="rail-item rail-b new" aria-label="New terminal">
+            <span className="tile"><PlusIcon /></span>
+            <span className="cap">New</span>
+          </button>
+        </DropdownMenu.Trigger>
+      </Tip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu term-menu" side="right" align="end" sideOffset={6}
           ref={inertOnClose} onCloseAutoFocus={keepFocus}>

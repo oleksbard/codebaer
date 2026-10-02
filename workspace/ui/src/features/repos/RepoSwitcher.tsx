@@ -6,6 +6,7 @@ import { keyLabel } from '#kernel/keymap';
 import { useApp } from '#kernel/store';
 import { inertOnClose, keepFocus } from '#ui/focus';
 import { Kbd } from '#ui/Kbd';
+import { Tip } from '#ui/Tip';
 import { openRepoPrefs, repoName } from './actions';
 import { avatars, forgetAvatars, type Avatar } from './avatar';
 import { ensureRepoIcons } from './icons';
@@ -45,17 +46,19 @@ export function RepoSwitcher() {
   };
   return (
     <DropdownMenu.Root onOpenChange={(open) => { if (open) void load(); }}>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className="repo-trigger"
-          title={root === null ? 'Open a project' : `${s.rootLabel ?? root} - switch project`}>
-          {root !== null && <RepoAvatar path={root} avatar={shown.get(root)} />}
-          <span className={root === null ? 'name none' : 'name'}>{name ?? 'No repository'}</span>
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
-            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-      </DropdownMenu.Trigger>
+      <Tip label={root === null ? 'Open a project' : 'Switch project'} align="start"
+        detail={root === null ? undefined : s.rootLabel ?? root}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="repo-trigger">
+            {root !== null && <RepoAvatar path={root} avatar={shown.get(root)} />}
+            <span className={root === null ? 'name none' : 'name'}>{name ?? 'No repository'}</span>
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+        </DropdownMenu.Trigger>
+      </Tip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu repo-menu" align="start" sideOffset={4} ref={inertOnClose}
           onCloseAutoFocus={keepFocus}>

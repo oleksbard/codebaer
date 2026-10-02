@@ -164,6 +164,13 @@ kbd {
   &:disabled { color: var(--faint); }
 }
 
+/* wraps only a disabled item, to give it a tip: a disabled button gets no pointer events, so the span takes them */
+.seg-tip {
+  display: flex;
+
+  > .seg-item { pointer-events: none; }
+}
+
 /* a chosen value, not an action: solid accent stays with the primary buttons. The edge carries it where
    the tint is too close to the track, as in several light themes */
 .seg-ind {
@@ -431,6 +438,37 @@ kbd {
   ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
   li { display: flex; align-items: flex-start; gap: 8px; }
   p { margin: 0 0 6px; color: var(--muted); }
+}
+
+/* never under the pointer's next target: it closes as the pointer leaves its trigger anyway */
+.tip-s {
+  display: grid;
+  gap: 2px;
+  max-width: 300px;
+  padding: 5px 8px;
+  border-radius: var(--r-3);
+  font-size: var(--fs-2);
+  line-height: 1.4;
+  pointer-events: none;
+  user-select: none;
+
+  &.mono .tip-label, &.mono .tip-detail { font-family: var(--mono); font-size: var(--fs-1); overflow-wrap: anywhere; }
+}
+
+.tip-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+
+  kbd { margin-left: auto; }
+}
+
+.tip-label { white-space: pre-line; text-wrap: pretty; }
+
+.tip-detail {
+  color: var(--muted);
+  white-space: pre-line;
+  text-wrap: pretty;
 }
 
 .detail {

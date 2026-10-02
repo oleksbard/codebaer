@@ -10,6 +10,7 @@ import { FileIcon } from '#ui/FileIcon';
 import { StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Pill } from '#ui/Pill';
+import { Tip } from '#ui/Tip';
 import {
   bindScroller, bindSection, closeAllChanges, collapseAll, LARGE, nearScreen, openSection, scrolled, sectionOf,
   showLarge, spy, toggleSection,
@@ -51,7 +52,7 @@ export function AllChanges() {
           <IconButton label={unfolded ? 'Collapse all files' : 'Expand all files'}
             onClick={() => collapseAll(unfolded)}>
             <StrokeIcon d={unfolded ? FOLD_ALL : UNFOLD_ALL} size={14} /></IconButton>
-          <IconButton label={`Close all changes (${keyLabel('review.allChanges')})`}
+          <IconButton label="Close all changes" kbd={keyLabel('review.allChanges')}
             onClick={() => void closeAllChanges()}>✕</IconButton>
         </div>
       </div>
@@ -150,10 +151,12 @@ function FileSection({ path, row, staged, collapsed, opened, side }: {
       <header className="fhead">
         <button type="button" className="fold" aria-expanded={!folded} disabled={!row}
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${path}`} onClick={() => toggleSection(path)} />
-        <span className="file" title={path}><FileIcon name={name} />
-          <span className="txt"><span className="dir">{dir}</span>{name}</span></span>
+        <Tip label={path} slow mono align="start">
+          <span className="file"><FileIcon name={name} />
+            <span className="txt"><span className="dir">{dir}</span>{name}</span></span>
+        </Tip>
         {row
-          ? <span className="st" title={STATUS_LABEL[row.letter] ?? row.letter}>{row.letter}</span>
+          ? <Tip label={STATUS_LABEL[row.letter] ?? row.letter}><span className="st">{row.letter}</span></Tip>
           : <Pill>{staged ? 'accepted' : 'no changes left'}</Pill>}
         {row && stat && changed ? <DiffStat added={stat.added} removed={stat.removed} /> : null}
         {row && (

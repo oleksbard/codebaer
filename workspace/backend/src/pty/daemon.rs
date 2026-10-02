@@ -11,6 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 
+use super::agent::{self, Agent};
 use super::osc133::{Mark, Scanner};
 use super::proto::{self, ClientMsg, Frame, Info, ServerMsg, SpawnKind, State, Tier};
 use super::ring::Ring;
@@ -65,6 +66,9 @@ pub struct Hub {
     idle_since: Option<Instant>,
     stop: bool,
     sock: PathBuf,
+    /// The socket claude's hooks report to, once it is bound.
+    hooks: Option<PathBuf>,
+    token: String,
 }
 
 type Shared = Arc<Mutex<Hub>>;
@@ -113,7 +117,10 @@ pub fn new_hub(sock: PathBuf) -> Shared {
         // runs from startup, so a daemon that is spawned and then never reached still reaps itself
         idle_since: Some(Instant::now()),
         stop: false,
+        // only has to differ between two hosts of one user, not resist a guess
+        token: format!("{:x}{:x}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos())),
         sock,
+        hooks: None,
     }))
 }
 
@@ -261,10 +268,19 @@ fn client_loop(mut s: UnixStream, hub: &Shared) {
 fn dispatch(frame: Frame, hub: &Shared) -> bool {
     match frame {
         Frame::Input(id, bytes) => {
-            let mut h = hub.lock().unwrap();
-            if let Some(s) = h.sessions.get_mut(&id) {
-                let _ = s.writer.write_all(&bytes);
-                let _ = s.writer.flush();
+            let note = {
+                let mut h = hub.lock().unwrap();
+                let tx = h.out.clone();
+                h.sessions.get_mut(&id).and_then(|s| {
+                    let _ = s.writer.write_all(&bytes);
+                    let _ = s.writer.flush();
+                    let a = s.info.agent.as_mut()?;
+                    agent::typed(a, &bytes, now_ms()).then(|| (tx, ServerMsg::Agent { id, agent: a.clone() }))
+                })
+            };
+            // off this thread: a full queue would stop it reading every session's keys
+            if let Some((tx, msg)) = note {
+                std::thread::spawn(move || emit(tx.as_ref(), &msg));
             }
         }
         Frame::Output(..) => {}
@@ -377,6 +393,10 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
         h.next_id - 1
     };
     let mut tmp = None;
+    let (hooks, token) = {
+        let h = hub.lock().unwrap();
+        (h.hooks.clone(), h.token.clone())
+    };
     let (program, args, env, tier, title) = match &kind {
         SpawnKind::Shell { path } => {
             let dir = tempfile::Builder::new().prefix("codebaer-").tempdir().map_err(|e| e.to_string())?;
@@ -394,13 +414,21 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
         }
         // through the login shell, not directly: a Finder-launched app's PATH does not contain
         // ~/.local/bin, which is where claude lives
-        SpawnKind::Command { argv0 } => (
-            login_shell(),
-            vec!["-l".into(), "-c".into(), format!("exec {}", quote(argv0))],
-            Vec::new(),
-            Tier::Process,
-            basename(argv0).to_string(),
-        ),
+        SpawnKind::Command { argv0 } => {
+            let mut line = format!("exec {}", quote(argv0));
+            let mut env = Vec::new();
+            if let (true, Some(sock)) = (basename(argv0) == "claude", &hooks) {
+                let exe = crate::sys::current_exe().map_err(|e| e.to_string())?;
+                let dir = tempfile::Builder::new().prefix("codebaer-").tempdir().map_err(|e| e.to_string())?;
+                let file = dir.path().join("settings.json");
+                std::fs::write(&file, agent::settings(&exe.to_string_lossy())).map_err(|e| e.to_string())?;
+                line = format!("{line} --settings {}", quote(&file.to_string_lossy()));
+                env.push((agent::SOCK_ENV.to_string(), sock.to_string_lossy().into_owned()));
+                env.push((agent::TOKEN_ENV.to_string(), token.clone()));
+                tmp = Some(dir);
+            }
+            (login_shell(), vec!["-l".into(), "-c".into(), line], env, Tier::Process, basename(argv0).to_string())
+        }
         // not exec'd: the line may be a pipeline or a list, which only the shell can run
         SpawnKind::Task { line, title } => {
             (login_shell(), vec!["-l".into(), "-c".into(), line.clone()], Vec::new(), Tier::Process, title.clone())
@@ -451,6 +479,7 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
         tier,
         state: State::Starting,
         task: matches!(kind, SpawnKind::Task { .. }),
+        agent: None,
     };
     let tx = {
         let mut h = hub.lock().unwrap();
@@ -524,6 +553,52 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
         }
     });
     Ok(())
+}
+
+/// Binds the socket claude's hooks report to. Sessions spawned after this get hooks.
+pub fn listen_hooks(hub: &Shared, path: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(path);
+    let listener = UnixListener::bind(path)?;
+    let _ = std::fs::set_permissions(path, <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600));
+    hub.lock().unwrap().hooks = Some(path.to_path_buf());
+    let hub = hub.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                // out of descriptors, say: wait rather than spin
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            };
+            if let Some(h) = agent::read(&mut stream) {
+                on_hook(&hub, &h);
+            }
+        }
+    });
+    Ok(())
+}
+
+/// What `--agent-hook` must send for the host to take its line.
+pub fn hook_token(hub: &Shared) -> String {
+    hub.lock().unwrap().token.clone()
+}
+
+fn on_hook(hub: &Shared, h: &agent::Hook) {
+    let note = {
+        let mut hub = hub.lock().unwrap();
+        let tx = hub.out.clone();
+        if h.token != hub.token {
+            return;
+        }
+        hub.sessions.get_mut(&h.session).and_then(|s| {
+            let now = now_ms();
+            let fresh = s.info.agent.is_none();
+            let a = s.info.agent.get_or_insert_with(|| Agent::new(now));
+            (agent::reduce(a, h, now) || fresh).then(|| (tx, ServerMsg::Agent { id: h.session, agent: a.clone() }))
+        })
+    };
+    if let Some((tx, msg)) = note {
+        emit(tx.as_ref(), &msg);
+    }
 }
 
 /// Reads the session's folder again, and returns the message to send if it moved.
@@ -735,11 +810,17 @@ pub fn run(sock: &Path) -> ! {
     // the socket carries this app's keystrokes; nothing else on the machine may connect
     let _ = std::fs::set_permissions(sock, <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600));
     let hub = new_hub(sock.to_path_buf());
+    let hooks = sock.with_extension("hook");
+    // claude still runs without one, and its sessions fall back to reading the output
+    if let Err(e) = listen_hooks(&hub, &hooks) {
+        log::warn!("bind {}: {e}", hooks.display());
+    }
     serve(listener, hub.clone(), IDLE, SWEEP);
     // idempotent: the Shutdown path has already emptied the map, so this only does work
     // when serve() returned for another reason, such as the idle timer
     teardown(&hub);
     let _ = std::fs::remove_file(sock);
+    let _ = std::fs::remove_file(&hooks);
     std::process::exit(0);
 }
 

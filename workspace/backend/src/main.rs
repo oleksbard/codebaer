@@ -2,6 +2,9 @@
 fn main() {
     // before Tauri initialises: this process may be the detached pty host rather than the app
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|a| a == "--agent-hook") {
+        codebaer_lib::pty::agent::hook();
+    }
     if args.get(1).is_some_and(|a| a == "--pty-host") {
         if let Ok(dir) = std::env::var(codebaer_lib::logs::DIR_ENV) {
             codebaer_lib::logs::init(std::path::Path::new(&dir), "pty host");

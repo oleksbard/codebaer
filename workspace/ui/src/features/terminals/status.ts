@@ -1,4 +1,4 @@
-import type { Info } from '#ipc/terminal';
+import type { AgentCall, AgentState, Info } from '#ipc/terminal';
 import { baseName, HOME_ROOT, within } from '#kernel/paths';
 import type { DeepReadonly } from '#kernel/store';
 
@@ -17,9 +17,94 @@ export function elapsed(ms: number): string {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`;
 }
 
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function hostOf(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+
+/** A tool call in the words of what it does. The wording follows tzafrir/whats-agent-doing (MIT). */
+export function activity(c: DeepReadonly<AgentCall>): string {
+  const d = c.detail;
+  const file = baseName(d) || d;
+  switch (c.tool) {
+    case 'Bash': case 'PowerShell': return d || 'Running a command';
+    case 'Read': return `Reading ${file}`;
+    case 'Edit': case 'MultiEdit': case 'NotebookEdit': return `Editing ${file}`;
+    case 'Write': return `Writing ${file}`;
+    case 'Grep': return `Searching for "${d}"`;
+    case 'Glob': return `Finding files ${d}`;
+    case 'WebFetch': return `Fetching ${hostOf(d)}`;
+    case 'WebSearch': return `Searching the web for "${d}"`;
+    case 'Agent': case 'Task': return d ? `Running an agent: ${d}` : 'Running an agent';
+    case 'TodoWrite': return 'Updating the todo list';
+    case 'AskUserQuestion': return 'Asking you a question';
+    case 'Skill': return `Using the ${d} skill`;
+  }
+  if (c.tool.startsWith('mcp__')) {
+    const [, server = '', name = ''] = c.tool.split('__');
+    return `Using ${server}: ${name}`;
+  }
+  return `Using ${c.tool}`;
+}
+
+export type AgentTone = 'run' | 'wait' | 'idle';
+
+/** What the agent does now. `since` starts the timer the label shows, and is null when nothing runs.
+ *  `about` names the call an approval waits on; `turn` sums up the turn while it runs. */
+export type AgentStatus = {
+  tone: AgentTone; text: string; since: number | null; about: string | null; turn: string | null;
+};
+
+export function agentStatus(a: DeepReadonly<AgentState>, now: number): AgentStatus {
+  const turn = a.turn_ms === null ? null : `Turn ${elapsed(now - a.turn_ms)} · ${plural(a.actions, 'action')}`;
+  const busy = (text: string, since: number): AgentStatus => ({ tone: 'run', text, since, about: null, turn });
+  switch (a.phase) {
+    case 'working': {
+      const open = a.calls.at(-1);
+      const more = a.calls.length > 1 ? ` (+${a.calls.length - 1} more)` : '';
+      if (open) return busy(activity(open) + more, open.since_ms);
+      return busy(a.actions === 0 ? 'Reading your prompt' : 'Thinking', a.since_ms);
+    }
+    case 'compacting': return busy('Compacting the conversation', a.since_ms);
+    case 'approval':
+      return {
+        tone: 'wait', text: 'Waiting for your approval', since: a.since_ms, about: a.ask && activity(a.ask), turn,
+      };
+    case 'question': return { tone: 'wait', text: 'Waiting for your answer', since: a.since_ms, about: null, turn };
+    case 'idle': {
+      const took = elapsed(a.took_ms ?? 0);
+      const text = a.end === 'done' ? `Done in ${took} · ${plural(a.actions, 'action')}`
+        : a.end === 'interrupted' ? `Interrupted after ${took}`
+          : a.end === 'failed' ? `Stopped on an API error after ${took}`
+            : 'Ready for a prompt';
+      return { tone: 'idle', text, since: null, about: null, turn: null };
+    }
+  }
+}
+
+/** The agent wants you: it asks for something, or a turn it ran on its own just ended. Not after an
+ *  interrupt, which is something you did. */
+type MaybeAgent = DeepReadonly<AgentState> | null | undefined;
+
+export function wantsYou(before: MaybeAgent, after: DeepReadonly<AgentState>): boolean {
+  const asks = (a: MaybeAgent) => a?.phase === 'approval' || a?.phase === 'question';
+  if (asks(after) && !asks(before)) return true;
+  return !!before && before.phase !== 'idle' && after.phase === 'idle' && after.end !== 'interrupted';
+}
+
+/** The hook state when the session has one and is still running, else null: an output tell is all that is left. */
+export const agentState = (s: DeepReadonly<Info>): DeepReadonly<AgentState> | null =>
+  s.state.t === 'Exited' ? null : s.agent ?? null;
+
 /** What a session is doing, in the words its tier can actually back up. A `process` tier
  *  session has no marks to read, so it never claims to know a command or how long it ran. */
 export function statusLabel(s: DeepReadonly<Info>, now: number, home: string | null = null): string {
+  const a = agentState(s);
+  if (a) {
+    const st = agentStatus(a, now);
+    return st.since === null ? st.text : `${st.text} ${elapsed(now - st.since)}`;
+  }
   switch (s.state.t) {
     case 'Starting':
       return 'starting';

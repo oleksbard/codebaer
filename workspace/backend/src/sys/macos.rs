@@ -125,11 +125,18 @@ pub fn command_lines() -> Result<Vec<String>, AppError> {
     Ok(String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().to_string()).collect())
 }
 
-/// Every unix socket, bound to `sock` or not: a host also inherits whatever other sockets the app that started it
-/// held, which are not unix ones.
-pub fn unix_sockets(pid: i32, _sock: &str) -> Option<usize> {
-    let out = Command::new("/usr/sbin/lsof").args(["-a", "-U", "-p", &pid.to_string(), "-F", "f"]).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with('f')).count())
+/// Every unix socket but the hook socket's listener and the connections it accepted, which lsof names by the
+/// hook socket's path. A host also inherits whatever other sockets the app that started it held, which are not
+/// unix ones.
+pub fn unix_sockets(pid: i32, sock: &str) -> Option<usize> {
+    let out = Command::new("/usr/sbin/lsof").args(["-a", "-U", "-p", &pid.to_string(), "-F", "fn"]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let hook = format!("n{}", std::path::Path::new(sock).with_extension("hook").display());
+    let text = String::from_utf8_lossy(&out.stdout);
+    let all = text.lines().filter(|l| l.starts_with('f')).count();
+    Some(all.saturating_sub(text.lines().filter(|l| *l == hook).count()))
 }
 
 pub fn open_url(url: &str) -> Result<(), AppError> {

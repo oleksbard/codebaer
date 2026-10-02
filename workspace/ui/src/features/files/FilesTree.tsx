@@ -5,6 +5,8 @@ import { copyItem } from '#kernel/clipboard';
 import { refs, useApp } from '#kernel/store';
 import { ContextMenu } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
+import { Tip } from '#ui/Tip';
+import { tipScope } from '#ui/tipScope';
 import { treeKey } from '#ui/treeKeys';
 import { VirtualList } from '#ui/VirtualList';
 import { toggleDir } from './files';
@@ -74,7 +76,7 @@ const ROLL_UP: Record<string, string> = {
 
 function RollUp({ letter }: { letter: string }) {
   const text = ROLL_UP[letter] ?? 'Contains changes';
-  return <span className="st-dot" data-st={letter} title={text}>{text}</span>;
+  return <Tip label={text}><span className="st-dot" data-st={letter} onPointerMove={tipScope}>{text}</span></Tip>;
 }
 
 function Line({ id, line, active, cur, ignored, st, open, read, point }: {
@@ -93,13 +95,14 @@ function Line({ id, line, active, cur, ignored, st, open, read, point }: {
     const unlisted = dimmed && !read.has(d.path);
     const rolled = st.dirs.get(d.path);
     return (
-      <div className={`sec d${dimmed ? ' ignored' : ''}${cur ? ' cur' : ''}`}
-        data-dir={d.path} id={id} role="treeitem" aria-level={line.depth + 1} aria-expanded={isOpen} style={style}
-        title={d.path}
-        onClick={() => { point(key(line)); toggleDir(d.path, !isOpen, unlisted); }}>
-        <span className="l"><span className="name">{d.name}</span></span>
-        {rolled && <RollUp letter={rolled} />}
-      </div>
+      <Tip label={d.path} slow mono align="start">
+        <div className={`sec d${dimmed ? ' ignored' : ''}${cur ? ' cur' : ''}`}
+          data-dir={d.path} id={id} role="treeitem" aria-level={line.depth + 1} aria-expanded={isOpen} style={style}
+          onClick={() => { point(key(line)); toggleDir(d.path, !isOpen, unlisted); }}>
+          <span className="l"><span className="name">{d.name}</span></span>
+          {rolled && <RollUp letter={rolled} />}
+        </div>
+      </Tip>
     );
   }
   const p = line.path;
@@ -109,13 +112,19 @@ function Line({ id, line, active, cur, ignored, st, open, read, point }: {
     + (cur ? ' cur' : '');
   return (
     <ContextMenu items={[copyItem(p)]}>
-      <div className={cls} data-key={`plain:${p}`} data-path={p} data-st={letter} style={style}
-        id={id} role="treeitem" aria-level={line.depth + 1} aria-selected={p === active} title={p}
-        onClick={() => void openPlain(p)}>
-        <FileIcon name={name} />
-        <span className="path"><span className="name">{name}</span></span>
-        {letter && <span className="st" title={STATUS_LABEL[letter] ?? letter}>{letter}</span>}
-      </div>
+      <Tip label={p} slow mono align="start">
+        <div className={cls} data-key={`plain:${p}`} data-path={p} data-st={letter} style={style}
+          id={id} role="treeitem" aria-level={line.depth + 1} aria-selected={p === active}
+          onClick={() => void openPlain(p)}>
+          <FileIcon name={name} />
+          <span className="path"><span className="name">{name}</span></span>
+          {letter && (
+            <Tip label={STATUS_LABEL[letter] ?? letter}>
+              <span className="st" onPointerMove={tipScope}>{letter}</span>
+            </Tip>
+          )}
+        </div>
+      </Tip>
     </ContextMenu>
   );
 }

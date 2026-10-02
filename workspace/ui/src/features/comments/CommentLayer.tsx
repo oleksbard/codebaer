@@ -7,6 +7,7 @@ import { Button } from '#ui/Button';
 import { inertOnClose, keepFocus } from '#ui/focus';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
+import { Tip } from '#ui/Tip';
 import {
   cancelDraft, deleteComment, discardComments, draftCaret, draftFocus, editComment, editDraft, jumpToComment, saveDraft,
   sendComments, startComment,
@@ -97,9 +98,11 @@ function DraftBox({ d }: { d: DeepReadonly<Draft> }) {
 function Card({ c }: { c: DeepReadonly<Comment> }) {
   return (
     <div className="comment-card">
-      <button type="button" className="comment-open" title="Edit comment" onClick={() => editComment(c.id)}>
-        <span aria-hidden="true">✎</span><span className="txt">{firstLine(c.text)}</span>
-      </button>
+      <Tip label="Edit comment">
+        <button type="button" className="comment-open" aria-label="Edit comment" onClick={() => editComment(c.id)}>
+          <span aria-hidden="true">✎</span><span className="txt">{firstLine(c.text)}</span>
+        </button>
+      </Tip>
       <IconButton label="Delete comment" onClick={() => deleteComment(c.id)}>✕</IconButton>
     </div>
   );
@@ -111,9 +114,11 @@ export function PendingPill() {
   if (!n) return null;
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button type="button" className="pill pending" title="Comments waiting to be sent">✎ {n} pending ▾</button>
-      </DropdownMenu.Trigger>
+      <Tip label="Comments waiting to be sent">
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="pill pending">✎ {n} pending ▾</button>
+        </DropdownMenu.Trigger>
+      </Tip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu pending-menu" align="end" sideOffset={4} ref={inertOnClose}
           onCloseAutoFocus={keepFocus}>

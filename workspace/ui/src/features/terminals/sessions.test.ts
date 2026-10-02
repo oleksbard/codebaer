@@ -56,3 +56,29 @@ it('shows a new terminal whose host announced it before the spawn call returned'
   await newTerminal({ t: 'Shell', path: '/bin/zsh' });
   expect(S.activeTerm).toBe(3);
 });
+
+it('stores what claude reports, and flags a session you are not looking at when it asks for you', () => {
+  const working = {
+    phase: 'working' as const, since_ms: 0, turn_ms: 0, took_ms: null, end: null, actions: 1, calls: [], last: null,
+    ask: null, subagents: 0, rev: 1,
+  };
+  S.terminals = [{ ...session(1), agent: working }, session(2)];
+  S.activeTerm = 2;
+  S.termAttention = new Set();
+  onTermEvent({ t: 'Agent', id: 1, agent: { ...working, actions: 2, rev: 2 } });
+  expect(S.terminals[0]!.agent?.actions).toBe(2);
+  expect(S.termAttention.has(1)).toBe(false);
+  onTermEvent({ t: 'Agent', id: 1, agent: { ...working, phase: 'approval', rev: 3 } });
+  expect(S.termAttention.has(1)).toBe(true);
+});
+
+it('drops a state that arrives after a newer one', () => {
+  const working = {
+    phase: 'working' as const, since_ms: 0, turn_ms: 0, took_ms: null, end: null, actions: 1, calls: [], last: null,
+    ask: null, subagents: 0, rev: 5,
+  };
+  S.terminals = [{ ...session(1), agent: working }];
+  onTermEvent({ t: 'Agent', id: 1, agent: { ...working, phase: 'approval', rev: 4 } });
+  onTermEvent({ t: 'Agent', id: 1, agent: { ...working, actions: 9, rev: 5 } });
+  expect(S.terminals[0]!.agent).toEqual(working);
+});

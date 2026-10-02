@@ -9,9 +9,29 @@ export type TermState =
   | { t: 'Running'; command: string | null; since_ms: number }
   | { t: 'Exited'; code: number | null };
 
-/** `task` marks a command run from the command menu, shown in its own dialog until it is moved to the rail. */
+/** `Agent` in workspace/backend/src/pty/agent.rs: what claude is doing, from its hooks and the keys typed. */
+export type AgentPhase = 'working' | 'approval' | 'question' | 'compacting' | 'idle';
+export type AgentCall = { id: string; tool: string; detail: string; since_ms: number };
+export type AgentState = {
+  phase: AgentPhase;
+  since_ms: number;
+  turn_ms: number | null;
+  took_ms: number | null;
+  end: 'done' | 'interrupted' | 'failed' | null;
+  actions: number;
+  calls: readonly AgentCall[];
+  last: AgentCall | null;
+  ask: AgentCall | null;
+  subagents: number;
+  /** Counts the changes. The host sends a key's change and a hook's on two threads, so they can arrive swapped. */
+  rev: number;
+};
+
+/** `task` marks a command run from the command menu, shown in its own dialog until it is moved to the rail.
+ *  `agent` is set once a claude session's hooks have reported. */
 export type Info = {
   id: number; pid?: number | null; title: string; cwd: string; tier: Tier; state: TermState; task?: boolean;
+  agent?: AgentState | null;
 };
 export type Shell = { path: string; name: string };
 export type Menu = { shells: Shell[]; default: string; commands: string[] };
@@ -25,6 +45,7 @@ export type ServerMsg =
   | { t: 'Command'; id: number; code: number | null }
   | { t: 'Exit'; id: number; code: number | null }
   | { t: 'Bell'; id: number }
+  | { t: 'Agent'; id: number; agent: AgentState }
   | { t: 'Cwd'; id: number; cwd: string }
   | { t: 'Closed'; id: number }
   | { t: 'Error'; id: number | null; message: string };

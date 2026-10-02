@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { exitTick, setValue, tick } from '#test-setup';
+import { exitTick, setValue, tick, tipOf } from '#test-setup';
 import type { CustomCommand, HiddenScripts, Settings } from '#ipc/settings';
 
 vi.mock('#ipc/git', async () => {
@@ -112,11 +112,15 @@ describe('settings dialog', () => {
     vi.mocked(git.installedAiProviders).mockResolvedValue(['claude']);
     await openSettings();
     await tick();
-    const state = (label: string) => [choice(label).disabled, choice(label).title];
-    expect(state('Off')).toEqual([false, '']);
-    expect(state('Claude')).toEqual([false, '']);
-    expect(state('Codex')).toEqual([true, 'The codex CLI is not installed']);
-    expect(state('OpenCode')).toEqual([true, 'The opencode CLI is not installed']);
+    const state = async (label: string) => {
+      const b = choice(label);
+      // a disabled button takes no pointer events: the tip sits on the span around it
+      return [b.disabled, await tipOf(b.parentElement!.classList.contains('seg-tip') ? b.parentElement! : b)];
+    };
+    expect(await state('Off')).toEqual([false, null]);
+    expect(await state('Claude')).toEqual([false, null]);
+    expect(await state('Codex')).toEqual([true, 'The codex CLI is not installed']);
+    expect(await state('OpenCode')).toEqual([true, 'The opencode CLI is not installed']);
   });
 
   it('keeps every provider enabled until the check answers, and asks again on the next opening', async () => {

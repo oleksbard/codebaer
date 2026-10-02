@@ -6,6 +6,7 @@ import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from
 import { languages } from '@codemirror/language-data';
 import { editorDark, editorHighlight, editorTheme } from './editor-theme';
 import { logError } from '#ipc/log';
+import { attachTip } from '#ui/domTip';
 import { getTheme, isDark } from '#ui/theme';
 import {
   acceptChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk, rejectChunk,
@@ -27,8 +28,9 @@ export const folding: Extension = codeFolding({
     const el = document.createElement('button');
     el.type = 'button';
     el.className = 'cm-foldPlaceholder';
-    el.title = 'unfold';
-    el.setAttribute('aria-label', `expand ${lines} hidden line${lines === 1 ? '' : 's'}`);
+    const hidden = `${lines} hidden line${lines === 1 ? '' : 's'}`;
+    el.setAttribute('aria-label', `expand ${hidden}`);
+    attachTip(el, `Expand ${hidden}`);
     el.textContent = `⋯ ${lines} line${lines === 1 ? '' : 's'}`;
     el.onclick = onclick;
     return el;

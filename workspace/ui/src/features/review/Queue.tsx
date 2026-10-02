@@ -19,6 +19,8 @@ import { LayoutGroup, List, ListRow, ListSection } from '#ui/List';
 import { heavyMotion } from '#ui/motion';
 import { Presence } from '#ui/Presence';
 import { Reveal } from '#ui/Reveal';
+import { Tip } from '#ui/Tip';
+import { tipScope } from '#ui/tipScope';
 import { pickRow, toggleAllChanges } from './all-changes';
 import { acceptFile, discardAll, rejectFile, stageAll, unstageAll, unstageFile } from './hunks';
 
@@ -135,7 +137,7 @@ const keepOpen = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); }
 
 function ActionButton({ a }: { a: HeaderAction }) {
   return (
-    <IconButton label={a.label} title={a.keys ? `${a.label} (${keyLabel(a.keys)})` : a.label} data-all={a.id}
+    <IconButton label={a.label} kbd={a.keys ? keyLabel(a.keys) : undefined} data-all={a.id}
       onClick={(e) => { keepOpen(e); void a.run(); }}>
       <StrokeIcon d={a.icon} size={14} /></IconButton>
   );
@@ -231,12 +233,14 @@ function CommitRow({ ref, commit: c, animate, layoutDependency }: {
 }) {
   const short = c.oid.slice(0, 7);
   return (
-    <ListRow {...(ref ? { ref } : {})} className="commit-row" move={animate} layoutDependency={layoutDependency}
-      data-oid={c.oid} title={`${c.summary}\n${short} · ${c.author} · ${age(c.time)}`}>
-      <StrokeIcon d={COMMIT} size={14} />
-      <span className="summary">{c.summary}</span>
-      <span className="oid">{short}</span>
-    </ListRow>
+    <Tip label={c.summary} detail={`${short} · ${c.author} · ${age(c.time)}`} slow align="start">
+      <ListRow {...(ref ? { ref } : {})} className="commit-row" move={animate} layoutDependency={layoutDependency}
+        data-oid={c.oid}>
+        <StrokeIcon d={COMMIT} size={14} />
+        <span className="summary">{c.summary}</span>
+        <span className="oid">{short}</span>
+      </ListRow>
+    </Tip>
   );
 }
 
@@ -267,26 +271,30 @@ function QueueRow({ ref, row: r, selected, animate, layoutId, layoutDependency }
       ? <IconButton label="Mark resolved" data-act="stage" onClick={stop(() => acceptFile(r.path))}>
         <StrokeIcon d={PLUS} size={14} /></IconButton>
       : <>
-          <IconButton label={`Discard changes (${keyLabel('review.discardFile')})`} data-act="revert"
+          <IconButton label="Discard changes" kbd={keyLabel('review.discardFile')} data-act="revert"
             onClick={stop(() => rejectFile(r.path))}><StrokeIcon d={DISCARD} size={14} /></IconButton>
-          <IconButton label={`Stage file (${keyLabel('review.stageFile')})`} data-act="stage"
+          <IconButton label="Stage file" kbd={keyLabel('review.stageFile')} data-act="stage"
             onClick={stop(() => acceptFile(r.path))}>
             <StrokeIcon d={PLUS} size={14} /></IconButton>
         </>;
   return (
     <ContextMenu items={menuFor(r)} {...(ref ? { ref } : {})}>
-      <ListRow className={`row${selected ? ' sel' : ''}`} move={animate} layoutId={layoutId}
-        layoutDependency={layoutDependency} data-key={rowKey(r)} data-st={r.letter} role="button"
-        title={r.path} onClick={() => void pickRow(r)}>
-        <FileIcon name={name} />
-        <span className="path"><span className="name">{name}</span>
-          <span className="dir">{dirSlash.slice(0, -1)}</span></span>
-        <span className="tail">
-          {r.conflicted && <Badge>conflict</Badge>}
-          <span className="acts">{acts}</span>
-          <span className="st" title={STATUS_LABEL[r.letter] ?? r.letter}>{r.letter}</span>
-        </span>
-      </ListRow>
+      <Tip label={r.path} slow mono align="start">
+        <ListRow className={`row${selected ? ' sel' : ''}`} move={animate} layoutId={layoutId}
+          layoutDependency={layoutDependency} data-key={rowKey(r)} data-st={r.letter} role="button"
+          onClick={() => void pickRow(r)}>
+          <FileIcon name={name} />
+          <span className="path"><span className="name">{name}</span>
+            <span className="dir">{dirSlash.slice(0, -1)}</span></span>
+          <span className="tail">
+            {r.conflicted && <Badge>conflict</Badge>}
+            <span className="acts" onPointerMove={tipScope}>{acts}</span>
+            <Tip label={STATUS_LABEL[r.letter] ?? r.letter}>
+              <span className="st" onPointerMove={tipScope}>{r.letter}</span>
+            </Tip>
+          </span>
+        </ListRow>
+      </Tip>
     </ContextMenu>
   );
 }

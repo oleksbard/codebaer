@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import { blameShort, blameText, buildQueue, plural, split } from '#core/model';
+import { blameShort, blameTip, buildQueue, plural, split } from '#core/model';
 import type { Tab } from '#core/state';
 import {
   closeFile, hasUnstaged, keepMine, reload, toggleChangesOnly, view, viewChanges,
@@ -21,6 +21,7 @@ import { StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
 import { Pill } from '#ui/Pill';
+import { Tip } from '#ui/Tip';
 import { acceptFile, nextHunk, rejectFile, unstageFile, unstageHunk } from './hunks';
 import { ImageDiff } from './ImageDiff';
 import { previews } from './images';
@@ -99,7 +100,7 @@ function TitleBar() {
       <button type="button" onClick={() => keepMine()}>Keep mine</button></Pill>
     : null;
   const blame = s.blame
-    ? <span className="blame" title={blameText(s.blame)}>{blameShort(s.blame, Date.now())}</span>
+    ? <Tip {...blameTip(s.blame)} slow><span className="blame">{blameShort(s.blame, Date.now())}</span></Tip>
     : null;
   // VS Code's dirty tab: a dot where the close button is, the button again under the pointer
   const close = o.dirty
@@ -144,9 +145,9 @@ function TitleBar() {
         : null;
   const nav = o.view === 'plain' || !chunks ? null : (
     <>
-      <IconButton label={`Previous change (${keyLabel('review.prevHunk', 'last')})`}
+      <IconButton label="Previous change" kbd={keyLabel('review.prevHunk', 'last')}
         onClick={() => nextHunk(-1)}>↑</IconButton>
-      <IconButton label={`Next change (${keyLabel('review.nextHunk', 'last')})`}
+      <IconButton label="Next change" kbd={keyLabel('review.nextHunk', 'last')}
         onClick={() => nextHunk(1)}>↓</IconButton>
       <IconButton label="Show changes only" aria-pressed={s.changesOnly}
         onClick={() => toggleChangesOnly()}>⊟</IconButton>

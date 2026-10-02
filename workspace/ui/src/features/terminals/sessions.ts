@@ -5,7 +5,7 @@ import type { Info, ServerMsg, SpawnKind } from '#ipc/terminal';
 import { promptDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
 import { forgetIcon, restoreIcons, watchLong } from './icons';
-import { isTask, terminalsOf } from './status';
+import { isTask, terminalsOf, wantsYou } from './status';
 import * as term from './xterm';
 
 /** Set once the spawn we are waiting for is known, so an unprompted session, one restored on
@@ -71,6 +71,13 @@ export function onTermEvent(m: ServerMsg): void {
       case 'Bell':
         flag(m.id);
         break;
+      case 'Agent': {
+        const before = S.terminals.find((t) => t.id === m.id)?.agent;
+        if (before && m.agent.rev <= before.rev) break;
+        S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, agent: m.agent } : t));
+        if (wantsYou(before, m.agent)) flag(m.id);
+        break;
+      }
       case 'Cwd':
         S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, cwd: m.cwd } : t));
         break;

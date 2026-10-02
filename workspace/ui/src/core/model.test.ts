@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptText, ago, blameShort, blameText, buildQueue, buildTree, decideRefresh, pinDefaultBranches,
+  acceptText, ago, blameShort, blameTip, buildQueue, buildTree, decideRefresh, pinDefaultBranches,
   rejectSpecialCase, rowKey, treeStatus, unstageText, visibleFiles,
 } from './model';
 import type { Branch, FileEntry, Status } from '#ipc/git';
@@ -145,17 +145,19 @@ describe('special cases', () => {
   });
 });
 
-describe('blameText', () => {
-  it('formats a commit and collapses the zero oid', () => {
-    expect(blameText({
+describe('blameTip', () => {
+  it('puts the summary first, then the commit, and collapses the zero oid', () => {
+    expect(blameTip({
       oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173,
       summary: 'Rebuild the UI',
     }))
-      .toBe('9081303 · Ada · 2026-09-17 · Rebuild the UI');
-    expect(blameText({
+      .toEqual({ label: 'Rebuild the UI', detail: '9081303 · Ada · 2026-09-17' });
+    expect(blameTip({ oid: '9081303b08673ef3d8b67ebd7250f199e248a0db', author: 'Ada', time: 1789629173, summary: '' }))
+      .toEqual({ label: '9081303 · Ada · 2026-09-17' });
+    expect(blameTip({
       oid: '0'.repeat(40), author: 'External file (--contents)', time: 0, summary: 'from standard input',
     }))
-      .toBe('uncommitted');
+      .toEqual({ label: 'uncommitted' });
   });
 });
 

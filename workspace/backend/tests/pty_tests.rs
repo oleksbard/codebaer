@@ -3,11 +3,14 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use codebaer_lib::pty::agent::{End, Phase};
 use codebaer_lib::pty::daemon;
 use codebaer_lib::pty::proto::{self, ClientMsg, Frame, ServerMsg, SpawnKind};
 
 struct Harness {
     sock: PathBuf,
+    hooks: PathBuf,
+    token: String,
     _dir: tempfile::TempDir,
 }
 
@@ -23,8 +26,22 @@ impl Harness {
         let sock = dir.path().join("ptyd.sock");
         let listener = UnixListener::bind(&sock).unwrap();
         let hub = daemon::new_hub(sock.clone());
+        let hooks = dir.path().join("ptyd.hook");
+        daemon::listen_hooks(&hub, &hooks).unwrap();
+        let token = daemon::hook_token(&hub);
         std::thread::spawn(move || daemon::serve(listener, hub, Duration::from_secs(3600), every));
-        Harness { sock, _dir: dir }
+        Harness { sock, hooks, token, _dir: dir }
+    }
+
+    /// What `--agent-hook` sends for one event, with the host's token added to `fields`.
+    fn hook(&self, fields: &str) {
+        let line = format!(r#"{{{fields},"token":"{}"}}"#, self.token);
+        UnixStream::connect(&self.hooks).unwrap().write_all(line.as_bytes()).unwrap();
+    }
+
+    fn forged_hook(&self, fields: &str) {
+        let line = format!(r#"{{{fields},"token":"not-this-host"}}"#);
+        UnixStream::connect(&self.hooks).unwrap().write_all(line.as_bytes()).unwrap();
     }
 
     fn connect(&self) -> Client {
@@ -88,6 +105,22 @@ impl Client {
         while Instant::now() < deadline {
             self.pump(Duration::from_millis(120));
             if self.text().contains(needle) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The agent state last reported for `id`, waiting for one that `want` accepts.
+    fn wait_for_agent(&mut self, id: u32, want: impl Fn(&codebaer_lib::pty::agent::Agent) -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            self.pump(Duration::from_millis(100));
+            let last = self.msgs.iter().rev().find_map(|m| match m {
+                ServerMsg::Agent { id: got, agent } if *got == id => Some(agent),
+                _ => None,
+            });
+            if last.is_some_and(&want) {
                 return true;
             }
         }
@@ -490,4 +523,45 @@ fn the_host_rechecks_every_session_on_its_own_timer() {
     let id = c.spawn_sh(&start);
     c.input(id, format!("cd '{moved}'\n").as_bytes());
     assert!(c.wait_for_cwd(id, &moved, Duration::from_secs(5)), "got: {:?}", c.msgs);
+}
+
+#[test]
+fn a_hook_event_reaches_the_client_and_esc_interrupts_the_turn() {
+    let h = Harness::start();
+    let mut c = h.connect();
+    let id = c.spawn_sh("/tmp");
+    h.hook(&format!(r#""session":{},"event":"UserPromptSubmit""#, id + 100));
+    h.hook(&format!(r#""session":{id},"event":"UserPromptSubmit""#));
+    // the host takes one connection at a time in order, so the next line is read only after this one
+    h.forged_hook(&format!(r#""session":{id},"event":"PreToolUse","tool":"Forged","call":"f""#));
+    h.hook(&format!(r#""session":{id},"event":"PreToolUse","tool":"Read","detail":"/r/a.ts","call":"t1""#));
+    assert!(c.wait_for_agent(id, |a| a.phase == Phase::Working && a.calls.len() == 1), "{:?}", c.msgs);
+    let forged = |m: &ServerMsg| matches!(m, ServerMsg::Agent { agent, .. } if agent.actions > 1);
+    assert!(!c.msgs.iter().any(forged), "a line without this host's token counted: {:?}", c.msgs);
+    c.input(id, b"\x1b");
+    assert!(c.wait_for_agent(id, |a| a.end == Some(End::Interrupted)), "{:?}", c.msgs);
+    assert!(!c.msgs.iter().any(|m| matches!(m, ServerMsg::Agent { id: got, .. } if *got != id)));
+}
+
+#[test]
+fn a_claude_session_starts_with_the_hook_settings_and_socket() {
+    let (dir, cwd) = real_dir();
+    let claude = dir.path().join("claude");
+    std::fs::write(&claude, "#!/bin/sh\necho \"args:$*\"\necho \"sock:$CODEBAER_HOOK_SOCK\"\nsleep 5\n").unwrap();
+    std::fs::set_permissions(&claude, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let h = Harness::start();
+    let mut c = h.connect();
+    c.send(&ClientMsg::Spawn {
+        req: 1,
+        kind: SpawnKind::Command { argv0: claude.to_string_lossy().into_owned() },
+        cwd,
+        cols: 200,
+        rows: 24,
+    });
+    assert!(c.wait_for("sock:", Duration::from_secs(5)), "got: {:?}", c.text());
+    let text = c.text();
+    assert!(text.contains(&format!("sock:{}", h.hooks.display())), "{text}");
+    let file = text.split("--settings ").nth(1).and_then(|r| r.split_whitespace().next()).expect(&text);
+    let settings = std::fs::read_to_string(file).unwrap();
+    assert!(settings.contains("--agent-hook") && settings.contains("PreToolUse"), "{settings}");
 }

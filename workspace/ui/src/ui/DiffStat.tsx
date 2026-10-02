@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Tip } from './Tip';
 
 const STILL = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
 const TWEEN_MS = 700;
@@ -54,22 +55,24 @@ export function DiffStat({ added, removed, files }: {
   const counts = `${added.toLocaleString()} lines added, ${removed.toLocaleString()} removed`;
   const label = [files?.label, lines ? counts : null].filter(Boolean).join(', ');
   return (
-    <span className="diffstat" role="img" aria-label={label} title={label}>
-      {files ? <span className="files">
-        <Count value={files.n} tone="files" />
-        <span className="unit">{files.n === 1 ? 'file' : 'files'}</span>
-      </span> : null}
-      {files && lines ? <i className="sep" /> : null}
-      {lines ? <>
-        <Count value={added} sign="+" tone="add" />
-        <Count value={removed} sign="−" tone="del" />
-        <span className="blocks">
-          {diffBlocks(added, removed).map((b, i) => (
-            // keyed by colour too, so only a square that changes colour pops
-            <i key={`${i}${b}`} className={`blk ${b}`} style={{ '--i': i } as CSSProperties} />
-          ))}
-        </span>
-      </> : null}
-    </span>
+    <Tip label={label}>
+      <span className="diffstat" role="img" aria-label={label}>
+        {files ? <span className="files">
+          <Count value={files.n} tone="files" />
+          <span className="unit">{files.n === 1 ? 'file' : 'files'}</span>
+        </span> : null}
+        {files && lines ? <i className="sep" /> : null}
+        {lines ? <>
+          <Count value={added} sign="+" tone="add" />
+          <Count value={removed} sign="−" tone="del" />
+          <span className="blocks">
+            {diffBlocks(added, removed).map((b, i) => (
+              // keyed by colour too, so only a square that changes colour pops
+              <i key={`${i}${b}`} className={`blk ${b}`} style={{ '--i': i } as CSSProperties} />
+            ))}
+          </span>
+        </> : null}
+      </span>
+    </Tip>
   );
 }

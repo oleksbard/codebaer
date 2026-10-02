@@ -3,6 +3,7 @@ import { useId } from 'react';
 import { Tabs as RT } from 'radix-ui';
 import { motion, useIsPresent } from 'motion/react';
 import { DUR, EASE, heavyMotion } from './motion';
+import { Tip } from './Tip';
 
 /** `caption` draws the tab as a rail item: the icon on a tile, the caption under it. */
 export type TabItem = { value: string; label: string; icon?: ReactNode; caption?: string };
@@ -44,14 +45,16 @@ export function Tabs({ value, onValueChange, items, vertical = false, indicatorI
     <RT.Root value={value} onValueChange={onValueChange} orientation={vertical ? 'vertical' : 'horizontal'}>
       <RT.List className={vertical ? 'tabs vert' : 'tabs'}>
         {items.map((t) => (
-          <RT.Trigger key={t.value} className={t.caption ? 'tab rail-item' : 'tab'} value={t.value}
-            aria-controls={undefined} title={t.icon ? t.label : undefined} aria-label={t.icon ? t.label : undefined}>
-            {t.caption
-              ? <><span className="tile">
-                    {t.value === value && <TabIndicator id={id} value={value} className="rail-ind" />}
-                    {t.icon}</span><span className="cap">{t.caption}</span></>
-              : <>{t.value === value && <TabIndicator id={id} value={value} />}{t.icon ?? t.label}</>}
-          </RT.Trigger>
+          <Tip key={t.value} label={t.icon ? t.label : ''} side={vertical ? 'right' : 'bottom'}>
+            <RT.Trigger className={t.caption ? 'tab rail-item' : 'tab'} value={t.value} aria-controls={undefined}
+              aria-label={t.icon ? t.label : undefined}>
+              {t.caption
+                ? <><span className="tile">
+                      {t.value === value && <TabIndicator id={id} value={value} className="rail-ind" />}
+                      {t.icon}</span><span className="cap">{t.caption}</span></>
+                : <>{t.value === value && <TabIndicator id={id} value={value} />}{t.icon ?? t.label}</>}
+            </RT.Trigger>
+          </Tip>
         ))}
       </RT.List>
     </RT.Root>

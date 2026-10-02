@@ -6,6 +6,7 @@ import { refs, useApp, type DeepReadonly } from '#kernel/store';
 import { Count } from '#ui/Count';
 import { FileIcon } from '#ui/FileIcon';
 import { Reveal } from '#ui/Reveal';
+import { Tip } from '#ui/Tip';
 import { treeKey } from '#ui/treeKeys';
 import { VirtualList } from '#ui/VirtualList';
 import { openHit, runSearch, searchKey, setInclude, setQuery, toggleSearchFile } from './search';
@@ -101,26 +102,30 @@ function Row({ id, line, selected, cur, collapsed, point }: {
     const { path, hits } = line.file;
     const [dir, name] = split(path);
     return (
-      <div className={`sec d sfile${cur ? ' cur' : ''}`} id={id} role="treeitem" aria-level={1}
-        aria-expanded={!collapsed.has(path)}
-        data-path={path} title={path} style={{ '--depth': 0 } as CSSProperties}
-        onClick={() => { point(rowKey(line)); toggleSearchFile(path); }}>
-        <span className="l">
-          <FileIcon name={name} />
-          <span className="name">{name}</span>
-          <span className="dir">{dir.slice(0, -1)}</span>
-        </span>
-        <span className="n">{hits.length}</span>
-      </div>
+      <Tip label={path} slow mono align="start">
+        <div className={`sec d sfile${cur ? ' cur' : ''}`} id={id} role="treeitem" aria-level={1}
+          aria-expanded={!collapsed.has(path)}
+          data-path={path} style={{ '--depth': 0 } as CSSProperties}
+          onClick={() => { point(rowKey(line)); toggleSearchFile(path); }}>
+          <span className="l">
+            <FileIcon name={name} />
+            <span className="name">{name}</span>
+            <span className="dir">{dir.slice(0, -1)}</span>
+          </span>
+          <span className="n">{hits.length}</span>
+        </div>
+      </Tip>
     );
   }
   const key = searchKey(line.path, line.hit);
   return (
-    <div className={`row f hit${key === selected ? ' sel' : ''}${cur ? ' cur' : ''}`} data-key={key}
-      id={id} role="treeitem" aria-level={2} aria-selected={key === selected} title={`${line.path}:${line.hit.line}`}
-      style={{ '--depth': 1 } as CSSProperties} onClick={() => void openHit(line.path, line.hit)}>
-      <Preview hit={line.hit} />
-    </div>
+    <Tip label={`${line.path}:${line.hit.line}`} slow mono align="start">
+      <div className={`row f hit${key === selected ? ' sel' : ''}${cur ? ' cur' : ''}`} data-key={key}
+        id={id} role="treeitem" aria-level={2} aria-selected={key === selected}
+        style={{ '--depth': 1 } as CSSProperties} onClick={() => void openHit(line.path, line.hit)}>
+        <Preview hit={line.hit} />
+      </div>
+    </Tip>
   );
 }
 

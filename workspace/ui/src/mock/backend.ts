@@ -5,7 +5,7 @@ import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconIt
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
-import type { Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
+import type { AgentState, Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
 import { isTheme } from '#ui/theme';
 import { createPty } from './pty';
 import { createRepo, type Snapshot } from './repo';
@@ -41,6 +41,8 @@ export type MockApi = {
   terminalText(id?: number): string;
   /** Prints into a terminal session as its program would, for an agent's reply; the newest session for no id. */
   terminalWrite(text: string, id?: number): void;
+  /** What claude's hooks report, merged over the session's agent state; the newest session for no id. */
+  terminalAgent(patch: Partial<AgentState>, id?: number): void;
   /** Resolves once no command or backend timer has been pending for a moment. */
   idle(): Promise<void>;
 };
@@ -436,6 +438,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     remotePush: (upstream, n) => repo.remotePush(upstream, n),
     terminalText: (id) => pty.text(id),
     terminalWrite: (text, id) => pty.print(text, id),
+    terminalAgent: (patch, id) => pty.agent(patch, id),
     idle: () => new Promise((resolve) => {
       const check = (): void => { if (pending) onSettle.push(check); else resolve(); };
       setTimeout(check, QUIET_MS);

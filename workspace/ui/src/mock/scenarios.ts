@@ -1,7 +1,7 @@
 import type { Update } from '#ipc/git';
 import type { AiProvider, CustomCommand } from '#ipc/settings';
 import type { Menu, Orphans, Proc } from '#ipc/terminal';
-import type { SessionSeed } from './pty';
+import { idleAgent, type SessionSeed } from './pty';
 import type { FileSeed, RepoSeed } from './repo';
 
 export type Scenario = {
@@ -206,6 +206,7 @@ const AGENT_TRANSCRIPT = '\x1b[38;5;208m✻\x1b[0m Welcome to Claude Code\n\n'
   + '\x1b[36m⏺\x1b[0m Done. Review the changes in CodeBär.\n\n\x1b[35m>\x1b[0m ';
 
 const ago = (s: number): number => Date.now() - s * 1000;
+const EDITING = { id: 't4', tool: 'Edit', detail: `${ROOT}/src/cart.ts`, since_ms: ago(3) };
 
 const proc = (pid: number, session: number, command: string): Proc => ({
   pid, ppid: 4242, pgid: pid, tty: `ttys00${session}`, command, session, relay: null, holds_app: false, exiting: false,
@@ -234,6 +235,9 @@ function review(): Scenario {
       {
         pid: 50_002, title: 'claude', tier: 'process', state: { t: 'Running', command: null, since_ms: ago(95) },
         transcript: AGENT_TRANSCRIPT,
+        agent: {
+          ...idleAgent(ago(95)), phase: 'working', turn_ms: ago(95), actions: 4, calls: [EDITING], last: EDITING,
+        },
       },
     ],
     orphans: NO_ORPHANS,
@@ -468,6 +472,10 @@ export const SCENARIOS: Record<string, () => Scenario> = {
         {
           pid: 50_005, title: 'claude', tier: 'process', state: { t: 'Idle' }, cwd: '/Users/dev/projects/blog',
           transcript: AGENT_TRANSCRIPT,
+          agent: {
+            ...idleAgent(ago(12)), phase: 'approval', turn_ms: ago(40), actions: 2,
+            ask: { id: 't3', tool: 'Bash', detail: 'Build the blog for production', since_ms: ago(12) },
+          },
         },
         {
           pid: 50_006, title: 'zsh', tier: 'marks', state: { t: 'Idle' }, cwd: '/Users/dev/projects/website/src/pages',
