@@ -93,6 +93,17 @@ it('shows each script\'s command without the words they all start with, and the 
   expect(item(items, 'make deploy').querySelector('.name.wide')!.textContent).toBe('make deploy');
 });
 
+it('highlights the command and the script under the mouse, though each has a tip', async () => {
+  const items = await openMenu();
+  for (const text of ['Lint', 'build']) {
+    item(items, text).dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    await tick();
+    expect(items.filter((i) => i.hasAttribute('data-highlighted')).map((i) => i.textContent)).toEqual([
+      item(items, text).textContent,
+    ]);
+  }
+});
+
 it('runs the command picked as it was saved, and a script by its name, each with its icon', async () => {
   item(await openMenu(), 'Lint').click();
   expect(c.runTask).toHaveBeenCalledWith(

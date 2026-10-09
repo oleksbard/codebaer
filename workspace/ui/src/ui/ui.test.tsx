@@ -91,6 +91,29 @@ describe('primitives', () => {
     expect(tabs[0]!.dataset['state']).toBe('active');
   });
 
+  it('Tip opens on a visible focus only, and the Tip\'s and the trigger\'s focus handlers run either way', async () => {
+    let visible = false;
+    const matches = Element.prototype.matches;
+    const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, sel: string) {
+      return sel === ':focus-visible' ? visible : matches.call(this, sel);
+    });
+    const own = vi.fn();
+    const child = vi.fn();
+    const h = mount(<Tip label="Hi" onFocus={own}><button type="button" onFocus={child}>t</button></Tip>);
+    const b = h.querySelector('button')!;
+    b.focus();
+    await tick();
+    expect(document.querySelector('.tip')).toBeNull();
+    expect([own.mock.calls.length, child.mock.calls.length]).toEqual([1, 1]);
+    b.blur();
+    visible = true;
+    b.focus();
+    await tick();
+    expect(document.querySelector('.tip')?.textContent).toBe('Hi');
+    expect([own.mock.calls.length, child.mock.calls.length]).toEqual([2, 2]);
+    spy.mockRestore();
+  });
+
   it('Tip renders its child alone with no label, and keeps line breaks and a detail line', async () => {
     const h = mount(<><Tip label=""><button type="button" id="a">a</button></Tip>
       <Tip label={'Line one\nline two'} detail="more" slow><button type="button" id="b">b</button></Tip></>);

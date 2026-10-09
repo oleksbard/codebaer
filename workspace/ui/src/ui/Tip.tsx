@@ -20,22 +20,29 @@ export function TipProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Takes the trigger props Radix gives, minus the tooltip's `data-state`: it would replace the one the child
- *  sets itself (a tab's `active`, a menu trigger's `open`), which styles and tests read. `state` is the one an
- *  outer `asChild` trigger, such as `ContextMenu`'s, handed the Tip. */
-function KeepState({ state, children, ...props }: {
-  state: string | undefined; children: ReactElement; 'data-state'?: string;
-} & HTMLAttributes<HTMLElement> & { ref?: Ref<HTMLElement> }) {
-  // an undefined prop still replaces the child's own value, and Radix sends `aria-describedby` as one while closed
-  const set = Object.fromEntries(Object.entries({ ...props, 'data-state': state }).filter(([, v]) => v !== undefined));
-  return <Slot.Root {...set}>{children}</Slot.Root>;
+type FocusHandler = (e: FocusEvent<HTMLElement>) => void;
+
+function visibleFocus(e: FocusEvent<HTMLElement>): boolean {
+  try { return e.currentTarget.matches(':focus-visible'); } catch { return true; /* an engine without it */ }
 }
 
-/** Radix opens a tip on any focus, and focus also comes back to a trigger when its menu or dialog closes. */
-function onlyVisibleFocus(e: FocusEvent<HTMLElement>): void {
-  let visible = true;
-  try { visible = e.currentTarget.matches(':focus-visible'); } catch { /* an engine without the selector */ }
-  if (!visible) e.preventDefault();
+/** Takes the trigger props Radix gives, minus the tooltip's `data-state`: it would replace the one the child
+ *  sets itself (a tab's `active`, a menu trigger's `open`), which styles and tests read. `state` is the one an
+ *  outer `asChild` trigger, such as `ContextMenu`'s, handed the Tip. `ownFocus` is the Tip's own `onFocus`.
+ *  The tooltip's `onFocus` runs only on a visible focus: Radix opens a tip on any focus, and focus also comes back
+ *  to a trigger when its menu or dialog closes, and follows the pointer along a menu's items. It is skipped, not
+ *  prevented, because Radix then skips the child's handlers too, and a menu item would never highlight. */
+function KeepState({ state, ownFocus, children, ...props }: {
+  state: string | undefined; ownFocus?: FocusHandler | undefined; children: ReactElement; 'data-state'?: string;
+} & HTMLAttributes<HTMLElement> & { ref?: Ref<HTMLElement> }) {
+  const tipFocus = props.onFocus;
+  const onFocus = ownFocus || tipFocus
+    ? (e: FocusEvent<HTMLElement>) => { ownFocus?.(e); if (tipFocus && visibleFocus(e)) tipFocus(e); }
+    : undefined;
+  // an undefined prop still replaces the child's own value, and Radix sends `aria-describedby` as one while closed
+  const set = Object.fromEntries(Object.entries({ ...props, onFocus, 'data-state': state })
+    .filter(([, v]) => v !== undefined));
+  return <Slot.Root {...set}>{children}</Slot.Root>;
 }
 
 export type TipProps = {
@@ -64,12 +71,12 @@ export function Tip({
 }: TipProps & { 'data-state'?: string }) {
   const shared = useContext(Shared);
   if (label === null || label === undefined || label === false || label === '') {
-    return <KeepState state={state} {...rest} {...(onFocus ? { onFocus } : {})}>{children}</KeepState>;
+    return <KeepState state={state} ownFocus={onFocus} {...rest}>{children}</KeepState>;
   }
   const tip = (
     <Tooltip.Root disableHoverableContent {...(slow ? { delayDuration: TIP_DELAY.slow } : {})}>
-      <Tooltip.Trigger asChild {...rest} onFocus={(e) => { onFocus?.(e); onlyVisibleFocus(e); }}>
-        <KeepState state={state}>{children}</KeepState>
+      <Tooltip.Trigger asChild {...rest}>
+        <KeepState state={state} ownFocus={onFocus}>{children}</KeepState>
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Content className={`tip tip-s${mono ? ' mono' : ''}`} side={side} align={align} sideOffset={6}
