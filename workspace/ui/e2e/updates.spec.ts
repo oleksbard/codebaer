@@ -14,6 +14,18 @@ test('Check for Updates finds a release, and Restart to Update installs it', asy
   expect(await mock.exited()).toBe(true);
 });
 
+test('a copy that cannot replace itself disables the button and says why', async ({ page, open }) => {
+  const mock = await open('update-blocked');
+  await mock.menu('check-updates');
+  await mock.idle();
+  const pill = page.getByRole('button', { name: 'Update to 0.6.0' });
+  await expect(pill).toBeDisabled();
+  await pill.hover();
+  await expect(page.getByRole('tooltip')).toContainText('this copy cannot install it. CodeBär runs from /Volumes');
+  await pill.click({ force: true });
+  await expect(page.getByRole('menuitem', { name: 'Restart to Update' })).toHaveCount(0);
+});
+
 test('the native menu item checks as well', async ({ page, open }) => {
   const mock = await open('update');
   await mock.menu('check-updates');

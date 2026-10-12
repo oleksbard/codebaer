@@ -23,7 +23,9 @@ vi.mock('#kernel/dialogs', async () => {
   return { ...actual, confirmDialog: vi.fn() };
 });
 
-const FOUND: Update = { version: '0.6.0', page: 'https://github.com/o/r/releases/tag/v0.6.0', keeps_terminals: true };
+const FOUND: Update = { version: '0.6.0', page: 'https://github.com/o/r/releases/tag/v0.6.0', keeps_terminals: true,
+  blocked: null };
+const BLOCKED: Update = { ...FOUND, blocked: 'CodeBär runs from /Volumes/CodeBär, which is read-only.' };
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
@@ -127,6 +129,12 @@ describe('Check for Updates', () => {
     expect(toasts().at(-1)).toBe('info: CodeBär 0.6.0 is out. Install it from the button in the header.');
   });
 
+  it('says why this copy cannot install the one it found', async () => {
+    g.updateCheck!.mockResolvedValue(BLOCKED);
+    await checkForUpdates();
+    expect(toasts().at(-1)).toBe('info: CodeBär 0.6.0 is out. CodeBär runs from /Volumes/CodeBär, which is read-only.');
+  });
+
   it('does not check again for an update it has already found', async () => {
     S.update = FOUND;
     await checkForUpdates();
@@ -146,6 +154,8 @@ describe('Check for Updates', () => {
     expect(restart.when()).toBe(false);
     S.update = FOUND;
     expect(restart.when()).toBe(true);
+    S.update = BLOCKED;
+    expect(restart.when()).toBe(false);
   });
 
   it('shows why a check failed', async () => {
@@ -164,6 +174,16 @@ describe('the header', () => {
     notify();
     await tick();
     expect(document.querySelector('.update-pill')?.textContent).toBe('Update to 0.6.0 ▾');
+  });
+
+  it('disables the button of an update this copy cannot install', async () => {
+    S.update = BLOCKED;
+    notify();
+    await tick();
+    const btn = document.querySelector<HTMLButtonElement>('.update-pill');
+    expect(btn?.textContent).toBe('Update to 0.6.0');
+    expect(btn?.getAttribute('aria-disabled')).toBe('true');
+    expect(btn?.hasAttribute('aria-haspopup')).toBe(false);
   });
 });
 
@@ -256,6 +276,13 @@ describe('Restart to Update', () => {
   it('ignores a mark older than any restart, left by a relaunch that never started', () => {
     localStorage.setItem('codebaer.afterUpdate', String(Date.now() - 16 * MIN));
     expect(restartedIntoUpdate()).toBe(false);
+  });
+
+  it('does not start for an update this copy cannot install', async () => {
+    S.update = BLOCKED;
+    await restartToUpdate();
+    expect(g.updateInstall).not.toHaveBeenCalled();
+    expect(S.installing).toBe(false);
   });
 
   it('shows why the install failed, keeps the update and leaves no mark', async () => {

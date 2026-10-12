@@ -7,7 +7,7 @@ export const updates = defineFeature({
   commands: [
     { id: 'updates.check', label: 'Check for Updates…', when: () => S.canUpdate, run: () => void checkForUpdates() },
     {
-      id: 'updates.restart', label: 'Restart to Update', when: () => S.update !== null,
+      id: 'updates.restart', label: 'Restart to Update', when: () => S.update !== null && S.update.blocked === null,
       run: () => void restartToUpdate(),
     },
   ],

@@ -1,3 +1,7 @@
+use std::ffi::CString;
+use std::mem::MaybeUninit;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -43,6 +47,8 @@ pub struct Available {
     /// The release's page, for its notes.
     page: Option<String>,
     keeps_terminals: bool,
+    /// Why this copy cannot replace itself, so the header disables the button instead of failing on a click.
+    blocked: Option<String>,
 }
 
 fn available(update: &Update) -> Available {
@@ -50,6 +56,7 @@ fn available(update: &Update) -> Available {
         version: update.version.clone(),
         page: release_page(update.download_url.as_str()),
         keeps_terminals: keeps(&update.raw_json),
+        blocked: blocked(),
     }
 }
 
@@ -76,6 +83,46 @@ fn found(checked: tauri_plugin_updater::Result<Option<Update>>) -> Result<Option
 
 fn failed(e: tauri_plugin_updater::Error) -> AppError {
     AppError::Io(e.to_string())
+}
+
+/// `.../CodeBär.app` above `Contents/MacOS/<exe>`, which the install moves aside and replaces.
+fn bundle() -> Option<PathBuf> {
+    bundle_of(&std::env::current_exe().ok()?)
+}
+
+fn bundle_of(exe: &Path) -> Option<PathBuf> {
+    let macos = exe.parent()?;
+    let contents = macos.parent()?;
+    if macos.file_name()? != "MacOS" || contents.file_name()? != "Contents" {
+        return None;
+    }
+    contents.parent().map(Path::to_path_buf)
+}
+
+fn read_only(path: &Path) -> bool {
+    let Ok(c) = CString::new(path.as_os_str().as_bytes()) else { return false };
+    let mut fs = MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: c is NUL-terminated and fs is written in full when the call returns 0
+    unsafe { libc::statvfs(c.as_ptr(), fs.as_mut_ptr()) == 0 && fs.assume_init().f_flag & libc::ST_RDONLY != 0 }
+}
+
+/// The plugin's install fails there with only "Read-only file system (os error 30)".
+fn blocked() -> Option<String> {
+    bundle().filter(|app| read_only(app)).map(|app| cannot_replace(&app))
+}
+
+fn cannot_replace(app: &Path) -> String {
+    if app.components().any(|c| c.as_os_str() == "AppTranslocation") {
+        "macOS runs this copy of CodeBär from a read-only folder, because it still has the quarantine mark of its \
+         download. Move CodeBär to Applications in Finder, open it from there and update again."
+            .to_string()
+    } else {
+        format!(
+            "CodeBär runs from {}, which is read-only. Drag CodeBär to Applications, eject the disk image, open \
+             CodeBär from Applications and update again.",
+            app.parent().unwrap_or(app).display()
+        )
+    }
 }
 
 #[tauri::command]
@@ -106,6 +153,9 @@ pub async fn update_check(app: AppHandle, state: State<'_, UpdateState>) -> Resu
 /// retried.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, state: State<'_, UpdateState>) -> Result<(), AppError> {
+    if let Some(why) = blocked() {
+        return Err(AppError::Io(why));
+    }
     let mut slot = state.0.lock().await;
     let mut update = slot.clone().ok_or_else(|| AppError::Io("no update has been found".into()))?;
     update.timeout = Some(DOWNLOAD_TIMEOUT);
@@ -159,6 +209,43 @@ mod tests {
             json!({ "version": "9.0.0", "proto": null }),
         ] {
             assert!(!keeps(&manifest), "{manifest}");
+        }
+    }
+
+    #[test]
+    fn a_writable_folder_is_not_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!read_only(dir.path()));
+        assert!(!read_only(&dir.path().join("missing")));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_sealed_system_volume_is_read_only() {
+        assert!(read_only(Path::new("/System")));
+    }
+
+    #[test]
+    fn a_translocated_app_is_told_apart_from_a_disk_image() {
+        let moved = Path::new("/private/var/folders/x/T/AppTranslocation/1234/d/CodeBär.app");
+        let image = Path::new("/Volumes/CodeBär/CodeBär.app");
+        assert!(cannot_replace(moved).contains("quarantine"));
+        assert!(cannot_replace(image).contains("/Volumes/CodeBär,"));
+    }
+
+    #[test]
+    fn a_found_update_says_null_when_nothing_blocks_it() {
+        let out = Available { version: "9.0.0".into(), page: None, keeps_terminals: true, blocked: None };
+        let json = serde_json::to_value(out).unwrap();
+        assert_eq!(json, json!({ "version": "9.0.0", "page": null, "keeps_terminals": true, "blocked": null }));
+    }
+
+    #[test]
+    fn the_bundle_is_the_app_above_contents_macos() {
+        let exe = Path::new("/Applications/CodeBär.app/Contents/MacOS/codebaer");
+        assert_eq!(bundle_of(exe).as_deref(), Some(Path::new("/Applications/CodeBär.app")));
+        for exe in ["/repo/target/debug/CodeBär", "/Foo.app/x/y/codebaer", "/MacOS/codebaer", "codebaer"] {
+            assert_eq!(bundle_of(Path::new(exe)), None, "{exe}");
         }
     }
 

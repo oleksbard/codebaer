@@ -524,7 +524,18 @@ export const SCENARIOS: Record<string, () => Scenario> = {
     updates: {
       found: {
         version: '0.6.0', page: 'https://github.com/oleksbard/codebaer/releases/tag/v0.6.0', keeps_terminals: true,
+        blocked: null,
       },
     },
   }),
+
+  // the same release, found by a copy that runs from its read-only disk image
+  'update-blocked': () => {
+    const s = SCENARIOS.update!();
+    return {
+      ...s,
+      updates: { found: { ...s.updates!.found!, blocked: 'CodeBär runs from /Volumes/CodeBär, which is read-only. '
+        + 'Drag CodeBär to Applications, eject the disk image, open CodeBär from Applications and update again.' } },
+    };
+  },
 };

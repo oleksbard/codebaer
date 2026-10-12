@@ -57,7 +57,8 @@ export async function startUpdates(): Promise<void> {
   setInterval(() => { if (Date.now() - last >= EVERY_MS) auto(); }, TICK_MS);
 }
 
-const readyMsg = (u: Update): string => `CodeBär ${u.version} is out. Install it from the button in the header.`;
+const readyMsg = (u: Update): string =>
+  `CodeBär ${u.version} is out. ${u.blocked ?? 'Install it from the button in the header.'}`;
 
 export async function checkForUpdates(): Promise<void> {
   if (S.update !== null) {
@@ -77,7 +78,7 @@ let restarting = false;
 
 export async function restartToUpdate(): Promise<void> {
   const u = S.update;
-  if (u === null || restarting) return;
+  if (u === null || u.blocked !== null || restarting) return;
   restarting = true;
   try {
     if (!(await settleAll())) return;

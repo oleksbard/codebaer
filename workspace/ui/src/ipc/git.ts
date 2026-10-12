@@ -11,8 +11,9 @@ export type StageResult = { oid: string | null };
 export type Opened = { root: string; label: string; title: string | null; git: boolean };
 export type Recent = { path: string; name: string; label: string; favorite: boolean };
 /** A newer release, downloaded and verified. `keeps_terminals` is false when it cannot carry the running terminal
- *  sessions over, which its restart then ends. */
-export type Update = { version: string; page: string | null; keeps_terminals: boolean };
+ *  sessions over, which its restart then ends. `blocked` says why this copy cannot replace itself, such as a run
+ *  from a read-only disk image. */
+export type Update = { version: string; page: string | null; keeps_terminals: boolean; blocked: string | null };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
 export type Listing = { files: string[]; ignored: string[] };
 /** `col` and `ranges` count UTF-16 units: `col` in the whole line, `ranges` in `text`, the preview. `cut` is true
