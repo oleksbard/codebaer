@@ -5,7 +5,7 @@ import { expect, test } from './fixtures';
  *  not `document.activeElement` at mount (which by then is the menu item, gone once the menu unmounts). */
 
 test('Changes section menu > Discard all changes restores focus to the queue list', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review');
   const list = page.locator('.side .list');
   await list.focus();
   await page.locator('details[data-sec="unstaged"] summary [data-all="menu"]').click();
@@ -19,7 +19,7 @@ test('Changes section menu > Discard all changes restores focus to the queue lis
 });
 
 test('a row\'s context menu > Discard changes restores focus to the queue list', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review');
   const list = page.locator('.side .list');
   await list.focus();
   await page.locator('.side .list .row').first().click({ button: 'right' });
@@ -33,7 +33,7 @@ test('a row\'s context menu > Discard changes restores focus to the queue list',
 });
 
 test('the repo switcher > Repository Preferences restores focus to the queue list', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review');
   const list = page.locator('.side .list');
   await list.focus();
   await page.locator('.repo-trigger').click();
@@ -50,7 +50,7 @@ test('the repo switcher > Repository Preferences restores focus to the queue lis
 });
 
 test('the task menu > Manage commands restores focus to the queue list', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review');
   const list = page.locator('.side .list');
   await list.focus();
   await page.locator('.task-b').click();
@@ -67,7 +67,7 @@ test('the task menu > Manage commands restores focus to the queue list', async (
 });
 
 test('the palette > Settings restores focus to the editor', async ({ page, open }) => {
-  const mock = await open('review', { motion: 'on' });
+  const mock = await open('review');
   const editor = page.locator('.cm-content').first();
   await editor.click();
   await page.keyboard.press('ControlOrMeta+Shift+P');
