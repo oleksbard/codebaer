@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptText, ago, blameShort, blameTip, buildQueue, buildTree, decideRefresh, pinDefaultBranches,
+  acceptText, ago, blameShort, blameTip, buildQueue, buildTree, decideRefresh, groupBranches,
   rejectSpecialCase, rowKey, treeStatus, unstageText, visibleFiles,
 } from './model';
-import type { Branch, FileEntry, Status } from '#ipc/git';
+import type { BranchInfo, FileEntry, Status } from '#ipc/git';
 
 const f = (path: string, x = '.', y = '.', extra: Partial<FileEntry> = {}): FileEntry =>
   ({ path, indexStatus: x, worktreeStatus: y, untracked: false, conflicted: false, ...extra });
@@ -41,24 +41,46 @@ describe('buildTree', () => {
   });
 });
 
-describe('pinDefaultBranches', () => {
-  const local = (name: string): Branch => ({ kind: 'local', name });
-  const remote = (branch: string): Branch => ({ kind: 'remote', remote: 'origin', branch });
+describe('groupBranches', () => {
+  const DAY = 86_400;
+  const now = 100 * DAY;
+  const tip = { author: 'a', mine: false };
+  const local = (name: string, days: number): BranchInfo => ({ kind: 'local', name, ...tip, time: now - days * DAY });
+  const remote = (branch: string, days: number, mine = false, origin = 'origin'): BranchInfo =>
+    ({ kind: 'remote', remote: origin, branch, ...tip, time: now - days * DAY, mine });
+  const names = (bs: BranchInfo[]) => bs.map((b) => (b.kind === 'local' ? b.name : `${b.remote}/${b.branch}`));
 
-  it('puts local main, master and develop first in that order and keeps the rest in their order', () => {
-    const bs = [
-      local('alpha'), local('develop'), local('feature/x'), local('main'), local('master'), local('zeta'),
-      remote('develop'), remote('main'),
-    ];
-    expect(pinDefaultBranches(bs)).toEqual([
-      local('main'), local('master'), local('develop'),
-      local('alpha'), local('feature/x'), local('zeta'), remote('develop'), remote('main'),
-    ]);
+  it('keeps your branches from the last week in Yours, newest first, and the rest in Others', () => {
+    const { yours, others } = groupBranches([
+      local('a', 6), remote('theirs', 0), remote('b', 1, true), local('c', 2), local('d', 3), local('old', 8),
+      remote('mine-old', 9, true),
+    ], null, now);
+    expect(names(yours)).toEqual(['origin/b', 'c', 'd', 'a']);
+    expect(names(others)).toEqual(['origin/theirs', 'old', 'origin/mine-old']);
   });
 
-  it('pins only the defaults that exist and leaves remote copies in place', () => {
-    const bs = [local('a'), local('develop'), remote('main'), remote('master')];
-    expect(pinDefaultBranches(bs)).toEqual([local('develop'), local('a'), remote('main'), remote('master')]);
+  it('keeps the newest three in Yours however old, and the current branch too', () => {
+    const { yours, others } = groupBranches([
+      local('w', 40), local('x', 10), local('y', 20), local('z', 30), local('cur', 50),
+    ], 'cur', now);
+    expect(names(yours)).toEqual(['x', 'y', 'z', 'cur']);
+    expect(names(others)).toEqual(['w']);
+  });
+
+  it('puts main, then master, first in Others however new or old', () => {
+    const { yours, others } = groupBranches([
+      local('master', 0), remote('theirs', 1), local('main', 30), local('feat', 2),
+    ], 'main', now);
+    expect(names(yours)).toEqual(['feat']);
+    expect(names(others)).toEqual(['main', 'master', 'origin/theirs']);
+  });
+
+  it('leaves out a remote branch on any remote that a local branch of the same name covers', () => {
+    const { yours, others } = groupBranches([
+      local('feat', 1), remote('feat', 0, true), remote('feat', 0, false, 'upstream'), remote('main', 5),
+    ], null, now);
+    expect(names(yours)).toEqual(['feat']);
+    expect(names(others)).toEqual(['origin/main']);
   });
 });
 

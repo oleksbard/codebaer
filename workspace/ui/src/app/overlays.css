@@ -48,6 +48,19 @@
 
     &.desc { cursor: default; background: none; }
 
+    &.group {
+      cursor: default;
+      background: none;
+      padding: 10px 10px 4px;
+      color: var(--faint);
+      font-size: var(--fs-1);
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    &.dim .lbl { color: var(--muted); }
+
     kbd { flex: none; align-self: center; }
     .note { flex: none; color: var(--muted); font-size: var(--fs-2); }
   }

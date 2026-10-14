@@ -791,7 +791,7 @@ fn commit_keeps_multiline_message() {
 }
 
 #[test]
-fn branches_split_remotes_and_drop_head_symref() {
+fn branches_split_remotes_and_drop_head_symref_and_merge_queue() {
     let d = repo();
     let r = d.path();
     let origin = tempfile::tempdir().unwrap();
@@ -800,14 +800,49 @@ fn branches_split_remotes_and_drop_head_symref() {
     sh(r, &["remote", "add", "a/b", origin.path().to_str().unwrap()]);
     sh(r, &["push", "-q", "origin", "main"]);
     sh(r, &["push", "-q", "origin", "main:feature/x"]);
+    sh(r, &["push", "-q", "origin", "main:gh-readonly-queue/main/pr-1-abc"]);
     sh(r, &["fetch", "-q", "a/b"]);
     sh(r, &["remote", "set-head", "origin", "main"]);
-    let bs = branches_impl(r).unwrap();
+    let bs: Vec<Branch> = branches_impl(r).unwrap().into_iter().map(|b| b.branch).collect();
     assert!(bs.contains(&Branch::Local { name: "main".into() }));
     assert!(bs.contains(&Branch::Remote { remote: "origin".into(), branch: "feature/x".into() }));
     assert!(bs.contains(&Branch::Remote { remote: "a/b".into(), branch: "main".into() }));
     assert!(!bs.iter().any(|b| matches!(b, Branch::Remote { branch, .. } if branch == "HEAD")));
+    assert!(!bs.iter().any(|b| matches!(b, Branch::Remote { branch, .. } if branch.starts_with("gh-readonly-queue/"))));
     assert!(!bs.iter().any(|b| matches!(b, Branch::Local { name } if name == "origin")));
+}
+
+#[test]
+fn branches_carry_tip_author_and_time_and_mark_own_tips() {
+    let d = repo();
+    let r = d.path();
+    let origin = tempfile::tempdir().unwrap();
+    sh(origin.path(), &["init", "-q", "--bare"]);
+    sh(r, &["remote", "add", "origin", origin.path().to_str().unwrap()]);
+    sh(r, &["push", "-q", "origin", "main"]);
+    sh(r, &["switch", "-qc", "theirs"]);
+    sh(r, &["-c", "user.email=O@O", "-c", "user.name=Other Person", "commit", "-q", "--allow-empty", "-m", "x"]);
+    sh(r, &["push", "-q", "origin", "theirs"]);
+    sh(r, &["config", "user.email", "T@t"]);
+    let bs = branches_impl(r).unwrap();
+    let find = |b: Branch| bs.iter().find(|x| x.branch == b).unwrap().clone();
+    let main = find(Branch::Remote { remote: "origin".into(), branch: "main".into() });
+    assert!(main.mine, "user.email compares without case");
+    assert_eq!(main.author, "t");
+    assert!(main.time > 1_600_000_000);
+    let theirs = find(Branch::Remote { remote: "origin".into(), branch: "theirs".into() });
+    assert!(!theirs.mine);
+    assert_eq!(theirs.author, "Other Person");
+    assert!(!find(Branch::Local { name: "theirs".into() }).mine);
+
+    let json = serde_json::to_value(&main).unwrap();
+    assert_eq!(json["kind"], "remote");
+    assert_eq!(json["remote"], "origin");
+    assert_eq!(json["branch"], "main");
+    assert_eq!(json["mine"], true);
+
+    sh(r, &["config", "--unset", "user.email"]);
+    assert!(branches_impl(r).unwrap().iter().all(|b| !b.mine), "no user.email marks nothing as mine");
 }
 
 #[test]

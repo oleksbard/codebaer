@@ -1,4 +1,4 @@
-import type { BlameLine, Branch, FileEntry, FileText } from '#ipc/git';
+import type { BlameLine, BranchInfo, FileEntry, FileText } from '#ipc/git';
 
 export type Section = 'unstaged' | 'staged';
 export type Row = { section: Section; path: string; letter: string; untracked: boolean; conflicted: boolean };
@@ -119,14 +119,27 @@ export function visibleFiles(list: readonly string[], s: { readonly files: reado
   return list.filter((p) => !deleted.has(p));
 }
 
-const DEFAULT_BRANCHES = ['main', 'master', 'develop'];
+const DEFAULT_BRANCHES = ['main', 'master'];
+const RECENT_SECS = 7 * 86_400;
+const RECENT_MIN = 3;
 
-export function pinDefaultBranches(bs: Branch[]): Branch[] {
-  const rank = (b: Branch) => {
-    const i = b.kind === 'local' ? DEFAULT_BRANCHES.indexOf(b.name) : -1;
+export const isYours = (b: BranchInfo): boolean => b.kind === 'local' || b.mine;
+
+/** Yours: local branches and remote ones whose tip is yours, from the last week but at least the newest few, and
+ *  the current branch. Others: the rest, main and master first. Both newest first. A remote branch named like a
+ *  local one is left out: switching to it switches to the local branch. `now` is in seconds. */
+export function groupBranches(
+  bs: BranchInfo[], current: string | null, now: number,
+): { yours: BranchInfo[]; others: BranchInfo[] } {
+  const local = new Set(bs.flatMap((b) => (b.kind === 'local' ? [b.name] : [])));
+  const shown = bs.filter((b) => b.kind === 'local' || !local.has(b.branch)).sort((a, b) => b.time - a.time);
+  const rank = (b: BranchInfo) => {
+    const i = DEFAULT_BRANCHES.indexOf(b.kind === 'local' ? b.name : b.branch);
     return i < 0 ? DEFAULT_BRANCHES.length : i;
   };
-  return [...bs].sort((a, b) => rank(a) - rank(b));
+  const yours = shown.filter((b) => isYours(b) && rank(b) === DEFAULT_BRANCHES.length).filter((b, i) =>
+    i < RECENT_MIN || now - b.time < RECENT_SECS || (b.kind === 'local' && b.name === current));
+  return { yours, others: shown.filter((b) => !yours.includes(b)).sort((a, b) => rank(a) - rank(b)) };
 }
 
 export function rejectSpecialCase(

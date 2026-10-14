@@ -1,7 +1,8 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import type { AppError, Blob, BlameLine, Branch, DiffStat, Eol, FileText, IconItem, IconSet, Listing, Opened, Outgoing,
-  Recent, RepoItem, Rev, Scripts, SearchMsg, StageResult, Stash, StashKind, Status, Update } from '#ipc/git';
+import type { AppError, Blob, BlameLine, Branch, BranchInfo, DiffStat, Eol, FileText, IconItem, IconSet, Listing,
+  Opened, Outgoing, Recent, RepoItem, Rev, Scripts, SearchMsg, StageResult, Stash, StashKind, Status, Update,
+} from '#ipc/git';
 import {
   AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
 } from '#ipc/settings';
@@ -280,7 +281,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     discard_preview: (): string[] => repo.discardPreview(),
     discard_all: () => mutate(() => repo.discardAll()),
     commit: ({ message }: { message: string }) => mutate(() => repo.commit(message)),
-    branches: (): Branch[] => repo.branches(),
+    branches: (): BranchInfo[] => repo.branches(),
     switch_branch: ({ branch }: { branch: Branch }) => mutate(() => repo.switchBranch(branch)),
     create_branch: ({ name: n }: { name: string }) => mutate(() => repo.createBranch(n)),
     stash_push: ({ root, kind, message }: { root: string; kind: StashKind; message: string | null }): boolean => {

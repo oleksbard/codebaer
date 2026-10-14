@@ -6,7 +6,7 @@ test('switching to a branch shows the commits it can pull, and pulls none of the
   await page.keyboard.press('ControlOrMeta+Shift+P');
   await page.keyboard.type('Checkout to');
   await page.keyboard.press('Enter');
-  await page.locator('.pal li').filter({ hasText: /^main\s+local$/ }).click();
+  await page.locator('.pal li .lbl').filter({ hasText: /^main\s+local$/ }).click();
   await mock.idle();
   await expect(page.locator('.branch .ab')).toContainText('↓3');
   await expect(page.getByRole('button', { name: 'Pull 3 commits' })).toBeVisible();

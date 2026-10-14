@@ -50,6 +50,8 @@ export type IconSet = { prefix: string; title: string; names: string[] };
 /** `name` is the one the switcher shows; the backend adds the folder name and a line from the README. */
 export type RepoItem = { path: string; name: string };
 export type Branch = { kind: 'local'; name: string } | { kind: 'remote'; remote: string; branch: string };
+/** `time` is the tip's committer date in seconds; `mine` says the tip's author email is `user.email`. */
+export type BranchInfo = Branch & { author: string; time: number; mine: boolean };
 /** `unstaged` takes the untracked files too and leaves the index; `all` takes everything. */
 export type StashKind = 'all' | 'staged' | 'unstaged';
 /** `index` is the n of `stash@{n}`; `wip` marks git's own `WIP on <branch>: <commit>` message; `time` is in
@@ -166,7 +168,7 @@ export const git = {
   installedAiProviders: () => invoke<AiProvider[]>('installed_ai_providers'),
   /** An https page only, in the default browser. */
   openUrl: (url: string) => invoke<void>('open_url', { url }),
-  branches: () => invoke<Branch[]>('branches'),
+  branches: () => invoke<BranchInfo[]>('branches'),
   switchBranch: (branch: Branch) => invoke<void>('switch_branch', { branch }),
   createBranch: (name: string) => invoke<void>('create_branch', { name }),
   push: () => invoke<void>('push'),

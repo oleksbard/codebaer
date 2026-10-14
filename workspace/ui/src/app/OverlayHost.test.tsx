@@ -59,6 +59,24 @@ describe('command palette', () => {
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
 
+  it('heads each group while nothing is typed and skips the headers in the highlight', async () => {
+    const p = pick([
+      { label: 'New', value: 0 }, { label: 'mine', group: 'Yours', value: 1 },
+      { label: 'theirs', group: 'Others', dim: true, value: 2 },
+    ], 'x');
+    await tick();
+    const input = document.querySelector<HTMLInputElement>('.pal input')!;
+    const rows = () => [...document.querySelectorAll('.pal li')].map((l) => `${l.className}:${l.textContent}`);
+    expect(rows()).toEqual(['on:New', 'group:Yours', ':mine', 'group:Others', 'dim:theirs']);
+    setValue(input, 'i');
+    await tick();
+    expect(rows()).toEqual(['on:mine', 'dim:theirs']);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await tick();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await expect(p).resolves.toBe(2);
+  });
+
   it('ArrowDown moves the highlight, a click resolves that item', async () => {
     const p = pick([{ label: 'A', value: 1 }, { label: 'B', value: 2 }], 'x');
     await tick();

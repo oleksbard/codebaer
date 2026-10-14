@@ -165,6 +165,9 @@ const MENU: Menu = {
   commands: ['claude', 'codex', 'opencode', 'node', 'python3', 'bun'],
 };
 
+const HOUR = 3600;
+const DAY = 24 * HOUR;
+
 const REPO: RepoSeed = {
   files: {
     ...UNCHANGED,
@@ -180,11 +183,15 @@ const REPO: RepoSeed = {
   ahead: 1,
   behind: 0,
   branches: [
-    { kind: 'local', name: 'main' },
-    { kind: 'local', name: 'cart-discounts' },
-    { kind: 'remote', remote: 'origin', branch: 'main' },
-    { kind: 'remote', remote: 'origin', branch: 'cart-discounts' },
-    { kind: 'remote', remote: 'origin', branch: 'release-1.4' },
+    { kind: 'local', name: 'main', by: 'Grace Hopper', age: 26 * HOUR },
+    { kind: 'local', name: 'cart-discounts', age: 2 * HOUR },
+    { kind: 'local', name: 'coupon-api', age: 3 * DAY },
+    { kind: 'remote', remote: 'origin', branch: 'main', by: 'Grace Hopper', age: 26 * HOUR },
+    { kind: 'remote', remote: 'origin', branch: 'cart-discounts', age: 2 * HOUR },
+    { kind: 'remote', remote: 'origin', branch: 'fix-tax-rounding', age: 5 * DAY },
+    { kind: 'remote', remote: 'origin', branch: 'search-filters', by: 'Linus Torvalds', age: 4 * HOUR },
+    { kind: 'remote', remote: 'origin', branch: 'release-1.4', by: 'Grace Hopper', age: 15 * DAY },
+    { kind: 'remote', remote: 'origin', branch: 'spike/graphql', by: 'Linus Torvalds', age: 120 * DAY },
   ],
   ignored: ['dist/', 'node_modules/'],
   dirs: {

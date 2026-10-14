@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { closePalette, fuzzy } from '#kernel/pick';
 import { closeConfirm, closePrompt, holdToast, removeToast } from '#kernel/dialogs';
 import { AlertDialog } from '#ui/AlertDialog';
@@ -66,13 +66,17 @@ function CommandPalette({ req }: { req: DeepReadonly<PaletteRequest> }) {
       <ul ref={listRef}>
         {shown.length
           ? shown.map((it, i) => (
-              <li key={i} className={i === cur ? 'on' : ''} onClick={() => close(it.value)}>
-                <span className="lbl">
-                  {it.label}{it.detail ? <> <span className="desc">{it.detail}</span></> : null}
-                  {it.sub ? <span className="sub">{it.sub}</span> : null}
-                </span>
-                {it.hint ? <Kbd>{it.hint}</Kbd> : it.note ? <span className="note">{it.note}</span> : null}
-              </li>
+              <Fragment key={i}>
+                {!q && it.group && it.group !== shown[i - 1]?.group ? <li className="group">{it.group}</li> : null}
+                <li className={[i === cur && 'on', it.dim && 'dim'].filter(Boolean).join(' ')}
+                  onClick={() => close(it.value)}>
+                  <span className="lbl">
+                    {it.label}{it.detail ? <> <span className="desc">{it.detail}</span></> : null}
+                    {it.sub ? <span className="sub">{it.sub}</span> : null}
+                  </span>
+                  {it.hint ? <Kbd>{it.hint}</Kbd> : it.note ? <span className="note">{it.note}</span> : null}
+                </li>
+              </Fragment>
             ))
           : <li className="desc">No matching results</li>}
         {matched.length > SHOWN

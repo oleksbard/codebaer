@@ -1,6 +1,6 @@
-import { pinDefaultBranches } from '#core/model';
+import { groupBranches, isYours } from '#core/model';
 import { expandSide, gitAction, guarded, offerSave, openRepo, refresh, withBusy } from '#core/session';
-import { errKind, errText, git, type Branch, type Stash, type StashKind } from '#ipc/git';
+import { errKind, errText, git, type Branch, type BranchInfo, type Stash, type StashKind } from '#ipc/git';
 import { logError } from '#ipc/log';
 import { errorDialog, promptDialog, toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
@@ -202,13 +202,21 @@ export async function unstash(): Promise<void> {
 }
 
 export async function checkout(): Promise<void> {
-  let bs: Branch[] = [];
+  let bs: BranchInfo[] = [];
   try { bs = await git.branches(); } catch (e) { toast(errText(e), 'err'); return; }
+  const current = S.status?.branch ?? null;
+  const now = Date.now();
+  const { yours, others } = groupBranches(bs, current, now / 1000);
+  const headed = yours.length > 0 && others.length > 0;
+  const row = (br: BranchInfo, group: string): Item<Branch | 'create'> => ({
+    label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`,
+    detail: br.kind === 'remote' ? (br.mine ? 'remote' : br.author) : br.name === current ? 'current' : 'local',
+    note: age(br.time, now), group: headed ? group : undefined, dim: !isYours(br), value: br,
+  });
   const opts: Item<Branch | 'create'>[] = [
     { label: '+ Create new branch…', value: 'create' },
-    ...pinDefaultBranches(bs).map((br) => ({
-      label: br.kind === 'local' ? br.name : `${br.remote}/${br.branch}`, detail: br.kind, value: br,
-    })),
+    ...yours.map((br) => row(br, 'Yours')),
+    ...others.map((br) => row(br, 'Others')),
   ];
   const b = await pick(opts, 'Select a branch to checkout');
   if (b === 'create') await createBranch();

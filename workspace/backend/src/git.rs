@@ -1081,27 +1081,54 @@ pub enum Branch {
     Remote { remote: String, branch: String },
 }
 
+/// `time` is the tip's committer date in seconds; `mine` says the tip's author email is `user.email`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BranchInfo {
+    #[serde(flatten)]
+    pub branch: Branch,
+    pub author: String,
+    pub time: i64,
+    pub mine: bool,
+}
+
 pub fn commit_impl(root: &Path, message: &str) -> Result<(), AppError> {
     run_locked(root, &["commit", "-F", "-"], Some(message.as_bytes()), Some(COMMIT)).map(|_| ())
 }
 
-pub fn branches_impl(root: &Path) -> Result<Vec<Branch>, AppError> {
+pub fn branches_impl(root: &Path) -> Result<Vec<BranchInfo>, AppError> {
     let remotes_out = run(root, &["remote"], None, Some(LOCAL))?;
     let mut remotes: Vec<String> = String::from_utf8_lossy(&remotes_out.stdout).lines().map(|s| s.to_string()).collect();
     remotes.sort_by_key(|r| std::cmp::Reverse(r.len()));
-    let out = run(root, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], None, Some(LOCAL))?;
+    let me = line_of(run_raw(root, &["config", "--get", "user.email"], None, Some(LOCAL), None)?);
+    let format = "--format=%(refname)%00%(authoremail)%00%(authorname)%00%(committerdate:unix)";
+    let out = run(root, &["for-each-ref", format, "refs/heads", "refs/remotes"], None, Some(LOCAL))?;
     let mut result = Vec::new();
     for line in String::from_utf8_lossy(&out.stdout).lines() {
-        if let Some(name) = line.strip_prefix("refs/heads/") {
-            result.push(Branch::Local { name: name.to_string() });
-        } else if let Some(rest) = line.strip_prefix("refs/remotes/") {
+        let mut fields = line.split('\0');
+        let (Some(refname), Some(email), Some(author), Some(time)) = (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let branch = if let Some(name) = refname.strip_prefix("refs/heads/") {
+            Branch::Local { name: name.to_string() }
+        } else if let Some(rest) = refname.strip_prefix("refs/remotes/") {
             let Some(remote) = remotes.iter().find(|r| rest.starts_with(&format!("{r}/"))) else { continue };
             let branch = &rest[remote.len() + 1..];
-            if branch == "HEAD" {
+            // GitHub's merge queue makes one per queued pull request and deletes it after the merge
+            if branch == "HEAD" || branch.starts_with("gh-readonly-queue/") {
                 continue;
             }
-            result.push(Branch::Remote { remote: remote.clone(), branch: branch.to_string() });
-        }
+            Branch::Remote { remote: remote.clone(), branch: branch.to_string() }
+        } else {
+            continue;
+        };
+        let email = email.trim_start_matches('<').trim_end_matches('>');
+        result.push(BranchInfo {
+            branch,
+            author: author.to_string(),
+            time: time.parse().unwrap_or(0),
+            mine: !me.is_empty() && email.eq_ignore_ascii_case(&me),
+        });
     }
     Ok(result)
 }
@@ -1670,7 +1697,7 @@ pub fn commit(state: State<AppState>, message: String) -> Result<(), AppError> {
 }
 
 #[tauri::command(async)]
-pub fn branches(state: State<AppState>) -> Result<Vec<Branch>, AppError> {
+pub fn branches(state: State<AppState>) -> Result<Vec<BranchInfo>, AppError> {
     branches_impl(&state.root()?)
 }
 

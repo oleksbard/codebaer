@@ -1,10 +1,11 @@
 import { notify, S } from './store';
 
 /** `hint` is a key chord, drawn as a keycap; `note` is a word about the item, drawn as text; `sub` is a line
- *  under the label, for what is too long to sit beside it. */
+ *  under the label, for what is too long to sit beside it. `group` heads a run of items while nothing is typed;
+ *  `dim` mutes the label. */
 export type Item<T> = {
   label: string; detail?: string | undefined; hint?: string | undefined; note?: string | undefined;
-  sub?: string | undefined; value: T;
+  sub?: string | undefined; group?: string | undefined; dim?: boolean | undefined; value: T;
 };
 
 /** Both lowercase: the palette lowers each label once, not on every keystroke. */

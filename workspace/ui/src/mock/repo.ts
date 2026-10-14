@@ -1,6 +1,6 @@
 import type {
-  AppError, BlameLine, Blob, Branch, Commit, DiffStat, Eol, FileEntry, FileText, Listing, Outgoing, SearchFile,
-  SearchHit, StageResult, Stash, StashKind, Status,
+  AppError, BlameLine, Blob, Branch, BranchInfo, Commit, DiffStat, Eol, FileEntry, FileText, Listing, Outgoing,
+  SearchFile, SearchHit, StageResult, Stash, StashKind, Status,
 } from '#ipc/git';
 
 export type Version = { text: string; eol: Eol };
@@ -16,13 +16,16 @@ export type FileSeed = {
   eol?: Eol; kind?: 'binary' | 'large'; conflicted?: boolean;
 };
 
+/** `by` names another author of the tip; `age` is how long ago its commit was, in seconds. */
+export type BranchSeed = Branch & { by?: string; age?: number };
+
 export type RepoSeed = {
   files: Record<string, FileSeed>;
   branch: string | null;
   upstream: string | null;
   ahead: number;
   behind: number;
-  branches: Branch[];
+  branches: BranchSeed[];
   /** As `list_files` reports them: a wholly ignored directory ends in a slash. */
   ignored: string[];
   /** `list_dir` answers, keyed by directory without the trailing slash. */
@@ -183,7 +186,13 @@ export type Repo = ReturnType<typeof createRepo>;
 export function createRepo(seed: RepoSeed) {
   const files = new Map(Object.entries(seed.files).map(([p, s]) => [p, fromSeed(s)]));
   let { branch, upstream, ahead, behind } = seed;
-  const branches: Branch[] = [...seed.branches];
+  const seeded = Math.floor(Date.now() / 1000);
+  const branches: BranchInfo[] = seed.branches.map(({ by, age = 0, ...b }) => (
+    { ...b, author: by ?? AUTHORS[0]!, time: seeded - age, mine: by === undefined }
+  ));
+  const fresh = () => ({ author: AUTHORS[0]!, time: Math.floor(Date.now() / 1000), mine: true });
+  const tipOf = (b: BranchInfo | undefined) => (b ? { author: b.author, time: b.time, mine: b.mine } : fresh());
+  const localOf = (name: string | null) => branches.find((x) => x.kind === 'local' && x.name === name);
   const log = [...seed.log];
   /** The oid of the commit at `log[i]`, HEAD for 0. */
   const oidAt = (i: number): string | null => (i < log.length ? oidOf(log.slice(i).join('\n')) : null);
@@ -369,6 +378,8 @@ export function createRepo(seed: RepoSeed) {
       log.unshift(message.split('\n')[0] ?? message);
       head = oidAt(0);
       made.set(head!, { message, author: AUTHORS[0]!, time: Math.floor(Date.now() / 1000), before });
+      const cur = localOf(branch);
+      if (cur) Object.assign(cur, fresh());
       if (upstream) ahead += 1;
       if (remotes().length) unpushed += 1;
     },
@@ -393,7 +404,7 @@ export function createRepo(seed: RepoSeed) {
       return m?.message ?? summary;
     },
 
-    branches: (): Branch[] => [...branches],
+    branches: (): BranchInfo[] => branches.map((b) => ({ ...b })),
 
     switchBranch(b: Branch): void {
       if (b.kind === 'local') {
@@ -407,7 +418,8 @@ export function createRepo(seed: RepoSeed) {
         validRef(b.remote);
         validRef(b.branch);
         if (!branches.some((x) => x.kind === 'local' && x.name === b.branch)) {
-          branches.push({ kind: 'local', name: b.branch });
+          const tip = branches.find((x) => x.kind === 'remote' && x.remote === b.remote && x.branch === b.branch);
+          branches.push({ kind: 'local', name: b.branch, ...tipOf(tip) });
         }
         branch = b.branch;
         upstream = `${b.remote}/${b.branch}`;
@@ -423,7 +435,7 @@ export function createRepo(seed: RepoSeed) {
       if (branches.some((x) => x.kind === 'local' && x.name === name)) {
         gitError(`fatal: a branch named '${name}' already exists`);
       }
-      branches.push({ kind: 'local', name });
+      branches.push({ kind: 'local', name, ...tipOf(localOf(branch)) });
       branch = name;
       upstream = null;
       ahead = 0;
@@ -533,10 +545,12 @@ export function createRepo(seed: RepoSeed) {
         const target = all.includes('origin') ? 'origin' : all.length === 1 ? all[0]! : null;
         if (!target) gitError(`no default push remote; set remote.pushDefault (remotes: ${all.join(', ')})`);
         if (!branches.some((b) => b.kind === 'remote' && b.remote === target && b.branch === branch)) {
-          branches.push({ kind: 'remote', remote: target, branch });
+          branches.push({ kind: 'remote', remote: target, branch, ...fresh() });
         }
         upstream = `${target}/${branch}`;
       }
+      const pushed = branches.find((x) => x.kind === 'remote' && `${x.remote}/${x.branch}` === upstream);
+      if (pushed) Object.assign(pushed, tipOf(localOf(branch)));
       ahead = 0;
       unpushed = 0;
     },
