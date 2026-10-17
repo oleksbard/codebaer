@@ -54,6 +54,28 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
+    id: 'limits',
+    label: 'Usage limits',
+    options: [
+      {
+        key: 'limits.claude',
+        label: 'Claude Code',
+        description: 'Shows how much of your Claude plan\'s weekly limit is used, in the header. '
+          + 'The app runs claude -p /usage in the background, which uses no tokens. '
+          + 'It shows only while the claude CLI is installed and signed in to a subscription.',
+        choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
+      },
+      {
+        key: 'limits.codex',
+        label: 'Codex CLI',
+        description: 'Shows how much of your ChatGPT plan\'s weekly Codex limit is used, in the header. '
+          + 'The app asks codex app-server in the background, which uses no tokens. '
+          + 'It shows only while the codex CLI is installed and signed in with ChatGPT.',
+        choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
+      },
+    ],
+  },
+  {
     id: 'appearance',
     label: 'Appearance',
     options: [

@@ -1,10 +1,11 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import type { AppError, Blob, BlameLine, Branch, BranchInfo, DiffStat, Eol, FileText, IconItem, IconSet, Listing,
+import type { AppError, Blob, BlameLine, Branch, BranchInfo, DiffStat, Eol, FileText, IconItem, IconSet, LimitWindow,
+  Listing,
   Opened, Outgoing, Recent, RepoItem, Rev, Scripts, SearchMsg, StageResult, Stash, StashKind, Status, Update,
 } from '#ipc/git';
 import {
-  AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type Settings,
+  AI_PROVIDERS, DEFAULTS, type AiProvider, type CustomCommand, type HiddenScripts, type LimitProvider, type Settings,
 } from '#ipc/settings';
 import type { AgentState, Menu, Orphans, ServerMsg, SpawnKind, Task } from '#ipc/terminal';
 import { isTheme } from '#ui/theme';
@@ -92,6 +93,23 @@ function wordIcon(words: Record<string, string>, text: string, sets: IconSet[]):
   return text.toLowerCase().split(/[^a-z0-9]+/).map((w) => words[w]).find((id) => id !== undefined && known.has(id))
     ?? null;
 }
+
+const HOUR = 3600;
+/** What `claude -p /usage` and codex's `account/rateLimits/read` report, in the backend's shape. */
+const LIMITS: Record<LimitProvider, () => LimitWindow[]> = {
+  claude: () => [
+    { label: 'Session', percent: 14, resets: 'Oct 17 at 11:20pm (Europe/Berlin)', resets_at: null, weekly: false },
+    { label: 'Week (all models)', percent: 62, resets: 'Oct 20 at 9am (Europe/Berlin)', resets_at: null, weekly: true },
+    { label: 'Week (Fable)', percent: 8, resets: 'Oct 20 at 9am (Europe/Berlin)', resets_at: null, weekly: true },
+  ],
+  codex: () => {
+    const now = Math.floor(Date.now() / 1000);
+    return [
+      { label: '5 hours', percent: 31, resets: null, resets_at: now + 2 * HOUR, weekly: false },
+      { label: 'Week', percent: 93, resets: null, resets_at: now + 52 * HOUR, weekly: true },
+    ];
+  },
+};
 
 /** Files per message, so a search over the big scenario streams as the real one does. */
 const SEARCH_BATCH = 200;
@@ -367,6 +385,11 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     // the backend finds the CLIs the way it finds the terminal menu's commands
     installed_ai_providers: (): AiProvider[] => AI_PROVIDERS.filter((p) => sc.menu.commands.includes(p)),
+    usage_limits: async ({ provider }: { provider: LimitProvider }): Promise<LimitWindow[] | null> => {
+      if (!sc.menu.commands.includes(provider)) return null;
+      await sleep(opts.slow);
+      return LIMITS[provider]();
+    },
     open_url: () => {},
     package_scripts: (): Scripts | null => scripts(),
     task_run: ({ task }: { task: Task }): number => pty.runTask(task),

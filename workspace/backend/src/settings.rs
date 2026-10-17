@@ -35,6 +35,15 @@ pub enum CheckUpdates {
     Off,
 }
 
+/// Whether the header shows a CLI's plan limits; the CLI must be installed too.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ShowLimits {
+    #[default]
+    On,
+    Off,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiffLayout {
@@ -89,6 +98,10 @@ pub struct Settings {
     pub auto_fetch: AutoFetch,
     #[serde(rename = "general.check-updates")]
     pub check_updates: CheckUpdates,
+    #[serde(rename = "limits.claude")]
+    pub limits_claude: ShowLimits,
+    #[serde(rename = "limits.codex")]
+    pub limits_codex: ShowLimits,
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
     #[serde(rename = "appearance.diff-layout")]
@@ -170,6 +183,8 @@ fn from_file(map: &Map<String, Value>) -> Settings {
         headless_ai_provider: choice(map, "general.headless-ai-provider"),
         auto_fetch: choice(map, "general.auto-fetch"),
         check_updates: choice(map, "general.check-updates"),
+        limits_claude: choice(map, "limits.claude"),
+        limits_codex: choice(map, "limits.codex"),
         theme: choice(map, "appearance.theme"),
         diff_layout: choice(map, "appearance.diff-layout"),
         glow: choice(map, "appearance.glow"),
@@ -363,6 +378,8 @@ mod tests {
         headless_ai_provider: AiProvider::Claude,
         auto_fetch: AutoFetch::On,
         check_updates: CheckUpdates::On,
+        limits_claude: ShowLimits::On,
+        limits_codex: ShowLimits::On,
         theme: Theme::Codebaer,
         diff_layout: DiffLayout::Unified,
         glow: Glow::Animated,
@@ -423,6 +440,13 @@ mod tests {
         assert_eq!(read_at(&f), Settings { check_updates: CheckUpdates::Off, ..Settings::default() });
         let (_d, f) = file(r#"{"general.check-updates": false}"#);
         assert_eq!(read_at(&f).check_updates, CheckUpdates::On);
+    }
+
+    #[test]
+    fn limits_show_unless_the_file_says_off() {
+        assert_eq!(Settings::default().limits_claude, ShowLimits::On);
+        let (_d, f) = file(r#"{"limits.codex": "off", "limits.claude": false}"#);
+        assert_eq!(read_at(&f), Settings { limits_codex: ShowLimits::Off, ..Settings::default() });
     }
 
     #[test]
@@ -488,7 +512,7 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "general.check-updates": "on",
-            "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
+            "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
@@ -514,8 +538,8 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
-            "general.check-updates": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified",
-            "appearance.glow": "animated",
+            "general.check-updates": "on", "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer",
+            "appearance.diff-layout": "unified", "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
     }
@@ -717,7 +741,7 @@ mod tests {
         let with = |ai: &str, theme: &str| {
             json!({
                 "general.headless-ai-provider": ai, "general.auto-fetch": "on", "general.check-updates": "on",
-                "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
+                "limits.claude": "on", "limits.codex": "on", "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
             })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());

@@ -4,6 +4,7 @@ import { commandIconsState } from '#features/command-icons/state';
 import { commentsState } from '#features/comments/state';
 import { filesState } from '#features/files/state';
 import { gitOpsState } from '#features/git-ops/state';
+import { limitsState } from '#features/limits/state';
 import { orphansState } from '#features/orphans/state';
 import { reposState } from '#features/repos/state';
 import { reviewState } from '#features/review/state';
@@ -28,7 +29,7 @@ const storedWidth = localStorage.getItem('codebaer.sideWidth');
 const initial: Omit<State, 'palette' | 'confirm' | 'prompt' | 'toasts' | 'chord'> = {
   ...coreState(), ...gitOpsState(), ...reviewState(), ...commentsState(), ...terminalsState(), ...filesState(),
   ...searchState(), ...orphansState(), ...settingsState(), ...aiToolsState(), ...commandIconsState(), ...tasksState(),
-  ...reposState(), ...updatesState(),
+  ...reposState(), ...updatesState(), ...limitsState(),
   sidebarHidden: localStorage.getItem('codebaer.sidebarHidden') === 'true',
   sideWidth: storedWidth ? Math.max(180, Number(storedWidth)) : null,
 };

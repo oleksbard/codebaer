@@ -3,11 +3,15 @@ import { DEFAULT_THEME, type Theme } from '#ui/theme';
 
 export const AI_PROVIDERS = ['claude', 'codex', 'opencode'] as const;
 export type AiProvider = 'off' | (typeof AI_PROVIDERS)[number];
+/** The CLIs whose plan has usage limits that the backend can read. */
+export const LIMIT_PROVIDERS = ['claude', 'codex'] as const;
+export type LimitProvider = (typeof LIMIT_PROVIDERS)[number];
 
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
 export type Settings = {
   'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off';
-  'general.check-updates': 'on' | 'off'; 'appearance.theme': Theme;
+  'general.check-updates': 'on' | 'off'; 'limits.claude': 'on' | 'off'; 'limits.codex': 'on' | 'off';
+  'appearance.theme': Theme;
   'appearance.diff-layout': 'unified' | 'side-by-side'; 'appearance.glow': GlowMode;
 };
 export type SettingKey = keyof Settings;
@@ -25,5 +29,6 @@ export type HiddenScripts = Record<string, string[]>;
 
 export const DEFAULTS: Settings = {
   'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'general.check-updates': 'on',
+  'limits.claude': 'on', 'limits.codex': 'on',
   'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified', 'appearance.glow': 'animated',
 };

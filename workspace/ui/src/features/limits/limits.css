@@ -1,0 +1,87 @@
+.head .limits {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.head .limit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+  transition: opacity var(--dur-2) var(--ease-std), background var(--dur-1) var(--ease-std);
+
+  svg { width: 11px; height: 11px; flex: none; }
+  &:hover { background: var(--panel2); color: var(--text); }
+  &[data-busy] { opacity: .6; }
+  &[data-stale] { border-style: dashed; }
+  &[data-level="high"] { color: var(--del); border-color: var(--del); }
+
+  .limit-meter { width: 24px; }
+}
+
+.limit-pill, .limit-row {
+  --level: var(--add);
+  &[data-level="mid"] { --level: var(--warn); }
+  &[data-level="high"] { --level: var(--del); }
+}
+
+.limit-meter {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line);
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--level);
+    transform-origin: left;
+    transform: scaleX(var(--used));
+    transition: transform var(--dur-3) var(--ease-out);
+  }
+}
+
+/* two pills fit the header's right column at the narrowest window */
+@media (max-width: 1100px) {
+  .head .limit-pill .limit-meter { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .limit-meter::after { transition: background var(--dur-2) var(--ease-std); }
+}
+
+.limit-card {
+  display: grid;
+  gap: 10px;
+  width: 240px;
+  margin-top: 6px;
+  white-space: normal;
+}
+
+.limit-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: baseline;
+
+  .limit-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .limit-pct { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  &[data-level="high"] .limit-pct { color: var(--del); }
+  .limit-meter { grid-column: 1 / -1; }
+  .limit-reset { grid-column: 1 / -1; font-size: var(--fs-1); color: var(--faint); }
+}
+
+.limit-error { font-size: var(--fs-1); color: var(--del); }
+
+.limit-foot {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-1);
+  color: var(--faint);
+}

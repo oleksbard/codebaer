@@ -5,6 +5,7 @@ import { commandIcons } from '#features/command-icons';
 import { comments } from '#features/comments';
 import { files } from '#features/files';
 import { gitOps } from '#features/git-ops';
+import { limits } from '#features/limits';
 import { orphans } from '#features/orphans';
 import { repos } from '#features/repos';
 import { review } from '#features/review';
@@ -31,6 +32,6 @@ const app = defineFeature({
 /** Palette order, hook order and repo-change order follow this list. */
 export const FEATURES = [
   core, gitOps, review, comments, repos, terminals, files, search, orphans, settings, aiTools, commandIcons, tasks,
-  updates, app,
+  updates, limits, app,
 ] as const;
 export type CommandId = CommandIds<typeof FEATURES>;

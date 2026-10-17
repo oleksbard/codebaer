@@ -1,5 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
-import type { AiProvider, CustomCommand, HiddenScripts, Settings } from './settings';
+import type { AiProvider, CustomCommand, HiddenScripts, LimitProvider, Settings } from './settings';
 
 export type Eol = 'lf' | 'crlf';
 export type Rev = 'index' | 'head';
@@ -9,6 +9,11 @@ export type Blob = { text: string; eol: Eol; oid: string | null; exists: boolean
 export type StageResult = { oid: string | null };
 /** `git` is false for a folder with no repository, or on a machine with no git. */
 export type Opened = { root: string; label: string; title: string | null; git: boolean };
+/** One window of a plan's usage, such as the week. `resets` is the CLI's own text; `resets_at` is in Unix
+ *  seconds. */
+export type LimitWindow = {
+  label: string; percent: number; resets: string | null; resets_at: number | null; weekly: boolean;
+};
 export type Recent = { path: string; name: string; label: string; favorite: boolean };
 /** A newer release, downloaded and verified. `keeps_terminals` is false when it cannot carry the running terminal
  *  sessions over, which its restart then ends. `blocked` says why this copy cannot replace itself, such as a run
@@ -166,6 +171,8 @@ export const git = {
   aiRepoIcons: (items: RepoItem[], sets: IconSet[]) => invoke<(string | null)[]>('ai_repo_icons', { items, sets }),
   /** Every provider but off whose CLI the backend can find; it asks a login shell, so it can take a second. */
   installedAiProviders: () => invoke<AiProvider[]>('installed_ai_providers'),
+  /** null when the CLI is not installed. */
+  usageLimits: (provider: LimitProvider) => invoke<LimitWindow[] | null>('usage_limits', { provider }),
   /** An https page only, in the default browser. */
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   branches: () => invoke<BranchInfo[]>('branches'),

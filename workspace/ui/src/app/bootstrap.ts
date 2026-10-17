@@ -5,6 +5,7 @@ import { listenAll, register, run } from '#kernel/registry';
 import { notify, S, subscribe } from '#kernel/store';
 import { lastRepo, openRepo, pickRepo, reopenAtLaunch, view } from '#core/session';
 import { startAutoFetch } from '#features/git-ops';
+import { startLimits } from '#features/limits';
 import { connectTerminals } from '#features/terminals';
 import { restartedIntoUpdate, startUpdates } from '#features/updates';
 import { loadSettings } from '#features/settings';
@@ -19,7 +20,8 @@ export async function start(): Promise<void> {
   } catch (e) {
     S.gitMissing = errText(e);
   }
-  loadSettings().catch((e: unknown) => logError(e, 'load settings'));
+  // the limits wait for the file, so a CLI turned off there is never asked
+  void loadSettings().catch((e: unknown) => logError(e, 'load settings')).then(startLimits);
   installKeys(run, (visible) => { S.chord = visible; notify(); });
   // not deferred to the first visit any more: the activity bar lists every session on every tab
   void connectTerminals();

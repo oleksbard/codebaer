@@ -113,6 +113,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          and install guide while the backend cannot find it, marked installed once it can
     updates/             the self-update: the checks, Restart to Update and the mark that the restarted app reads
                          (updates.ts), and the pill in the header
+    limits/              the plan's usage limits of each agent CLI that is on in Settings: the reads every few
+                         minutes (limits.ts), and a pill per CLI in the header
   app/                   composition only:
     App.tsx, Shell.tsx, Sidebar.tsx   the window, the header and sidebar gutter, the sidebar frame and activity bar
     OverlayHost.tsx      palette, confirm, prompt, then every registered overlay; toasts and the chord hint
@@ -137,6 +139,7 @@ workspace/backend/src/   Rust backend
   ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command and repo icons
   browser.rs             opens an https page in the default browser
   updates.rs             the self-update through tauri-plugin-updater: check, download, install and restart
+  limits.rs              plan usage limits: `claude -p /usage`, and `account/rateLimits/read` on `codex app-server`
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),

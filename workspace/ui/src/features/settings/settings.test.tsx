@@ -98,7 +98,7 @@ describe('settings dialog', () => {
     await tick();
     const d = dialog()!;
     expect([...d.querySelectorAll('[role="tab"]')].map((t) => t.textContent))
-      .toEqual(['General', 'Appearance', 'Commands']);
+      .toEqual(['General', 'Usage limits', 'Appearance', 'Commands']);
     const row = d.querySelector<HTMLElement>('.setting')!;
     expect(row.querySelector('.setting-label')!.textContent).toBe('Headless AI provider');
     expect(row.querySelector('.setting-key')!.textContent).toBe(KEY);

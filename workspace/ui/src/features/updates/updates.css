@@ -1,8 +1,3 @@
-.head .update-slot {
-  grid-column: 3;
-  justify-self: end;
-}
-
 .head .update-pill {
   display: inline-flex;
   align-items: center;

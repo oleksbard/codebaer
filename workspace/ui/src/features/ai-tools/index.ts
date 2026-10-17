@@ -11,3 +11,4 @@ export const aiTools = defineFeature({
 });
 
 export { openAiTools } from './actions';
+export { TOOLS, type Tool } from './catalog';

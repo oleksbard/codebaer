@@ -32,12 +32,12 @@ const MAX_ERR: usize = 2000;
 const PROVIDERS: [AiProvider; 3] = [AiProvider::Claude, AiProvider::Codex, AiProvider::Opencode];
 
 /// The executable and what a user installs to get it.
-struct Cli {
-    bin: &'static str,
-    product: &'static str,
+pub(crate) struct Cli {
+    pub(crate) bin: &'static str,
+    pub(crate) product: &'static str,
 }
 
-fn cli(p: AiProvider) -> Option<Cli> {
+pub(crate) fn cli(p: AiProvider) -> Option<Cli> {
     let (bin, product) = match p {
         AiProvider::Off => return None,
         AiProvider::Claude => ("claude", "Claude Code"),
@@ -104,13 +104,13 @@ fn find_bins(names: &[&'static str]) -> Vec<Option<PathBuf>> {
     bins
 }
 
-fn find_bin(name: &'static str) -> Option<PathBuf> {
+pub(crate) fn find_bin(name: &'static str) -> Option<PathBuf> {
     let known = found().get(name).filter(|p| executable(p)).cloned();
     known.or_else(|| find_bins(&[name]).pop().flatten())
 }
 
 /// An npm install is a node script that `env` looks up on the PATH, and node is usually next to it.
-fn child_path(bin: &Path) -> OsString {
+pub(crate) fn child_path(bin: &Path) -> OsString {
     let dirs: Vec<PathBuf> = bin.parent().map(Path::to_path_buf).into_iter().chain(search_dirs()).collect();
     std::env::join_paths(dirs).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
 }
@@ -151,7 +151,7 @@ fn tail(s: &str, max: usize) -> String {
     s.chars().skip(skip).collect()
 }
 
-fn run(bin: &Path, name: &str, args: &[&str], stdin: &[u8], cwd: &Path) -> Result<String, AppError> {
+pub(crate) fn run(bin: &Path, name: &str, args: &[&str], stdin: &[u8], cwd: &Path) -> Result<String, AppError> {
     let mut cmd = Command::new(bin);
     cmd.args(args).current_dir(cwd).env("PATH", child_path(bin));
     let out = match git::run_child(cmd, Some(stdin), Some(TIMEOUT), None) {

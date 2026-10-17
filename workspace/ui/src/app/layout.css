@@ -113,8 +113,20 @@
   padding: 0 12px;
 }
 
+.head-end {
+  grid-column: 3;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* ends where the frame below ends; a margin rather than the padding, which keeps the field centred */
+  margin-right: -6px;
+}
+
 /* clears the window buttons, which sit over this row; mirrored so the field stays centred */
 [data-platform="macos"] .head { padding: 0 84px; }
+[data-platform="macos"] .head-end { margin-right: -78px; }
 
 .palette-field {
   grid-column: 2;
