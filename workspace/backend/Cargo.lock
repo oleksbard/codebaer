@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "codebaer"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "env_logger",
  "globset",

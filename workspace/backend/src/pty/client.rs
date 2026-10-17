@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -39,6 +40,9 @@ pub struct Menu {
     pub shells: Vec<Shell>,
     pub default: String,
     pub commands: Vec<String>,
+    /// The commands the login shell cannot find, with the full path that starts them.
+    #[serde(skip)]
+    pub paths: BTreeMap<String, PathBuf>,
 }
 
 impl PtyState {
@@ -73,6 +77,29 @@ fn probe_commands(login: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A login shell that is not interactive skips ~/.zshrc, which is often what puts ~/.local/bin on the PATH. So a
+/// command it cannot find is looked for in the usual install folders, the ones Explore AI Tools checks. An npm
+/// install found there still needs a node that the login shell can find. A relative dir, from an empty or `.` entry
+/// in the app's PATH, would resolve against the session's folder, so it is skipped.
+fn with_paths(found: &[String], dirs: &[PathBuf]) -> (Vec<String>, BTreeMap<String, PathBuf>) {
+    let mut paths = BTreeMap::new();
+    let commands = PROBE
+        .iter()
+        .filter(|&&c| {
+            if found.iter().any(|f| f == c) {
+                return true;
+            }
+            let Some(p) = dirs.iter().filter(|d| d.is_absolute()).map(|d| d.join(c)).find(|p| executable(p)) else {
+                return false;
+            };
+            paths.insert(c.to_string(), p);
+            true
+        })
+        .map(|c| c.to_string())
+        .collect();
+    (commands, paths)
+}
+
 fn build_menu() -> Menu {
     let login = daemon::login_shell();
     let etc = std::fs::read_to_string("/etc/shells").unwrap_or_default();
@@ -89,10 +116,12 @@ fn build_menu() -> Menu {
         }
     }
     let refs: Vec<&std::path::Path> = dirs.iter().map(PathBuf::as_path).collect();
+    let (commands, paths) = with_paths(&probe_commands(&login), &crate::ai::search_dirs());
     Menu {
         shells: shells::detect(&login, &etc, &refs, &|p| std::fs::canonicalize(p).ok().filter(|c| executable(c))),
         default: login.clone(),
-        commands: probe_commands(&login),
+        commands,
+        paths,
     }
 }
 
@@ -286,6 +315,12 @@ pub fn term_spawn<R: Runtime>(
         SpawnKind::Command { argv0 } => crate::telemetry::Counter::terminal(argv0),
         _ => crate::telemetry::Counter::TerminalShell,
     };
+    let kind = match kind {
+        SpawnKind::Command { argv0 } => {
+            SpawnKind::Command { argv0: m.paths.get(&argv0).map_or(argv0, |p| p.to_string_lossy().into_owned()) }
+        }
+        other => other,
+    };
     let id = request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)?;
     crate::telemetry::count(app.app_handle(), counter);
     Ok(id)
@@ -390,5 +425,47 @@ pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
         if let Some(s) = c.write.as_mut() {
             let _ = s.flush();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn bin(dir: &std::path::Path, name: &str, mode: u32) {
+        let p = dir.join(name);
+        std::fs::write(&p, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[test]
+    fn a_command_the_login_shell_misses_is_started_from_its_install_folder() {
+        let d = tempfile::tempdir().unwrap();
+        bin(d.path(), "claude", 0o755);
+        bin(d.path(), "codex", 0o644);
+        let (commands, paths) = with_paths(&["node".into()], &[d.path().to_path_buf()]);
+        assert_eq!(commands, ["claude", "node"]);
+        assert_eq!(paths, BTreeMap::from([("claude".to_string(), d.path().join("claude"))]));
+    }
+
+    #[test]
+    fn a_command_the_login_shell_finds_keeps_its_name() {
+        let d = tempfile::tempdir().unwrap();
+        bin(d.path(), "claude", 0o755);
+        let (commands, paths) = with_paths(&["claude".into()], &[d.path().to_path_buf()]);
+        assert_eq!(commands, ["claude"]);
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn a_relative_dir_is_never_searched() {
+        // in the working directory, so the relative name really points at an executable
+        let d = tempfile::tempdir_in(".").unwrap();
+        bin(d.path(), "claude", 0o755);
+        let rel = PathBuf::from(d.path().file_name().unwrap());
+        assert!(executable(&rel.join("claude")));
+        let (commands, paths) = with_paths(&[], &[rel]);
+        assert!(commands.is_empty() && paths.is_empty());
     }
 }

@@ -105,8 +105,13 @@ fn debug() -> bool {
     env_says(&env, "CODEBAER_TELEMETRY_DEBUG", &["1", "true", "yes"])
 }
 
+/// Trimmed: a secret pasted with a newline is a different key, and PostHog drops its events without an error.
+fn usable(key: Option<&str>) -> Option<&str> {
+    key.map(str::trim).filter(|k| !k.is_empty())
+}
+
 fn key() -> Option<&'static str> {
-    KEY.filter(|k| !k.is_empty())
+    usable(KEY)
 }
 
 /// Whether this build and environment can send at all; the setting decides the rest.
@@ -325,6 +330,14 @@ mod tests {
         ] {
             assert!(!blocked_by(vars(pairs)), "{pairs:?}");
         }
+    }
+
+    #[test]
+    fn the_key_is_trimmed_and_a_blank_one_is_none() {
+        assert_eq!(usable(Some("phc_abc\n")), Some("phc_abc"));
+        assert_eq!(usable(Some(" phc_abc ")), Some("phc_abc"));
+        assert_eq!(usable(Some(" \n")), None);
+        assert_eq!(usable(None), None);
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub(crate) fn cli(p: AiProvider) -> Option<Cli> {
 }
 
 /// An app not started from a shell does not get the shell's PATH, so the usual install dirs are checked too.
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
     path.into_iter()

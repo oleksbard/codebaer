@@ -412,8 +412,8 @@ fn try_spawn(req: u32, kind: SpawnKind, cwd: &str, cols: u16, rows: u16, hub: &S
                 None => (path.clone(), shells::login_args(path), Vec::new(), Tier::Process, basename(path).to_string()),
             }
         }
-        // through the login shell, not directly: a Finder-launched app's PATH does not contain
-        // ~/.local/bin, which is where claude lives
+        // through the login shell, not directly, so the command gets the user's profile PATH; one that only
+        // ~/.zshrc finds comes here as a full path from the menu's install folder lookup
         SpawnKind::Command { argv0 } => {
             let mut line = format!("exec {}", quote(argv0));
             let mut env = Vec::new();
