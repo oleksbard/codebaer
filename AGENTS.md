@@ -236,5 +236,6 @@ Motion ships with the feature, not in a later pass, and most of it comes from th
 
 - Never run git commands that write (commit, push, branch, stash, reset and so on). The owner does all git operations. Read-only git commands are fine.
 - Superpowers plans and other working notes go under `~/.claude/`, not in the repo. `docs/` holds only docs the owner asked for.
+- `README.md` describes the features a user needs to know, not every small behaviour. Do not add a line to it for each change; the specs in `docs/` hold the details.
 - Ask before adding a dependency or changing `tauri.conf.json` or the capabilities file.
 - Lint enforces the import direction between folders (`.oxlintrc.json` overrides).
