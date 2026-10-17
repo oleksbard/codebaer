@@ -279,9 +279,12 @@ pub fn commit_message_impl(root: &Path, provider: AiProvider) -> Result<String, 
 #[tauri::command]
 pub async fn ai_commit_message(app: AppHandle, state: State<'_, AppState>) -> Result<String, AppError> {
     let root = state.root()?;
-    tauri::async_runtime::spawn_blocking(move || commit_message_impl(&root, settings::load(&app).headless_ai_provider))
+    let provider = settings::load(&app).headless_ai_provider;
+    let message = tauri::async_runtime::spawn_blocking(move || commit_message_impl(&root, provider))
         .await
-        .map_err(|e| AppError::Ai(e.to_string()))?
+        .map_err(|e| AppError::Ai(e.to_string()))??;
+    crate::telemetry::count(&app, crate::telemetry::Counter::AiCommitMessage);
+    Ok(message)
 }
 
 /// What a stash of `kind` would hold, as a diff cut at `MAX_DIFF`, with the untracked files named. Their contents

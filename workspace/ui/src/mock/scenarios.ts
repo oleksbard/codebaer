@@ -24,6 +24,9 @@ export type Scenario = {
   /** null for a build that does not update itself, as every build but main's macOS packages; else what a check
    *  finds, with null for nothing newer. */
   updates: { found: Update | null } | null;
+  /** `none` for a build that never sends usage data, as every build but main's packages; `ask` also has the
+   *  launch ask whether to share. */
+  usageData: 'none' | 'available' | 'ask';
 };
 
 const ROOT = '/Users/dev/projects/acme-shop';
@@ -249,6 +252,7 @@ function review(): Scenario {
     ],
     orphans: NO_ORPHANS,
     updates: null,
+    usageData: 'none',
   };
 }
 
@@ -372,6 +376,7 @@ function video(): Scenario {
     ],
     orphans: NO_ORPHANS,
     updates: null,
+    usageData: 'none',
   };
 }
 
@@ -524,6 +529,9 @@ export const SCENARIOS: Record<string, () => Scenario> = {
       },
     };
   },
+
+  // the launch that asks whether to share usage data
+  'usage-data': () => ({ ...review(), usageData: 'ask' }),
 
   // a release is out: Check for Updates… in the palette finds it
   update: () => ({

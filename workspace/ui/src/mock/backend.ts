@@ -138,6 +138,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
   const holds = new Map<string, { gate: Promise<void>; open(): void }>();
   let unsaved = false;
   let exited = false;
+  let usageAsked = false;
 
   let pending = 0;
   let quiet: ReturnType<typeof setTimeout> | undefined;
@@ -257,6 +258,11 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       return sc.updates?.found ?? null;
     },
     update_install: () => { exited = true; },
+    telemetry_available: (): boolean => sc.usageData !== 'none',
+    telemetry_prompt: (): boolean =>
+      sc.usageData === 'ask' && !usageAsked && settings['general.usage-data'] === 'off',
+    telemetry_answered: () => { usageAsked = true; },
+    telemetry_count: () => {},
     log_error: ({ message }: { message: string }) => console.error(`[backend] ${message}`),
     log_info: ({ message }: { message: string }) => console.info(`[backend] ${message}`),
     recent_repos: (): Recent[] => recents(),

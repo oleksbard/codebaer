@@ -7,6 +7,7 @@ import {
 } from '#editor/editor';
 import { flashLanding, ghostChunk } from '#editor/ghost';
 import { errKind, errText, git, type Eol } from '#ipc/git';
+import { count } from '#ipc/telemetry';
 import { confirmDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
 
@@ -35,6 +36,7 @@ export async function stageChunk(v: EditorView, f: HunkFile, live: () => boolean
     const r = await gitAction(() => git.stageContent(f.path, text, f.eol, f.originalOid));
     f.originalOid = r.oid;
     f.originalExists = r.oid !== null;
+    count('hunk_accepted');
     return true;
   } catch (e) {
     const idx = await git.readBlob('index', f.path).catch(() => null);
@@ -72,7 +74,10 @@ export async function reject(): Promise<void> {
       if (!(await confirmDialog(`Restore ${o.path}?${unsavedNote(o.path)}`)) || S.open !== o) return;
       await reload();
     }
-    try { await gitAction(() => git.revertPath(o.path)); } catch (e) { toast(errText(e), 'err'); }
+    try {
+      await gitAction(() => git.revertPath(o.path));
+      count('file_rejected');
+    } catch (e) { toast(errText(e), 'err'); }
     await refresh();
     return;
   }
@@ -83,6 +88,7 @@ export async function reject(): Promise<void> {
     if (o.dirty) await reload();
     try {
       await gitAction(() => git.revertPath(o.path));
+      count('file_rejected');
       o.baseline = null;
       o.dirty = false;
     } catch (e) { toast(errText(e), 'err'); }
@@ -92,7 +98,7 @@ export async function reject(): Promise<void> {
   if (chunkIndexAtCursor(view.state) < 0) { toast('Put the cursor in a hunk first', 'info'); return; }
   ghostChunk(view, 'reject');
   rejectChunk(view);
-  await flush();
+  if (await flush()) count('hunk_rejected');
   await refresh();
 }
 
@@ -122,6 +128,7 @@ export async function acceptFile(path: string): Promise<void> {
   // taken before the stage, since the refresh guarded() starts may or may not have landed when it returns
   const rows = S.status ? buildQueue(S.status).unstaged : [];
   const staged = await guarded(async () => { await git.stagePath(path); return true; });
+  if (staged) count('file_accepted');
   // on to the first file left, as accepting its last hunk does; a conflict marked resolved and a file opened from
   // the Files tab stay open
   if (!staged || !o || S.open !== o || o.view !== 'unstaged' || o.conflicted) return;
@@ -141,7 +148,7 @@ export async function rejectFile(path: string): Promise<void> {
   const note = unsavedNote(path);
   if (!(await confirmDialog(`Discard unstaged changes in ${path}?\nAccepted hunks stay staged.${note}`))) return;
   if (note && S.open?.path === path) await reload();
-  await guarded(() => git.revertPath(path));
+  await guarded(async () => { await git.revertPath(path); count('file_rejected'); });
 }
 
 export function nextHunk(dir: 1 | -1): void {

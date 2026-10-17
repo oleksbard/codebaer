@@ -598,6 +598,7 @@ pub fn open_repo(state: State<AppState>, app: tauri::AppHandle, path: String) ->
     // every way in (dialog, launch argument, second instance, File menu) lands here
     crate::recents::push(&app, &opened.root);
     crate::refresh_recent_menu(&app);
+    crate::telemetry::count(&app, crate::telemetry::Counter::RepoOpened);
     Ok(opened)
 }
 
@@ -1690,10 +1691,12 @@ pub fn list_dir_impl(root: &Path, rel: &str) -> Result<Vec<String>, AppError> {
 }
 
 #[tauri::command(async)]
-pub fn commit(state: State<AppState>, message: String) -> Result<(), AppError> {
+pub fn commit(state: State<AppState>, app: tauri::AppHandle, message: String) -> Result<(), AppError> {
     let root = state.root()?;
     let _g = state.write_lock.lock().unwrap_or_else(|e| e.into_inner());
-    commit_impl(&root, &message)
+    commit_impl(&root, &message)?;
+    crate::telemetry::count(&app, crate::telemetry::Counter::Commit);
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -1867,9 +1870,11 @@ pub fn cancel_impl(state: &AppState) {
 }
 
 #[tauri::command(async)]
-pub fn push(state: State<AppState>) -> Result<(), AppError> {
+pub fn push(state: State<AppState>, app: tauri::AppHandle) -> Result<(), AppError> {
     let args = push_args(&state.root()?)?;
-    run_net(&state, &args.iter().map(String::as_str).collect::<Vec<_>>())
+    run_net(&state, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    crate::telemetry::count(&app, crate::telemetry::Counter::Push);
+    Ok(())
 }
 
 #[tauri::command(async)]

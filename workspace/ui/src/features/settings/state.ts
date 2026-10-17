@@ -12,10 +12,12 @@ declare module '#kernel/store' {
     hiddenScripts: HiddenScripts;
     /** The providers whose CLI is installed, checked on each opening of Settings; null before the first answer. */
     aiInstalled: AiProvider[] | null;
+    /** Whether this build can send usage data at all, once the backend has said. */
+    usageDataAvailable: boolean;
   }
 }
 
 export const settingsState = () => ({
   settings: { ...DEFAULTS }, settingsOpen: false, settingsSection: 'general', commands: [], hiddenScripts: {},
-  aiInstalled: null,
+  aiInstalled: null, usageDataAvailable: false,
 });

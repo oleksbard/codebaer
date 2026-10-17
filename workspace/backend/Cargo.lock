@@ -562,6 +562,8 @@ dependencies = [
  "log",
  "notify",
  "portable-pty",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -571,6 +573,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]

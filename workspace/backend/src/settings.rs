@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -32,6 +32,15 @@ pub enum AutoFetch {
 pub enum CheckUpdates {
     #[default]
     On,
+    Off,
+}
+
+/// Anonymous usage data for PostHog; see `telemetry.rs`. Off until the user turns it on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UsageData {
+    On,
+    #[default]
     Off,
 }
 
@@ -98,6 +107,8 @@ pub struct Settings {
     pub auto_fetch: AutoFetch,
     #[serde(rename = "general.check-updates")]
     pub check_updates: CheckUpdates,
+    #[serde(rename = "general.usage-data")]
+    pub usage_data: UsageData,
     #[serde(rename = "limits.claude")]
     pub limits_claude: ShowLimits,
     #[serde(rename = "limits.codex")]
@@ -183,6 +194,7 @@ fn from_file(map: &Map<String, Value>) -> Settings {
         headless_ai_provider: choice(map, "general.headless-ai-provider"),
         auto_fetch: choice(map, "general.auto-fetch"),
         check_updates: choice(map, "general.check-updates"),
+        usage_data: choice(map, "general.usage-data"),
         limits_claude: choice(map, "limits.claude"),
         limits_codex: choice(map, "limits.codex"),
         theme: choice(map, "appearance.theme"),
@@ -191,11 +203,11 @@ fn from_file(map: &Map<String, Value>) -> Settings {
     }
 }
 
-fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, AppError> {
+pub(crate) fn config_file<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<PathBuf, AppError> {
     app.path().app_config_dir().map(|d| d.join(name)).map_err(|e| AppError::Io(e.to_string()))
 }
 
-fn store(app: &AppHandle) -> Result<PathBuf, AppError> {
+fn store<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, AppError> {
     config_file(app, "settings-codebaer.json")
 }
 
@@ -206,7 +218,7 @@ fn icons_store(app: &AppHandle) -> Result<PathBuf, AppError> {
 }
 
 /// A missing or blank file is an empty one.
-fn read_map(path: &Path) -> Result<Map<String, Value>, String> {
+pub(crate) fn read_map(path: &Path) -> Result<Map<String, Value>, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
@@ -285,7 +297,7 @@ fn write_hidden_scripts_at(path: &Path, hidden: &HiddenScripts) -> Result<(), Ap
 
 /// Every key but `known` is kept, whether this build knows it or not. A file that is there but cannot
 /// be parsed is left alone: replacing it would drop every option in it.
-fn write_keys(path: &Path, known: Map<String, Value>) -> Result<(), AppError> {
+pub(crate) fn write_keys(path: &Path, known: Map<String, Value>) -> Result<(), AppError> {
     let path = target(path);
     let mut map = read_map(&path)
         .map_err(|e| AppError::Io(format!("{} cannot be read: {e}. Fix or delete it, then try again.", path.display())))?;
@@ -307,7 +319,7 @@ fn write_keys(path: &Path, known: Map<String, Value>) -> Result<(), AppError> {
 }
 
 /// Read on every call, so the AI gate follows a hand edit to the file at once.
-pub fn load(app: &AppHandle) -> Settings {
+pub fn load<R: Runtime>(app: &AppHandle<R>) -> Settings {
     store(app).map(|f| read_at(&f)).unwrap_or_default()
 }
 
@@ -319,7 +331,10 @@ pub fn settings_get(app: AppHandle) -> Settings {
 #[tauri::command(async)]
 pub fn settings_set(app: AppHandle, settings: Settings) -> Result<(), AppError> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    write_at(&store(&app)?, &settings)
+    let before = load(&app).usage_data;
+    write_at(&store(&app)?, &settings)?;
+    crate::telemetry::setting_changed(&app, before, settings.usage_data);
+    Ok(())
 }
 
 /// Read on every call, like `load`, so a run checks what the file says now.
@@ -378,6 +393,7 @@ mod tests {
         headless_ai_provider: AiProvider::Claude,
         auto_fetch: AutoFetch::On,
         check_updates: CheckUpdates::On,
+        usage_data: UsageData::Off,
         limits_claude: ShowLimits::On,
         limits_codex: ShowLimits::On,
         theme: Theme::Codebaer,
@@ -440,6 +456,17 @@ mod tests {
         assert_eq!(read_at(&f), Settings { check_updates: CheckUpdates::Off, ..Settings::default() });
         let (_d, f) = file(r#"{"general.check-updates": false}"#);
         assert_eq!(read_at(&f).check_updates, CheckUpdates::On);
+    }
+
+    #[test]
+    fn usage_data_is_off_unless_the_file_says_on() {
+        assert_eq!(Settings::default().usage_data, UsageData::Off);
+        let (_d, f) = file(r#"{"general.usage-data": "on"}"#);
+        assert_eq!(read_at(&f), Settings { usage_data: UsageData::On, ..Settings::default() });
+        for v in [r#""ON""#, "true", "1", "null"] {
+            let (_d, f) = file(&format!(r#"{{"general.usage-data": {v}}}"#));
+            assert_eq!(read_at(&f).usage_data, UsageData::Off, "value {v}");
+        }
     }
 
     #[test]
@@ -512,7 +539,7 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "general.check-updates": "on",
-            "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
+            "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
@@ -538,7 +565,8 @@ mod tests {
         let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
         let want = serde_json::json!({
             "general.future": [1, 2], "general.headless-ai-provider": "claude", "general.auto-fetch": "on",
-            "general.check-updates": "on", "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer",
+            "general.check-updates": "on", "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on",
+            "appearance.theme": "codebaer",
             "appearance.diff-layout": "unified", "appearance.glow": "animated",
         });
         assert_eq!(on_disk, want);
@@ -741,7 +769,7 @@ mod tests {
         let with = |ai: &str, theme: &str| {
             json!({
                 "general.headless-ai-provider": ai, "general.auto-fetch": "on", "general.check-updates": "on",
-                "limits.claude": "on", "limits.codex": "on", "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
+                "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on", "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
             })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());

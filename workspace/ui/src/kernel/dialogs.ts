@@ -64,17 +64,36 @@ export function removeToast(id: number): void {
   timers.delete(id);
 }
 
+/** A new dialog closes the open one as a Cancel, unless that one tells a displacement apart. */
+function displace(): void {
+  const c = S.confirm;
+  if (c?.displaced) c.displaced();
+  else c?.resolve(false);
+}
+
 export function confirmDialog(message: string): Promise<boolean> {
-  S.confirm?.resolve(false);
+  displace();
   return new Promise((resolve) => {
     S.confirm = { id: nextId++, message, resolve: (a) => resolve(a === true) };
     notify();
   });
 }
 
+/** Like `confirmDialog`, with its own answers, and null when another dialog took its place before the user
+ *  answered. */
+export function askDialog(message: string, labels: { ok: string; cancel: string }): Promise<boolean | null> {
+  displace();
+  return new Promise((resolve) => {
+    S.confirm = {
+      id: nextId++, message, ...labels, resolve: (a) => resolve(a === true), displaced: () => resolve(null),
+    };
+    notify();
+  });
+}
+
 /** OK, `alt` or Cancel, as 'ok', 'alt' or null. */
 export function choiceDialog(message: string, ok: string, alt: string): Promise<'ok' | 'alt' | null> {
-  S.confirm?.resolve(false);
+  displace();
   return new Promise((resolve) => {
     S.confirm = {
       id: nextId++, message, ok, alt, resolve: (a) => resolve(a === true ? 'ok' : a === 'alt' ? 'alt' : null),
@@ -85,7 +104,7 @@ export function choiceDialog(message: string, ok: string, alt: string): Promise<
 
 /** Git failures are long and worth reading; a dialog blocks until it is dismissed, a toast does not. */
 export function errorDialog(message: string): Promise<void> {
-  S.confirm?.resolve(false);
+  displace();
   return new Promise((resolve) => {
     S.confirm = { id: nextId++, message, error: true, resolve: () => resolve() };
     notify();

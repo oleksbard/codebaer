@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yml`) runs all of these on macOS except `ui` and `shot
 - `backend.ts`: one handler per command in `generate_handler![]`, plus the folder picker. `backend.test.ts` fails when the two lists differ. It fires `repo-changed` after each change like the watcher, and exposes `window.__mock`: `agentEdit`, `fail`, `hold`, `release`, `state`, `idle`, `emit`, `menu`, `quit`, `exited`, `calls`, `terminalText`, `terminalWrite`, `terminalAgent`.
 - `repo.ts`: an in-memory repo, HEAD, index and working-tree text per file. It follows `git.rs` and `status.rs`, including the `Stale` and `StaleIndex` refusals.
 - `pty.ts`: a pretend terminal host speaking the same `ServerMsg` and output frames, with a line shell (`echo`, `ls`, `git status`, `sleep`, `exit`). An agent session echoes a bracketed paste, which is how a comment arrives, once as a block and gives the Enter that submits it no answer; `__mock.terminalWrite` prints its reply. A claude session carries the agent state that its hooks would report, `__mock.terminalAgent` sets it, and Esc, Ctrl+C and an answer to an approval change it as `typed()` in `agent.rs` does.
-- `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` (no git on the machine), `plain` (a folder with no repository, until Git: Init Repository), `big` (a monorepo of about 48,000 files and 500 ignored folders, for the Files and Search tabs), `update` (a newer release that Check for Updates… finds) or `update-blocked` (the same release, found by a copy that runs from a read-only disk image). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome, `&motion=off` turns every animation off (see Motion).
+- `scenarios.ts`: `?scenario=` is `review` (default), `video` (the promo film's one repo: two changes, claude, codex and opencode sessions), `clean`, `conflict`, `terminals`, `claude-only`, `no-repo`, `no-git` (no git on the machine), `plain` (a folder with no repository, until Git: Init Repository), `big` (a monorepo of about 48,000 files and 500 ignored folders, for the Files and Search tabs), `usage-data` (the launch that asks whether to share usage data), `update` (a newer release that Check for Updates… finds) or `update-blocked` (the same release, found by a copy that runs from a read-only disk image). `&theme=<id>` picks a theme, `&slow=<ms>` sets how long push, pull, fetch and the AI answers take (default 800), `&latency=<ms>` delays every call, `&platform=linux` runs the Linux keymap and chrome, `&motion=off` turns every animation off (see Motion).
 - It cannot catch real git or pty behaviour, argument names that Rust would reject (the mock gets the raw JS object), the native menu, dialogs and window chrome, the CSP, or WKWebView-only quirks. The Rust tests and `scripts/smoke.sh` still own those.
 
 ### Rendering pages as an agent
@@ -70,7 +70,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
                          keepVisible facet; no app state
   ipc/                   every invoke(), Channel and event wrapper: git.ts (git commands, AppError, errText),
                          terminal.ts (term_* and task_run commands), settings.ts (settings-file wire types, the
-                         backend's defaults), log.ts, events.ts, dialog.ts
+                         backend's defaults), telemetry.ts (the usage data question and counts), log.ts, events.ts,
+                         dialog.ts
   mock/                  browser mode: fake backend, repo, terminal host and scenarios (see Browser mode); may
                          import only ipc/ and ui/, except boot.ts loading the app through #main
   kernel/                app infrastructure, no feature code:
@@ -106,7 +107,8 @@ workspace/ui/src/        React 19 + TypeScript frontend (Vite)
     repos/               the repo switcher in the header, recent repos and their avatars, with the AI's icon for
                          each (icons.ts), the open repo's preferences dialog, the screen shown with no repo open
     settings/            owns the settings file: the options catalog, loading and saving (settings.ts), the saved
-                         commands (commands.ts), the dialog, the theme picker and the Commands pane
+                         commands (commands.ts), the usage data question (usage.ts), the dialog, the theme picker and
+                         the Commands pane
     command-icons/       an icon per command: the Lucide and Simple Icons sets loaded on first use, the AI's picks
                          and their cache, the asker the repo icons share (icons.ts), the icon and the picker
     ai-tools/            the Explore AI Tools dialog: a card per agent CLI (catalog.ts), with its install command
@@ -140,6 +142,8 @@ workspace/backend/src/   Rust backend
   browser.rs             opens an https page in the default browser
   updates.rs             the self-update through tauri-plugin-updater: check, download, install and restart
   limits.rs              plan usage limits: `claude -p /usage`, and `account/rateLimits/read` on `codex app-server`
+  telemetry.rs           opt-in anonymous usage data for PostHog: a fixed set of events and counts, the launch
+                         count for the question, the hourly and quit summaries
   recents.rs, logs.rs    recent repos, file logging
   pty/                   terminals: daemon.rs (detached host that owns the PTYs, on a Unix socket),
                          client.rs (term_* commands, forwards frames over a Tauri Channel),
@@ -220,6 +224,12 @@ Motion ships with the feature, not in a later pass, and most of it comes from th
 - Never create tags or releases. The owner releases with `pnpm release` (`scripts/release.mjs`): it writes the notes for main's head on origin with Claude Opus through the local `claude` CLI, replaces any draft with a draft of that commit carrying them, and starts `.github/workflows/release.yml`. That workflow waits for main's CI on the commit, attaches the app CI built and smoke-tested there (kept for 30 days), and publishes the draft, which creates the tag. Commits pushed after that are not in the release. `install.sh` is what the README's install one-liner runs.
 - Releases are macOS on Apple Silicon, plus the Linux x86_64 beta's `.deb` and `.rpm` when `linux.yml` passed on the same commit; without them `release.yml` publishes the macOS app alone and says so. `install.sh` installs on macOS, and on Linux downloads and checks the package and prints the `apt`, `dnf` or `zypper` line. The approach for Linux and Windows is in `docs/2026-09-25-linux-windows-support-design.md`. Platform code goes in `workspace/backend/src/sys/`, and the frontend reads the platform from `kernel/platform.ts`; the Linux keymap is `app/keymap/linux.ts`.
 - Every file the updater installs is signed. On main, the Package step of `ci.yml` and the `package` job of `linux.yml` sign the macOS tarball and the Linux packages with `tauri signer sign`, using the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets, and `scripts/updates.mjs verify` checks each signature against `plugins.updater.pubkey` in `tauri.conf.json`. `release.yml` then writes `latest.json` with `scripts/updates.mjs manifest`: the version, the notes, the terminal protocol (`PROTO`), and a URL and signature per platform. The updater reads it from the latest release. Changing the key pair strands every installed copy on its version until it is installed again by hand.
+- Only a build compiled with `CODEBAER_POSTHOG_KEY` set can send usage data (`telemetry.rs`). `ci.yml` and
+  `linux.yml` set it on main from the `POSTHOG_PROJECT_KEY` secret. It is PostHog's write-only `phc_` key, which is
+  safe in a public binary. A build never sends while `CI`, `DO_NOT_TRACK=1` or `CODEBAER_TELEMETRY=0` is set, so the
+  smoke runs send nothing. The PostHog project must discard client IP data (Settings, Project, IP data capture),
+  since the README and the launch question call the data anonymous. A new count is a variant of `telemetry::Counter` and a line in the README's Usage data
+  section; an event never carries a path, a name or text from the user.
 - Only a build compiled with `CODEBAER_UPDATES` set updates itself. `ci.yml` sets it for main's macOS build only, so a local, pull request or Linux build never checks.
 
 ## Boundaries

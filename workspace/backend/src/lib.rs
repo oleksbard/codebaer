@@ -12,6 +12,7 @@ pub mod settings;
 pub mod status;
 pub mod sys;
 pub mod tasks;
+pub mod telemetry;
 pub mod updates;
 pub mod watcher;
 
@@ -247,6 +248,7 @@ pub fn run_app() {
             if let Some(m) = recent_menu(app.handle()) {
                 fill_recent(app.handle(), &m)?;
             }
+            telemetry::launched(app.handle());
             Ok(())
         })
         .enable_macos_default_menu(false);
@@ -287,7 +289,7 @@ pub fn run_app() {
                 let _ = app.emit("menu-open-recent", path.to_string());
             }
         })
-        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, favorite_repo, git::open_repo, git::close_repo, git::git_init, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::read_image, git::image_stamp, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_list, git::stash_pop, git::outgoing, git::undo_commit, git::list_files, git::list_dir, search::search, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_stash_description, ai::ai_command_icons, ai::ai_repo_icons, ai::installed_ai_providers, limits::usage_limits, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan, updates::update_enabled, updates::update_check, updates::update_install])
+        .invoke_handler(tauri::generate_handler![app_version, git_version, initial_repo, set_unsaved, quit, log_error, log_info, recent_repos, favorite_repo, git::open_repo, git::close_repo, git::git_init, git::status, git::diff_stat, git::read_file, git::write_file, git::read_blob, git::read_image, git::image_stamp, git::blame, git::stage_content, git::stage_path, git::unstage_path, git::revert_path, git::stage_all, git::unstage_all, git::discard_preview, git::discard_all, git::commit, git::branches, git::switch_branch, git::create_branch, git::stash_push, git::stash_list, git::stash_pop, git::outgoing, git::undo_commit, git::list_files, git::list_dir, search::search, git::push, git::pull, git::fetch, git::fetch_background, git::cancel, ai::ai_commit_message, ai::ai_stash_description, ai::ai_command_icons, ai::ai_repo_icons, ai::installed_ai_providers, limits::usage_limits, browser::open_url, settings::settings_get, settings::settings_set, settings::commands_get, settings::commands_set, settings::hidden_scripts_get, settings::hidden_scripts_set, settings::command_icons_get, settings::command_icons_set, tasks::package_scripts, tasks::task_run, pty::client::term_menu, pty::client::term_subscribe, pty::client::term_spawn, pty::client::term_input, pty::client::term_input_bytes, pty::client::term_resize, pty::client::term_kill, pty::client::term_close, pty::client::term_promote, pty::client::term_check_cwd, pty::client::term_relist, pty::orphans::term_orphans, pty::orphans::term_restore, pty::orphans::term_kill_orphan, updates::update_enabled, updates::update_check, updates::update_install, telemetry::telemetry_available, telemetry::telemetry_prompt, telemetry::telemetry_answered, telemetry::telemetry_count])
         .build(tauri::generate_context!())
         .expect("error while running CodeBär")
         .run(|app, event| {
@@ -296,6 +298,9 @@ pub fn run_app() {
             // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart. A restart into
             // an update whose host protocol matches skips it too, so the new app reattaches to the sessions.
             let exiting = matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit);
+            if exiting {
+                telemetry::exiting(app);
+            }
             if exiting && !updates::keeps_terminals() {
                 pty::client::shutdown(app);
             }

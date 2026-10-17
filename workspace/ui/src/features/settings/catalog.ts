@@ -51,6 +51,16 @@ export const SECTIONS: Section[] = [
         choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
         hidden: () => !S.canUpdate,
       },
+      {
+        key: 'general.usage-data',
+        label: 'Share usage data',
+        description: 'Sends anonymous counts to the developer, to show which features people use: '
+          + 'when the app opens, and how many repositories, hunks, files, commits, AI commit messages, pushes and '
+          + 'terminals you had in each hour, with the app version and your OS. '
+          + 'It never sends code, file names, paths, repository names or commit messages.',
+        choices: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }],
+        hidden: () => !S.usageDataAvailable,
+      },
     ],
   },
   {

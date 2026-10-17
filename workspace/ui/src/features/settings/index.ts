@@ -17,3 +17,4 @@ export const settings = defineFeature({
 
 export { commandTitle, HIDDEN_TASK_MS, inMenu, scriptHidden } from './commands';
 export { loadCommands, loadSettings, openSettings } from './settings';
+export { startUsageData } from './usage';

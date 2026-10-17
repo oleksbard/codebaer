@@ -10,7 +10,8 @@ export type LimitProvider = (typeof LIMIT_PROVIDERS)[number];
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
 export type Settings = {
   'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off';
-  'general.check-updates': 'on' | 'off'; 'limits.claude': 'on' | 'off'; 'limits.codex': 'on' | 'off';
+  'general.check-updates': 'on' | 'off'; 'general.usage-data': 'on' | 'off';
+  'limits.claude': 'on' | 'off'; 'limits.codex': 'on' | 'off';
   'appearance.theme': Theme;
   'appearance.diff-layout': 'unified' | 'side-by-side'; 'appearance.glow': GlowMode;
 };
@@ -29,6 +30,6 @@ export type HiddenScripts = Record<string, string[]>;
 
 export const DEFAULTS: Settings = {
   'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'general.check-updates': 'on',
-  'limits.claude': 'on', 'limits.codex': 'on',
+  'general.usage-data': 'off', 'limits.claude': 'on', 'limits.codex': 'on',
   'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified', 'appearance.glow': 'animated',
 };

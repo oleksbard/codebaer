@@ -282,7 +282,13 @@ pub fn term_spawn<R: Runtime>(
         return Err(AppError::InvalidPath(format!("{kind:?}")));
     }
     let cwd = git.cwd()?;
-    request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)
+    let counter = match &kind {
+        SpawnKind::Command { argv0 } => crate::telemetry::Counter::terminal(argv0),
+        _ => crate::telemetry::Counter::TerminalShell,
+    };
+    let id = request_spawn(&app, kind, cwd.to_string_lossy().into_owned(), cols, rows)?;
+    crate::telemetry::count(app.app_handle(), counter);
+    Ok(id)
 }
 
 /// Unchecked: `term_spawn` holds the webview to the menu, a restore names its own program, and

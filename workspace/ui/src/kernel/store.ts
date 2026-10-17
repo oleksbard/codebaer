@@ -11,7 +11,10 @@ export type PaletteRequest = {
  *  dialog, as it keys the palette: a request that arrives while the last dialog is still in its exit animation
  *  mounts a dialog of its own, which takes focus, instead of reviving the closing one, which cannot. */
 export type ConfirmRequest = {
-  id: number; message: string; error?: boolean; ok?: string; alt?: string; resolve(answer: boolean | 'alt'): void;
+  id: number; message: string; error?: boolean; ok?: string; cancel?: string; alt?: string;
+  resolve(answer: boolean | 'alt'): void;
+  /** Called instead of `resolve` when another dialog replaces this one. */
+  displaced?(): void;
 };
 export type PromptRequest = { id: number; placeholder: string; wide: boolean; resolve(value: string | null): void };
 

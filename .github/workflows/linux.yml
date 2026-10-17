@@ -80,6 +80,9 @@ jobs:
         with: { workspaces: workspace/backend, key: ubuntu-22.04 }
       - run: pnpm install --frozen-lockfile
       - run: pnpm tauri build --ci --bundles deb,rpm
+        env:
+          # as in ci.yml: only main's packages can send usage data
+          CODEBAER_POSTHOG_KEY: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.POSTHOG_PROJECT_KEY || '' }}
       - run: |
           test "$(uname -m)" = x86_64
           bundle=workspace/backend/target/release/bundle

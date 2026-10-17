@@ -7,10 +7,13 @@ import { CLOSE, StrokeIcon } from './Icon';
 import { IconButton } from './IconButton';
 import { DUR, EASE } from './motion';
 
-export function AlertDialog({ title, body, confirmLabel = 'OK', altLabel, error = false, onResult, onAlt }: {
+export function AlertDialog({
+  title, body, confirmLabel = 'OK', cancelLabel = 'Cancel', altLabel, error = false, onResult, onAlt,
+}: {
   title: string;
   body?: string | undefined;
   confirmLabel?: string | undefined;
+  cancelLabel?: string | undefined;
   /** A second answer, on the far left like macOS puts Don't Save. */
   altLabel?: string | undefined;
   error?: boolean | undefined;
@@ -33,7 +36,7 @@ export function AlertDialog({ title, body, confirmLabel = 'OK', altLabel, error 
             {body ? <RA.Description className="dialog-body">{body}</RA.Description> : null}
             <div className="dialog-actions">
               {altLabel && onAlt ? <Button className="alt" onClick={onAlt}>{altLabel}</Button> : null}
-              {!error && <RA.Cancel asChild><Button>Cancel</Button></RA.Cancel>}
+              {!error && <RA.Cancel asChild><Button>{cancelLabel}</Button></RA.Cancel>}
               <RA.Action asChild>
                 <Button variant="primary" onClick={(e) => { e.preventDefault(); onResult(true); }}>
                   {confirmLabel}

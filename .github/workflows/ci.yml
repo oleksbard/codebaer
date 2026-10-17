@@ -54,6 +54,8 @@ jobs:
         env:
           # the build that updates itself, see updates.rs
           CODEBAER_UPDATES: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && '1' || '' }}
+          # the usage data's write-only key, see telemetry.rs; the smoke run sends nothing, since CI is set
+          CODEBAER_POSTHOG_KEY: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.POSTHOG_PROJECT_KEY || '' }}
       - run: scripts/smoke.sh
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

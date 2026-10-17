@@ -8,7 +8,7 @@ import { startAutoFetch } from '#features/git-ops';
 import { startLimits } from '#features/limits';
 import { connectTerminals } from '#features/terminals';
 import { restartedIntoUpdate, startUpdates } from '#features/updates';
-import { loadSettings } from '#features/settings';
+import { loadSettings, startUsageData } from '#features/settings';
 import { FEATURES } from './features';
 
 register(FEATURES);
@@ -46,4 +46,6 @@ export async function start(): Promise<void> {
     S.starting = false;
     notify();
   }
+  // after the launch's own folder picker, which it must not cover
+  startUsageData().catch((e: unknown) => logError(e, 'usage data'));
 }

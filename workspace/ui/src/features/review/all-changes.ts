@@ -11,6 +11,7 @@ import { ghostChunk } from '#editor/ghost';
 import { setEditorDark } from '#editor/editor-theme';
 import { closePane, detachPane, isSideBySide, originalPane, setSideBySide, sideBySide } from '#editor/side-by-side';
 import { errKind, errText, git, staleText } from '#ipc/git';
+import { count } from '#ipc/telemetry';
 import { confirmDialog, toast } from '#kernel/dialogs';
 import { epoch } from '#kernel/epoch';
 import { notify, S } from '#kernel/store';
@@ -395,7 +396,10 @@ async function rejectIn(sec: Section): Promise<void> {
   if (special) {
     if (!live()) return;
     await queue(sec, async () => {
-      try { await gitAction(() => git.revertPath(f.path)); } catch (e) { toast(errText(e), 'err'); }
+      try {
+        await gitAction(() => git.revertPath(f.path));
+        count('file_rejected');
+      } catch (e) { toast(errText(e), 'err'); }
     });
     await refresh();
     return;
@@ -412,6 +416,7 @@ async function rejectIn(sec: Section): Promise<void> {
     try {
       await git.writeFile(f.path, text, f.eol, before);
       f.baseline = text;
+      count('hunk_rejected');
     } catch (e) {
       sec.rev++;
       const disk = staleText(e);
