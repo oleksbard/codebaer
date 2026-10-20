@@ -198,12 +198,16 @@ fn includes(include: &str) -> Result<Option<GlobSet>, AppError> {
     b.build().map(Some).map_err(|e| AppError::InvalidPath(e.to_string()))
 }
 
-/// Splits at the commas outside braces, so `src/{a,b}` stays one pattern.
+/// Splits at the commas outside braces, so `src/{a,b}` stays one pattern. A character after a backslash is literal.
 fn patterns(include: &str) -> Vec<&str> {
     let mut out = Vec::new();
-    let (mut depth, mut from) = (0i32, 0);
+    let (mut depth, mut from, mut escaped) = (0i32, 0, false);
     for (i, c) in include.char_indices() {
+        if std::mem::take(&mut escaped) {
+            continue;
+        }
         match c {
+            '\\' => escaped = true,
             '{' => depth += 1,
             '}' => depth -= 1,
             ',' if depth <= 0 => {
@@ -294,5 +298,17 @@ mod tests {
     fn an_empty_include_searches_everything_and_a_bad_glob_is_an_error() {
         assert!(includes(" , ").unwrap().is_none());
         assert!(includes("src/{a").is_err());
+    }
+
+    #[test]
+    fn an_escaped_folder_name_matches_itself_as_find_in_folder_writes_it() {
+        let set = includes(r"./app/\[id\]").unwrap().unwrap();
+        assert!(set.is_match("app/[id]/page.tsx"));
+        assert!(!set.is_match("app/i/page.tsx"));
+        let set = includes(r"./{a\,b}").unwrap().unwrap();
+        assert!(set.is_match("a,b/x.ts"));
+        assert!(!set.is_match("a/x.ts"));
+        let set = includes(r"./{a\}\,b}").unwrap().unwrap();
+        assert!(set.is_match("a},b/x.ts"));
     }
 }

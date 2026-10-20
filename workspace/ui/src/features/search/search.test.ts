@@ -4,7 +4,7 @@ import type { SearchFile, SearchHit, SearchMsg } from '#ipc/git';
 import { notify, S } from '#kernel/store';
 import { file, g, mountApp, status } from '#test-app';
 import { tick } from '#test-setup';
-import { openHit, resetSearch, runSearch, searchChanged, setQuery, showSearch } from './search';
+import { findInFolder, openHit, resetSearch, runSearch, searchChanged, setQuery, showSearch } from './search';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -85,6 +85,23 @@ describe('running a search', () => {
     expect(rows.map((r) => r.dataset.path)).toEqual(['src/a.ts', 'src/b.ts']);
     expect(side().querySelector('.row.hit mark')!.textContent).toBe('total');
     expect(side().textContent).toContain('Only the first 20,000 are listed');
+  });
+
+  it('Find in folder anchors the folder at the root, shows the tab and searches the query at once', async () => {
+    S.tab = 'files';
+    S.searchQuery = 'total';
+    findInFolder('src');
+    expect([S.tab, S.searchInclude]).toEqual(['search', './src']);
+    expect(calls.map((c) => [c.query, c.include])).toEqual([['total', './src']]);
+    await tick();
+    expect(document.activeElement).toBe(side().querySelector('input[aria-label="Search"]'));
+  });
+
+  it('Find in folder escapes a folder name that the folders field would read as a glob', () => {
+    findInFolder('app/[id]');
+    expect(S.searchInclude).toBe(String.raw`./app/\[id\]`);
+    findInFolder('a,b');
+    expect(S.searchInclude).toBe(String.raw`./{a\,b}`);
   });
 
   it('keeps the results on screen while a run after a change is still in flight', () => {

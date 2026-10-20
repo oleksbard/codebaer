@@ -20,7 +20,8 @@ export type Recent = { path: string; name: string; label: string; favorite: bool
  *  from a read-only disk image. */
 export type Update = { version: string; page: string | null; keeps_terminals: boolean; blocked: string | null };
 /** A wholly ignored directory arrives as one entry with a trailing slash. */
-export type Listing = { files: string[]; ignored: string[] };
+/** `empty` is the untracked folders with nothing in them, each with a trailing slash. */
+export type Listing = { files: string[]; ignored: string[]; empty: string[] };
 /** `col` and `ranges` count UTF-16 units: `col` in the whole line, `ranges` in `text`, the preview. `cut` is true
  *  when the preview starts past more than the line's indentation. */
 export type SearchHit = { line: number; col: number; text: string; ranges: [number, number][]; cut: boolean };
@@ -146,6 +147,8 @@ export const git = {
   /** In the app the system picks for it; relative to the repository, or absolute outside it. A file that would run
    *  rather than open is refused. */
   openFile: (path: string) => invoke<void>('open_file', { path }),
+  /** In Finder on macOS; on Linux the file manager opens the folder that holds it. */
+  revealPath: (path: string) => invoke<void>('reveal_path', { path }),
   blame: (path: string, line: number, contents: string, eol: Eol) =>
     invoke<BlameLine>('blame', { path, line, contents, eol }),
   writeFile: (path: string, text: string, eol: Eol, expected: string | null) =>
@@ -207,6 +210,8 @@ export const git = {
   undoCommit: (oid: string) => invoke<string>('undo_commit', { oid }),
   listFiles: () => invoke<Listing>('list_files'),
   listDir: (path: string) => invoke<string[]>('list_dir', { path }),
+  /** Makes missing folders above it too; refuses a path that is already there. */
+  createDir: (path: string) => invoke<void>('create_dir', { path }),
   /** Streams the files that hold `query` to `onMsg`, then a Done; resolves once the search ends. `include` is
    *  folders or globs, comma-separated, empty for the whole repo. Starting a search stops the one before, which
    *  sends nothing more; an empty query only stops it. */

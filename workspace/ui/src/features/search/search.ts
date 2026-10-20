@@ -96,6 +96,21 @@ export function showSearch(): void {
   if (S.searchStale) void runSearch(true);
 }
 
+/** The folders field takes globs, so a name like Next.js's `[id]` is escaped to mean itself, and one with a comma,
+ *  which the field splits at outside braces, goes in braces. */
+function literal(dir: string): string {
+  const esc = dir.replace(/[\\[\]{}*?,]/g, '\\$&');
+  return esc.includes(',') ? `{${esc}}` : esc;
+}
+
+/** `./` anchors the folder at the root, where a name alone would match a folder of that name at any depth. */
+export function findInFolder(dir: string): void {
+  S.searchInclude = `./${literal(dir)}`;
+  S.tab = 'search';
+  void runSearch();
+  queueMicrotask(focusSearch);
+}
+
 export function focusSearch(): void {
   refs.search?.focus();
   refs.search?.select();

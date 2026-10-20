@@ -195,6 +195,12 @@ pub fn open_file(path: &Path, as_text: bool) -> Result<(), AppError> {
     xdg_open(path.as_os_str(), &path.display().to_string())
 }
 
+/// Opens the folder that holds it: no file manager API selects an item everywhere that xdg-open runs.
+pub fn reveal(path: &Path) -> Result<(), AppError> {
+    let dir = path.parent().unwrap_or(path);
+    xdg_open(dir.as_os_str(), &dir.display().to_string())
+}
+
 pub fn open_url(url: &str) -> Result<(), AppError> {
     xdg_open(url.as_ref(), url)
 }

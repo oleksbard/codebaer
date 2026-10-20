@@ -18,4 +18,4 @@ export const search = defineFeature({
 });
 
 export { SearchPane } from './SearchPane';
-export { showSearch } from './search';
+export { findInFolder, showSearch } from './search';

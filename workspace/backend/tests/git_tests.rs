@@ -1,7 +1,7 @@
 use codebaer_lib::eol::Eol;
 use codebaer_lib::git::{blame_impl, discover, find, found, init_impl, head_entry, bytes_stamp_impl, read_blob_impl, read_bytes_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
-use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
+use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, create_dir_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{outgoing_impl, undo_commit_guarded, undo_commit_impl, OUTGOING};
 use codebaer_lib::git::{stash_list_impl, stash_pop_impl, stash_push_impl, StashKind};
 use codebaer_lib::git::Found;
@@ -1231,6 +1231,31 @@ fn list_files_collapses_an_ignored_directory_and_keeps_it_out_of_files() {
     assert_eq!(listing.ignored, vec!["node_modules/".to_string(), "secret.env".to_string()]);
     assert!(!listing.files.iter().any(|f| f.starts_with("node_modules")), "{:?}", listing.files);
     assert!(listing.files.contains(&".gitignore".to_string()));
+}
+
+#[test]
+fn create_dir_makes_missing_parents_lists_the_folder_while_empty_and_refuses_what_is_there() {
+    let d = repo();
+    let r = d.path();
+    create_dir_impl(r, "new/deep").unwrap();
+    assert!(r.join("new/deep").is_dir());
+    assert_eq!(list_files_impl(r).unwrap().empty, vec!["new/".to_string(), "new/deep/".to_string()]);
+    fs::write(r.join(".gitignore"), "cache/\n").unwrap();
+    fs::create_dir_all(r.join("new/deep/cache/sub")).unwrap();
+    fs::create_dir_all(r.join("new/inner/.git/objects")).unwrap();
+    // a folder that holds only what git ignores is listed as ignored, and a nested repository is not walked
+    let listing = list_files_impl(r).unwrap();
+    assert_eq!(listing.empty, ["new/", "new/inner/"]);
+    assert!(listing.ignored.contains(&"new/deep/".to_string()), "{listing:?}");
+    fs::write(r.join("new/deep/x.txt"), "x\n").unwrap();
+    assert!(list_files_impl(r).unwrap().empty.iter().all(|d| d.starts_with("new/inner")), "{:?}", list_files_impl(r));
+
+    for there in ["new", "a.txt"] {
+        assert!(matches!(create_dir_impl(r, there), Err(AppError::Io(ref m)) if m.contains("already exists")), "{there}");
+    }
+    for bad in ["../out", ".git/x", "/tmp/x", ""] {
+        assert!(matches!(create_dir_impl(r, bad), Err(AppError::InvalidPath(_))), "{bad}");
+    }
 }
 
 #[test]

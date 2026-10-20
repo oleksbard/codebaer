@@ -167,6 +167,15 @@ pub fn open_file(path: &Path, as_text: bool) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Selects it in a Finder window.
+pub fn reveal(path: &Path) -> Result<(), AppError> {
+    let out = Command::new("/usr/bin/open").arg("-R").arg(path).output()?;
+    if !out.status.success() {
+        return Err(AppError::Io(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    Ok(())
+}
+
 pub fn open_url(url: &str) -> Result<(), AppError> {
     // -u: a relative path spelled like a URL would otherwise open as a file in the working directory
     let out = Command::new("/usr/bin/open").args(["-u", url]).output()?;

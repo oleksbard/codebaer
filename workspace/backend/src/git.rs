@@ -1635,11 +1635,13 @@ pub fn stash_pop_impl(root: &Path, index: u32, oid: &str) -> Result<bool, AppErr
 }
 
 /// `ignored` carries a trailing slash on a wholly ignored directory, which is how the tree tells
-/// a collapsed directory from a single ignored file.
+/// a collapsed directory from a single ignored file. `empty` holds the untracked folders with nothing in them, each
+/// with a trailing slash, since git lists files only and a folder made in the tree would not show.
 #[derive(Debug, serde::Serialize)]
 pub struct Listing {
     pub files: Vec<String>,
     pub ignored: Vec<String>,
+    pub empty: Vec<String>,
 }
 
 fn nul_separated(out: &[u8]) -> Vec<String> {
@@ -1650,7 +1652,57 @@ pub fn list_files_impl(root: &Path) -> Result<Listing, AppError> {
     let listed = run(root, &["ls-files", "-co", "--exclude-standard", "--deduplicate", "-z"], None, Some(LOCAL))?;
     // --directory keeps this bounded: without it an ignored node_modules lists every file under it
     let ignored = run(root, &["ls-files", "-oi", "--exclude-standard", "--directory", "-z"], None, Some(LOCAL))?;
-    Ok(Listing { files: nul_separated(&listed.stdout), ignored: nul_separated(&ignored.stdout) })
+    // also collapsed: a folder here that holds a listed file is not empty
+    let dirs = run(root, &["ls-files", "-o", "--exclude-standard", "--directory", "-z"], None, Some(LOCAL))?;
+    let files = nul_separated(&listed.stdout);
+    let ignored = nul_separated(&ignored.stdout);
+    let skip: HashSet<&str> = ignored.iter().map(String::as_str).collect();
+    let mut holding: HashSet<&str> = HashSet::new();
+    for f in &files {
+        holding.extend(f.match_indices('/').map(|(i, _)| &f[..=i]));
+    }
+    let mut empty = Vec::new();
+    for d in nul_separated(&dirs.stdout) {
+        if d.ends_with('/') && !holding.contains(d.as_str()) {
+            empty_dirs(root, d, &skip, &mut empty);
+        }
+    }
+    Ok(Listing { files, ignored, empty })
+}
+
+/// `dir` and the folders under it, which git collapsed to `dir` because none holds a file it lists. Ignored folders
+/// are left out, and so is what is inside a nested repository.
+fn empty_dirs(root: &Path, dir: String, ignored: &HashSet<&str>, out: &mut Vec<String>) {
+    let entries = std::fs::read_dir(root.join(&dir));
+    out.push(dir.clone());
+    let Ok(entries) = entries else { return };
+    let subs: Vec<_> = entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).collect();
+    if subs.iter().any(|e| e.file_name() == ".git") {
+        return;
+    }
+    for e in subs {
+        let sub = format!("{dir}{}/", e.file_name().to_string_lossy());
+        if !ignored.contains(sub.as_str()) {
+            empty_dirs(root, sub, ignored, out);
+        }
+    }
+}
+
+/// Makes the folder and any missing folder above it; refuses a path that is already there.
+pub fn create_dir_impl(root: &Path, rel: &str) -> Result<(), AppError> {
+    let exists = || AppError::Io(format!("{rel} already exists"));
+    let full = match resolve(root, rel) {
+        Err(AppError::Special) => return Err(exists()),
+        r => r?,
+    };
+    if let Some(parent) = full.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // the last one alone, so a folder that appears after the check is refused too
+    match std::fs::create_dir(&full) {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(exists()),
+        r => Ok(r?),
+    }
 }
 
 /// How one entry is listed: `None` drops it, `Some("/")` makes it an expandable directory. A
@@ -1756,6 +1808,11 @@ pub fn undo_commit(state: State<AppState>, oid: String) -> Result<String, AppErr
 #[tauri::command(async)]
 pub fn list_files(state: State<AppState>) -> Result<Listing, AppError> {
     list_files_impl(&state.root()?)
+}
+
+#[tauri::command(async)]
+pub fn create_dir(state: State<AppState>, path: String) -> Result<(), AppError> {
+    create_dir_impl(&state.root()?, &path)
 }
 
 #[tauri::command(async)]

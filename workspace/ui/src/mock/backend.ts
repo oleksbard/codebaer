@@ -83,7 +83,8 @@ const NEEDS_REPO = new Set([
   'status', 'diff_stat', 'read_file', 'write_file', 'read_blob', 'read_image', 'image_stamp', 'blame', 'stage_content',
   'stage_path', 'unstage_path', 'revert_path', 'stage_all', 'unstage_all', 'discard_preview', 'discard_all', 'commit',
   'branches', 'switch_branch', 'create_branch', 'stash_push', 'stash_list', 'stash_pop', 'outgoing', 'undo_commit',
-  'list_files', 'list_dir', 'push', 'pull', 'fetch', 'fetch_background', 'ai_commit_message', 'ai_stash_description',
+  'list_files', 'list_dir', 'create_dir', 'push', 'pull', 'fetch', 'fetch_background', 'ai_commit_message',
+  'ai_stash_description',
 ]);
 /** What `AppState::cwd` fails for: only after `close_repo`. */
 const NEEDS_FOLDER = new Set(['package_scripts', 'task_run']);
@@ -298,6 +299,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     peek_text: (): FileText => ({ text: '', eol: 'lf', exists: false }),
     peek_image: (): ArrayBuffer => new ArrayBuffer(0),
     open_file: () => {},
+    reveal_path: () => {},
     blame: ({ path, line, contents }: { path: string; line: number; contents: string }): BlameLine =>
       repo.blame(path, line, contents),
     stage_content: (a: { path: string; text: string | null; eol: Eol; expectedOid: string | null }): StageResult =>
@@ -329,6 +331,7 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     },
     list_files: (): Listing => repo.listFiles(),
     list_dir: ({ path }: { path: string }): string[] => repo.listDir(path),
+    create_dir: ({ path }: { path: string }) => mutate(() => repo.createDir(path)),
     // as search.rs: a new search stops the one before, and an empty query only does that, even with no repo open
     search: async ({ query, include, run, out }: {
       query: string; include: string; run: number; out: Channel<SearchMsg>;

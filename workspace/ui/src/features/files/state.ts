@@ -7,9 +7,11 @@ declare module '#kernel/store' {
     ignoredBase: string[];
     /** Contents of the ignored directories git collapsed, read on demand and kept across a refresh. */
     ignoredKids: Map<string, string[]>;
+    /** Untracked folders with nothing git lists in them, each with a trailing slash. */
+    emptyDirs: string[];
   }
 }
 
 export const filesState = () => ({
-  files: [], ignored: [], ignoredBase: [], ignoredKids: new Map<string, string[]>(),
+  files: [], ignored: [], ignoredBase: [], ignoredKids: new Map<string, string[]>(), emptyDirs: [],
 });

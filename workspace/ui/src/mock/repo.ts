@@ -133,7 +133,8 @@ function patterns(include: string): string[] {
   let from = 0;
   for (let i = 0; i < include.length; i++) {
     const c = include[i];
-    if (c === '{') depth++;
+    if (c === '\\') i++;
+    else if (c === '{') depth++;
     else if (c === '}') depth--;
     else if (c === ',' && depth <= 0) { out.push(include.slice(from, i)); from = i + 1; }
   }
@@ -185,6 +186,7 @@ export type Repo = ReturnType<typeof createRepo>;
 
 export function createRepo(seed: RepoSeed) {
   const files = new Map(Object.entries(seed.files).map(([p, s]) => [p, fromSeed(s)]));
+  const madeDirs = new Set<string>();
   let { branch, upstream, ahead, behind } = seed;
   const seeded = Math.floor(Date.now() / 1000);
   const branches: BranchInfo[] = seed.branches.map(({ by, age = 0, ...b }) => (
@@ -489,7 +491,16 @@ export function createRepo(seed: RepoSeed) {
 
     listFiles(): Listing {
       const listed = [...files].filter(([, e]) => e.index || e.work).map(([p]) => p).sort();
-      return { files: listed, ignored: [...seed.ignored] };
+      const empty = [...madeDirs].filter((d) => !listed.some((f) => f.startsWith(`${d}/`))).sort().map((d) => `${d}/`);
+      return { files: listed, ignored: [...seed.ignored], empty };
+    },
+
+    /** `create_dir_impl` in git.rs; the fake disk keeps a folder only while git lists nothing in it. */
+    createDir(path: string): void {
+      const taken = files.has(path) || madeDirs.has(path) || [...files.keys()].some((f) => f.startsWith(`${path}/`));
+      if (taken) fail({ kind: 'Io', detail: `${path} already exists` });
+      for (let i = path.indexOf('/'); i >= 0; i = path.indexOf('/', i + 1)) madeDirs.add(path.slice(0, i));
+      madeDirs.add(path);
     },
 
     listDir: (path: string): string[] => seed.dirs[path] ?? [],

@@ -1,6 +1,7 @@
 //! Reads for the hover card over a path in a terminal when the path is outside the open repository, which the
 //! repository's own reads refuse, and opening the card's file in another app. Terminal output names these paths, so
-//! an agent or a repository picks them: the reads take only regular files, and nothing opened can run.
+//! an agent or a repository picks them: the reads take only regular files, and nothing opened can run. Also
+//! showing a repository path in the file manager.
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -150,9 +151,44 @@ pub fn open_file(state: State<AppState>, path: String) -> Result<(), AppError> {
     sys::open_file(&full, !is_document(&full))
 }
 
+/// Shows a file or a folder of the repository in the file manager; `path` is relative to the repository.
+#[tauri::command(async)]
+pub fn reveal_path(state: State<AppState>, path: String) -> Result<(), AppError> {
+    sys::reveal(&revealed(&state.root()?, &path)?)
+}
+
+/// `resolve` answers `Special` for a folder or a link only after it has checked every folder above it, and the file
+/// manager shows the entry itself, not where a link leads.
+fn revealed(root: &Path, path: &str) -> Result<PathBuf, AppError> {
+    match crate::git::resolve(root, path) {
+        Err(AppError::Special) => Ok(root.canonicalize()?.join(path)),
+        r => r,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reveals_a_file_a_folder_or_a_link_in_the_repository_and_nothing_outside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("repo");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join("src/a.ts"), "").unwrap();
+        std::os::unix::fs::symlink("src/a.ts", root.join("link")).unwrap();
+        std::os::unix::fs::symlink("..", root.join("up")).unwrap();
+        let real = root.canonicalize().unwrap();
+
+        assert_eq!(revealed(&root, "src/a.ts").unwrap(), real.join("src/a.ts"));
+        assert_eq!(revealed(&root, "src").unwrap(), real.join("src"));
+        assert_eq!(revealed(&root, "link").unwrap(), real.join("link"));
+        assert_eq!(revealed(&root, "up").unwrap(), real.join("up"));
+        for bad in ["../repo", ".git", "up/x", "/etc"] {
+            assert!(matches!(revealed(&root, bad), Err(AppError::InvalidPath(_))), "{bad}");
+        }
+    }
 
     #[test]
     fn reads_a_file_through_a_linked_folder_and_nothing_else() {

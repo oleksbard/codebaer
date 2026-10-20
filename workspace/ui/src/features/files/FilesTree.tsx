@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { buildTree, flattenTree, split, STATUS_LABEL, treeStatus, type TreeLine } from '#core/model';
 import { openPlain } from '#core/session';
-import { copyItem } from '#kernel/clipboard';
 import { refs, useApp } from '#kernel/store';
 import { ContextMenu } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
@@ -9,7 +8,7 @@ import { Tip } from '#ui/Tip';
 import { tipScope } from '#ui/tipScope';
 import { treeKey } from '#ui/treeKeys';
 import { VirtualList } from '#ui/VirtualList';
-import { toggleDir } from './files';
+import { dirMenu, fileMenu, toggleDir } from './files';
 
 const ROW_HEIGHT = 26;
 
@@ -22,7 +21,7 @@ export function FilesList({ files, ignored, active }: {
 }) {
   const s = useApp();
   const set = useMemo(() => new Set(ignored), [ignored]);
-  const tree = useMemo(() => buildTree([...files, ...ignored]), [files, ignored]);
+  const tree = useMemo(() => buildTree([...files, ...ignored, ...s.emptyDirs]), [files, ignored, s.emptyDirs]);
   const listed = useMemo(() => new Set(files), [files]);
   const st = useMemo(() => treeStatus(s.status, listed), [s.status, listed]);
   // S.filesOpen changes in place, so this cannot be memoized on it; it visits only the open folders
@@ -95,14 +94,16 @@ function Line({ id, line, active, cur, ignored, st, open, read, point }: {
     const unlisted = dimmed && !read.has(d.path);
     const rolled = st.dirs.get(d.path);
     return (
-      <Tip label={d.path} slow mono align="start">
-        <div className={`sec d${dimmed ? ' ignored' : ''}${cur ? ' cur' : ''}`}
-          data-dir={d.path} id={id} role="treeitem" aria-level={line.depth + 1} aria-expanded={isOpen} style={style}
-          onClick={() => { point(key(line)); toggleDir(d.path, !isOpen, unlisted); }}>
-          <span className="l"><span className="name">{d.name}</span></span>
-          {rolled && <RollUp letter={rolled} />}
-        </div>
-      </Tip>
+      <ContextMenu items={dirMenu(d.path, dimmed)}>
+        <Tip label={d.path} slow mono align="start">
+          <div className={`sec d${dimmed ? ' ignored' : ''}${cur ? ' cur' : ''}`}
+            data-dir={d.path} id={id} role="treeitem" aria-level={line.depth + 1} aria-expanded={isOpen} style={style}
+            onClick={() => { point(key(line)); toggleDir(d.path, !isOpen, unlisted); }}>
+            <span className="l"><span className="name">{d.name}</span></span>
+            {rolled && <RollUp letter={rolled} />}
+          </div>
+        </Tip>
+      </ContextMenu>
     );
   }
   const p = line.path;
@@ -111,7 +112,7 @@ function Line({ id, line, active, cur, ignored, st, open, read, point }: {
   const cls = `row f${p === active ? ' sel' : ''}${ignored.has(p) ? ' ignored' : ''}`
     + (cur ? ' cur' : '');
   return (
-    <ContextMenu items={[copyItem(p)]}>
+    <ContextMenu items={fileMenu(p)}>
       <Tip label={p} slow mono align="start">
         <div className={cls} data-key={`plain:${p}`} data-path={p} data-st={letter} style={style}
           id={id} role="treeitem" aria-level={line.depth + 1} aria-selected={p === active}

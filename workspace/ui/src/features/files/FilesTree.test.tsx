@@ -5,6 +5,13 @@ import { tick } from '#test-setup';
 
 vi.mock('./files', async () => ({ ...(await vi.importActual<object>('./files')), toggleDir: vi.fn() }));
 vi.mock('#core/session', () => ({ openRow: vi.fn(), openPlain: vi.fn() }));
+vi.mock('#features/search', async () => ({
+  ...(await vi.importActual<object>('#features/search')), findInFolder: vi.fn(),
+}));
+vi.mock('#ipc/git', async () => {
+  const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
+  return { ...actual, git: { ...actual.git, revealPath: vi.fn() } };
+});
 vi.mock('#kernel/clipboard', () => {
   const copyPath = vi.fn();
   return {
@@ -17,6 +24,8 @@ const { Sidebar } = await import('#app/Sidebar');
 const h = {
   toggleDir: (await import('./files')).toggleDir, openPlain: (await import('#core/session')).openPlain,
   copyPath: (await import('#kernel/clipboard')).copyPath,
+  findInFolder: (await import('#features/search')).findInFolder,
+  revealPath: (await import('#ipc/git')).git.revealPath,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 let root: Root;
@@ -25,9 +34,9 @@ let side: HTMLElement;
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   document.body.innerHTML = '<div id="host"></div>';
-  S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
+  S.root = null; S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
   S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
-  S.ignoredKids = new Map(); S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  S.ignoredKids = new Map(); S.emptyDirs = []; S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -220,12 +229,42 @@ describe('context menu', () => {
     return [...document.querySelectorAll<HTMLElement>('.menu-item')];
   };
 
-  it('a file row in the Files tree offers Copy relative path, and a directory row offers nothing', async () => {
+  const labels = (items: HTMLElement[]) => items.map((i) => i.textContent);
+  const pick = (items: HTMLElement[], label: string) => items.find((i) => i.textContent === label)!.click();
+
+  it('a file row offers Reveal in Finder and both copies of its path', async () => {
+    S.root = '/repo';
     await renderFiles(['src/a.ts'], null, ['src']);
-    expect(await open('.sec.d')).toEqual([]);
     const items = await open('.row.f');
-    expect(items.map((i) => i.textContent)).toEqual(['Copy relative path']);
-    items[0]!.click();
-    expect(h.copyPath).toHaveBeenCalledExactlyOnceWith('src/a.ts');
+    expect(labels(items)).toEqual(['Reveal in Finder', 'Copy path', 'Copy relative path']);
+    pick(items, 'Reveal in Finder');
+    expect(h.revealPath).toHaveBeenCalledExactlyOnceWith('src/a.ts');
+    pick(await open('.row.f'), 'Copy path');
+    expect(h.copyPath).toHaveBeenLastCalledWith('/repo/src/a.ts');
+    pick(await open('.row.f'), 'Copy relative path');
+    expect(h.copyPath).toHaveBeenLastCalledWith('src/a.ts');
+  });
+
+  it('shows an empty folder git does not list, as a folder', async () => {
+    S.emptyDirs = ['src/new/'];
+    await renderFiles(['src/a.ts'], null, ['src']);
+    expect(side.querySelector('.sec.d[data-dir="src/new"]')).not.toBeNull();
+    expect(side.querySelector('.row.f[data-path="src/new/"]')).toBeNull();
+  });
+
+  it('a folder row offers Create and Find in folder, except Find on an ignored folder', async () => {
+    await renderFiles(['src/a.ts'], null, [], ['node_modules/']);
+    const items = await open('.sec.d[data-dir="src"]');
+    expect(labels(items)).toEqual([
+      'Create file…', 'Create folder…', 'Find in folder…', 'Reveal in Finder', 'Copy path', 'Copy relative path',
+    ]);
+    pick(items, 'Create folder…');
+    expect(S.prompt?.placeholder).toBe('New folder name');
+    S.prompt?.resolve(null);
+    S.prompt = null;
+    pick(await open('.sec.d[data-dir="src"]'), 'Find in folder…');
+    expect(h.findInFolder).toHaveBeenCalledExactlyOnceWith('src');
+    expect(labels(await open('.sec.d[data-dir="node_modules"]')))
+      .toEqual(['Create file…', 'Create folder…', 'Reveal in Finder', 'Copy path', 'Copy relative path']);
   });
 });

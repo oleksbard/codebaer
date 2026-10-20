@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openPlain, refresh } from '#core/session';
-import { confirmDialog } from '#kernel/dialogs';
+import { confirmDialog, promptDialog } from '#kernel/dialogs';
 import { S } from '#kernel/store';
 import { file, g, mountApp, status } from '#test-app';
 import { tick } from '#test-setup';
-import { toggleDir } from './files';
+import { create, toggleDir } from './files';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -15,7 +15,7 @@ vi.mock('#ipc/git', async () => {
 });
 vi.mock('#kernel/dialogs', async () => {
   const actual = await vi.importActual<typeof import('#kernel/dialogs')>('#kernel/dialogs');
-  return { ...actual, confirmDialog: vi.fn() };
+  return { ...actual, confirmDialog: vi.fn(), promptDialog: vi.fn() };
 });
 vi.mock('#ipc/terminal', async () => {
   const actual = await vi.importActual<typeof import('#ipc/terminal')>('#ipc/terminal');
@@ -23,6 +23,7 @@ vi.mock('#ipc/terminal', async () => {
 });
 
 const confirmMock = confirmDialog as unknown as ReturnType<typeof vi.fn>;
+const promptMock = vi.mocked(promptDialog);
 
 beforeAll(mountApp);
 
@@ -52,7 +53,7 @@ describe('the Files tree', () => {
   async function filesTab(): Promise<void> {
     S.tab = 'files';
     g.status!.mockResolvedValue(S.status);
-    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/'] });
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/'], empty: [] });
     await refresh();
   }
 
@@ -93,7 +94,7 @@ describe('the Files tree', () => {
     toggleDir('node_modules', true, true);
     await tick();
 
-    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: [] });
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: [], empty: [] });
     g.listDir!.mockRejectedValue({ kind: 'InvalidPath', detail: 'gone' });
     await refresh();
     expect(S.ignoredKids.size).toBe(0);
@@ -111,7 +112,7 @@ describe('the Files tree', () => {
     await tick();
 
     const pending = new Map<string, (v: string[]) => void>();
-    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/', 'dist/'] });
+    g.listFiles!.mockResolvedValue({ files: ['a.txt'], ignored: ['node_modules/', 'dist/'], empty: [] });
     g.listDir!.mockImplementation(((p: string) => new Promise<string[]>((r) => { pending.set(p, r); })) as never);
     const inFlight = refresh();
     await tick();
@@ -135,7 +136,7 @@ describe('the Files tree', () => {
     expect(S.ignored).toContain('node_modules/keep.js');
 
     // force-added from a terminal: git lists it now, the directory on disk still holds it
-    g.listFiles!.mockResolvedValue({ files: ['a.txt', 'node_modules/keep.js'], ignored: ['node_modules/'] });
+    g.listFiles!.mockResolvedValue({ files: ['a.txt', 'node_modules/keep.js'], ignored: ['node_modules/'], empty: [] });
     await refresh();
     expect(S.files).toContain('node_modules/keep.js');
     expect(S.ignored).not.toContain('node_modules/keep.js');
@@ -166,5 +167,78 @@ describe('the Files tree follows the open file', () => {
     S.filesOpen.add('docs');
     toggleDir('docs', false);
     expect(S.filesOpen.has('docs')).toBe(false);
+  });
+});
+
+describe('creating from a folder in the Files tree', () => {
+  beforeEach(() => {
+    S.filesOpen = new Set();
+    S.toasts = [];
+  });
+
+  it('writes an empty new file, makes the folders a slash names, expands them and opens the file', async () => {
+    promptMock.mockResolvedValue(' lib/util.ts ');
+    g.readFile!.mockResolvedValue(file(''));
+    await create('src', 'file');
+
+    expect(g.writeFile!).toHaveBeenCalledExactlyOnceWith('src/lib/util.ts', '', 'lf', null);
+    expect([...S.filesOpen]).toEqual(expect.arrayContaining(['src', 'src/lib']));
+    expect(S.open?.path).toBe('src/lib/util.ts');
+  });
+
+  it('makes a folder and expands it, and opens nothing', async () => {
+    promptMock.mockResolvedValue('a/b/');
+    await create('src', 'folder');
+
+    expect(g.createDir!).toHaveBeenCalledExactlyOnceWith('src/a/b');
+    expect([...S.filesOpen]).toEqual(['src', 'src/a', 'src/a/b']);
+    expect(S.open).toBeNull();
+  });
+
+  it('drops . and empty segments from the name, as the backend does, so the file opens at its path', async () => {
+    promptMock.mockResolvedValue('./a//b.ts');
+    g.readFile!.mockResolvedValue(file(''));
+    await create('src', 'file');
+    expect(g.writeFile!).toHaveBeenCalledExactlyOnceWith('src/a/b.ts', '', 'lf', null);
+    expect(S.open?.path).toBe('src/a/b.ts');
+  });
+
+  it('reads an ignored folder and each new folder under it again, so the new one shows', async () => {
+    S.ignoredBase = ['node_modules/'];
+    S.ignored = ['node_modules/'];
+    S.ignoredKids = new Map();
+    g.listDir!.mockImplementation((d: string) =>
+      Promise.resolve({ node_modules: ['node_modules/a/'], 'node_modules/a': ['node_modules/a/b/'] }[d] ?? []));
+    promptMock.mockResolvedValue('a/b');
+    await create('node_modules', 'folder');
+
+    expect(g.listDir!.mock.calls).toEqual([['node_modules'], ['node_modules/a'], ['node_modules/a/b']]);
+    expect(S.ignored).toContain('node_modules/a/b/');
+    S.ignoredBase = []; S.ignored = []; S.ignoredKids = new Map();
+  });
+
+  it('says the name is taken for a folder at the file name, and creates nothing after a repo switch', async () => {
+    promptMock.mockResolvedValue('a');
+    g.writeFile!.mockRejectedValue({ kind: 'Special' });
+    await create('src', 'file');
+    expect(S.toasts.map((t) => t.message)).toEqual(['src/a already exists']);
+
+    const root = S.root;
+    promptMock.mockImplementation(() => { S.root = '/other'; return Promise.resolve('b'); });
+    await create('src', 'folder');
+    expect(g.createDir!).not.toHaveBeenCalled();
+    S.root = root;
+  });
+
+  it('says the name is taken when the file is already there, and does nothing on a cancelled prompt', async () => {
+    promptMock.mockResolvedValue('a.txt');
+    g.writeFile!.mockRejectedValue({ kind: 'Stale', detail: file('x\n') });
+    await create('src', 'file');
+    expect(S.toasts.map((t) => t.message)).toEqual(['src/a.txt already exists']);
+    expect(S.open).toBeNull();
+
+    promptMock.mockResolvedValue(null);
+    await create('src', 'folder');
+    expect(g.createDir!).not.toHaveBeenCalled();
   });
 });
