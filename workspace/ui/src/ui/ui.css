@@ -440,6 +440,23 @@ kbd {
   p { margin: 0 0 6px; color: var(--muted); }
 }
 
+/* fixed, at the viewport point HoverCard measures; above the dialogs, as the tips are. It takes the pointer, so
+   the pointer can reach a control on it on its way from what opened it. */
+.hovercard {
+  position: fixed;
+  z-index: 30;
+  max-width: min(640px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--fs-2);
+  user-select: none;
+}
+
 /* never under the pointer's next target: it closes as the pointer leaves its trigger anyway */
 .tip-s {
   display: grid;

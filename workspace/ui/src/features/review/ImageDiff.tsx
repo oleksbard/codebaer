@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ViewKind } from '#editor/editor';
 import { errKind, errText, type Rev } from '#ipc/git';
-import { readPicture, readStamp, sizeText, stagesOf, zoomOf, type Picture } from './images';
+import { readPicture, type Picture } from '#ipc/images';
+import { readStamp, sizeText, stagesOf, zoomOf } from './images';
 
 /** `id` is the stamp the picture was read under; null, with no picture, when the file is not there. */
 type Read = { id: string | null; picture: Picture | null } | { error: string };

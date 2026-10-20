@@ -2,7 +2,9 @@ import { ChangeSet, EditorState, Transaction, type Extension, type Text } from '
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyField, historyKeymap } from '@codemirror/commands';
 import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting } from '@codemirror/language';
+import {
+  LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting, type LanguageSupport,
+} from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { editorDark, editorHighlight, editorTheme } from './editor-theme';
 import { logError } from '#ipc/log';
@@ -37,18 +39,20 @@ export const folding: Extension = codeFolding({
   },
 });
 
-async function languageFor(path: string): Promise<Extension> {
+export async function loadLanguage(path: string): Promise<LanguageSupport | null> {
   const desc = LanguageDescription.matchFilename(languages, path);
-  if (!desc) return [];
+  if (!desc) return null;
   try {
     return await desc.load();
   } catch (e) {
     // support packages are fetched on demand, and highlighting is never worth refusing to open a
-    // file over: this is the same empty extension a name we do not recognise already gets
+    // file over: a file whose language will not load opens as one with no known language does
     logError(e, `language for ${path}`);
-    return [];
+    return null;
   }
 }
+
+const languageFor = async (path: string): Promise<Extension> => (await loadLanguage(path)) ?? [];
 
 export async function buildState(
   kind: ViewKind,

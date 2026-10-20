@@ -138,6 +138,14 @@ export const git = {
   readImage: (rev: Rev | null, path: string) => invoke<ArrayBuffer>('read_image', { rev, path }),
   /** Changes when readImage's bytes do, and costs a stat or a lookup; null when the file is not there. */
   imageStamp: (rev: Rev | null, path: string) => invoke<string | null>('image_stamp', { rev, path }),
+  /** The same three reads for an absolute path outside the repository, which those refuse; each answers as if the
+   *  file were not there for a folder, and for a folder whose first read makes macOS ask the user for access. */
+  peekStamp: (path: string) => invoke<string | null>('peek_stamp', { path }),
+  peekText: (path: string) => invoke<FileText>('peek_text', { path }),
+  peekImage: (path: string) => invoke<ArrayBuffer>('peek_image', { path }),
+  /** In the app the system picks for it; relative to the repository, or absolute outside it. A file that would run
+   *  rather than open is refused. */
+  openFile: (path: string) => invoke<void>('open_file', { path }),
   blame: (path: string, line: number, contents: string, eol: Eol) =>
     invoke<BlameLine>('blame', { path, line, contents, eol }),
   writeFile: (path: string, text: string, eol: Eol, expected: string | null) =>

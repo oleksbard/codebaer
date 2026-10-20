@@ -69,3 +69,49 @@ test('a shell wears the icon of its first long command, an ended session the pow
     await expect(row(5).locator('.sess-glyph .agent.claude')).toBeVisible();
     await expect(row(3).locator('.sess-glyph .ended svg')).toBeVisible();
   });
+
+test('hovering a file path in a terminal shows the lines around it, until a key goes back to the terminal',
+  async ({ page, open }) => {
+    const mock = await open();
+    await page.keyboard.press('ControlOrMeta+T');
+    await mock.idle();
+    await page.keyboard.type('echo src/cart.ts:12 missing.ts');
+    await page.keyboard.press('Enter');
+    await mock.idle();
+    const row = page.locator('.term-host .xterm-rows > div').filter({ hasText: /^src\/cart\.ts:12 missing\.ts\s*$/ });
+    // xterm's screen layer takes the pointer for the rows under it
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + 40, box.y + box.height / 2);
+
+    const card = page.locator('.hovercard');
+    await expect(card.locator('.term-peek-path')).toHaveText('src/cart.ts:12');
+    await expect(card.locator('.term-peek-code > div.on')).toHaveText(/^12\s+return \{$/);
+    await expect(card.locator('.term-peek-code > div')).toHaveCount(7);
+
+    await page.keyboard.press('a');
+    await expect(card).toHaveCount(0);
+  });
+
+test('the pointer can go from the path onto the card, whose button opens the file', async ({ page, open }) => {
+  const mock = await open();
+  await page.keyboard.press('ControlOrMeta+T');
+  await mock.idle();
+  await page.keyboard.type('echo src/cart.ts:12');
+  await page.keyboard.press('Enter');
+  await mock.idle();
+  const row = page.locator('.term-host .xterm-rows > div').filter({ hasText: /^src\/cart\.ts:12\s*$/ });
+  const box = (await row.boundingBox())!;
+  await page.mouse.move(box.x + 40, box.y + box.height / 2);
+  const card = page.locator('.hovercard');
+  const button = card.getByRole('button', { name: 'Open in Default App' });
+  await expect(button).toBeVisible();
+
+  // off the path, across the gap and onto the card, in a few steps as a hand does
+  const target = (await button.boundingBox())!;
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 6 });
+  await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
+
+  await expect(card).toHaveCount(0);
+  expect(await page.evaluate(() => globalThis.__mock!.calls.filter((c) => c.cmd === 'open_file').map((c) => c.args)))
+    .toEqual([{ path: 'src/cart.ts' }]);
+});

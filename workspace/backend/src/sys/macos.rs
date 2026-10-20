@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::os::fd::RawFd;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -14,6 +14,21 @@ pub const FALLBACK_SHELL: &str = "/bin/zsh";
 pub const UTF8_LOCALE: &str = "en_US.UTF-8";
 /// A Finder launch gets /usr/bin:/bin:/usr/sbin:/sbin and neither homebrew prefix.
 pub const BIN_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
+
+/// Folders whose first read makes macOS ask the user for access, which a hover must not do. APFS ignores case, and
+/// the data volume's firmlink spelling reaches the same folders.
+pub fn asks_access(path: &Path) -> bool {
+    let lower = path.to_string_lossy().to_lowercase();
+    let p = lower.strip_prefix("/system/volumes/data").unwrap_or(&lower);
+    let under = |dir: &str| p == dir || p.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/'));
+    if under("/volumes") || under("/network") {
+        return true;
+    }
+    let Some(home) = std::env::var_os("HOME").map(|h| h.to_string_lossy().to_lowercase()) else { return true };
+    ["desktop", "documents", "downloads", "pictures", "movies", "music", "library"]
+        .iter()
+        .any(|d| under(&format!("{}/{d}", home.trim_end_matches('/'))))
+}
 
 /// None: the host's socket lives in the app's config folder.
 pub fn runtime_dir() -> Option<PathBuf> {
@@ -139,6 +154,19 @@ pub fn unix_sockets(pid: i32, sock: &str) -> Option<usize> {
     Some(all.saturating_sub(text.lines().filter(|l| *l == hook).count()))
 }
 
+/// In the app the system picks for its type, or with `as_text` in the default text editor, whatever its type.
+pub fn open_file(path: &Path, as_text: bool) -> Result<(), AppError> {
+    let mut cmd = Command::new("/usr/bin/open");
+    if as_text {
+        cmd.arg("-t");
+    }
+    let out = cmd.arg(path).output()?;
+    if !out.status.success() {
+        return Err(AppError::Io(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    Ok(())
+}
+
 pub fn open_url(url: &str) -> Result<(), AppError> {
     // -u: a relative path spelled like a URL would otherwise open as a file in the working directory
     let out = Command::new("/usr/bin/open").args(["-u", url]).output()?;
@@ -262,6 +290,23 @@ pub fn unstick(host: i32, pid: i32) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_protected_folder_is_found_in_any_case_and_through_the_data_volume() {
+        let home = std::env::var("HOME").unwrap();
+        for p in [
+            format!("{home}/Desktop"),
+            format!("{home}/desktop/a.png"),
+            format!("{}/DOWNLOADS/x", home.to_uppercase()),
+            format!("/System/Volumes/Data{home}/Documents/a.md"),
+            "/volumes/USB/a.txt".into(),
+        ] {
+            assert!(asks_access(Path::new(&p)), "{p}");
+        }
+        for p in [format!("{home}/projects/a.ts"), format!("{home}/Desktopper/a"), "/private/tmp/a.png".into()] {
+            assert!(!asks_access(Path::new(&p)), "{p}");
+        }
+    }
 
     #[test]
     fn a_pid_reused_between_the_listings_has_no_session() {

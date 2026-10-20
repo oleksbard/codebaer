@@ -9,6 +9,7 @@ import { errText } from '#ipc/git';
 import { input, inputBytes, resize, restore, subscribe as attach, type ServerMsg } from '#ipc/terminal';
 import { toast } from '#kernel/dialogs';
 import { matches } from '#kernel/keymap';
+import { hidePeek, peekLinks } from './peek';
 
 export type Term = {
   term: Terminal;
@@ -145,6 +146,7 @@ function create(id: number, el: HTMLDivElement): Term {
   term.loadAddon(fit);
   term.loadAddon(search);
   term.loadAddon(new WebLinksAddon());
+  term.registerLinkProvider(peekLinks(term, id));
   term.loadAddon(new ClipboardAddon());
   const graphemes = new UnicodeGraphemesAddon();
   term.loadAddon(graphemes);
@@ -225,6 +227,8 @@ export function focus(id: number): void {
 export function dispose(id: number): void {
   const t = terms.get(id);
   if (!t) return;
+  // xterm does not tell a link it is gone when the terminal is
+  hidePeek();
   t.term.dispose();
   t.el.remove();
   terms.delete(id);

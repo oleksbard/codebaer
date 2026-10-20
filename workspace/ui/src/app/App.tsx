@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { NoGit, NoRepo } from '#features/repos';
 import { AllChanges, allChangesShown, ReviewPane } from '#features/review';
-import { Terminals } from '#features/terminals';
+import { TermPeek, Terminals } from '#features/terminals';
 import { OverlayHost } from './OverlayHost';
 import { Gutter, Header, SideHandle } from './Shell';
 import { useGlowScene } from './glow';
@@ -32,6 +32,7 @@ export function App() {
         </div>
       </div>
       <OverlayHost />
+      <TermPeek />
     </TipProvider>
   );
 }

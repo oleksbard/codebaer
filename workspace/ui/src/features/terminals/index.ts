@@ -58,6 +58,7 @@ export const terminals = defineFeature({
 export { keepIcon } from './icons';
 export type { TermIcon } from './state';
 export { TermGlyph, Terminals, TerminalRail } from './Terminals';
+export { TermPeek } from './TermPeek';
 export {
   agentNamed, agentOf, homeFrom, isExited, isTask, outsideRepo, shortCwd, statusLabel, termLabels, terminalsOf,
   type Agent,

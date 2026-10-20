@@ -293,6 +293,11 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
     read_blob: ({ rev, path }: { rev: Rev; path: string }): Blob => repo.readBlob(rev, path),
     read_image: ({ rev, path }: { rev: Rev | null; path: string }): ArrayBuffer => repo.readImage(rev, path),
     image_stamp: ({ rev, path }: { rev: Rev | null; path: string }): string | null => repo.imageStamp(rev, path),
+    // the fake machine has no files outside the repository
+    peek_stamp: (): string | null => null,
+    peek_text: (): FileText => ({ text: '', eol: 'lf', exists: false }),
+    peek_image: (): ArrayBuffer => new ArrayBuffer(0),
+    open_file: () => {},
     blame: ({ path, line, contents }: { path: string; line: number; contents: string }): BlameLine =>
       repo.blame(path, line, contents),
     stage_content: (a: { path: string; text: string | null; eol: Eol; expectedOid: string | null }): StageResult =>

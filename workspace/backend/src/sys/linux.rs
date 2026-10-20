@@ -13,6 +13,11 @@ pub const FALLBACK_SHELL: &str = "/bin/sh";
 pub const UTF8_LOCALE: &str = "C.UTF-8";
 pub const BIN_DIRS: &[&str] = &["/usr/local/bin", "/snap/bin"];
 
+/// Linux has no per-folder access prompt.
+pub fn asks_access(_path: &Path) -> bool {
+    false
+}
+
 /// Per machine and per login, where the app's config folder may be a home shared over NFS: the host's `bind`
 /// replaces a socket file that does not answer, which would be another machine's live one.
 pub fn runtime_dir() -> Option<PathBuf> {
@@ -168,9 +173,35 @@ pub fn unix_sockets(pid: i32, sock: &str) -> Option<usize> {
     Some(inodes.iter().filter(|i| bound.contains(i)).count())
 }
 
+/// Types whose default app shows them; an SVG, in the browser that is often its app, can run script.
+const SHOWN: &[&str] = &[
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff", "image/avif", "image/heic",
+    "image/heif", "image/x-icon", "image/vnd.microsoft.icon", "application/pdf",
+];
+
+/// In the app the desktop picks for its type, only when that type, as the opener itself sniffs it, is an image or a
+/// PDF. Linux has no way to ask for the text editor, so `as_text` is refused: the app picked for a script, or for a
+/// Windows program under Wine, would run it.
+pub fn open_file(path: &Path, as_text: bool) -> Result<(), AppError> {
+    let refuse = || Err(AppError::Io("only images and PDFs open from here on Linux".into()));
+    if as_text {
+        return refuse();
+    }
+    let out = Command::new("xdg-mime").args(["query", "filetype"]).arg(path).output()?;
+    let mime = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || !SHOWN.contains(&mime.as_str()) {
+        return refuse();
+    }
+    xdg_open(path.as_os_str(), &path.display().to_string())
+}
+
 pub fn open_url(url: &str) -> Result<(), AppError> {
+    xdg_open(url.as_ref(), url)
+}
+
+fn xdg_open(arg: &std::ffi::OsStr, url: &str) -> Result<(), AppError> {
     let mut child = Command::new("xdg-open")
-        .arg(url)
+        .arg(arg)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
