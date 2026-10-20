@@ -38,7 +38,7 @@ App updates itself (with your permission).
 There is a `.deb` for Ubuntu 22.04, Debian 12 and later, and an `.rpm` for Fedora and openSUSE. 
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/CodeBär.app
+curl -fsSL https://raw.githubusercontent.com/oleksbard/codebaer/main/install.sh | sh
 ```
 
 You can also download a package from the [releases page](https://github.com/oleksbard/codebaer/releases) and install it yourself.
