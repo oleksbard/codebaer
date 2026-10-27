@@ -25,7 +25,13 @@ export const editorTheme = EditorView.theme(
       + ' .cm-selectionBackground, .cm-content ::selection']: {
       backgroundColor: 'var(--accent-soft)',
     },
-    '.cm-selectionMatch': { backgroundColor: 'var(--sel)' },
+    // CodeMirror orders its layers with an inline z-index under the text, where the opaque active line and the
+    // change tints hide the selection; its fill is translucent, so it goes over the text instead
+    '.cm-selectionLayer': { zIndex: '1 !important', pointerEvents: 'none' },
+    '.cm-selectionMatch': {
+      backgroundColor: 'var(--accent-soft)',
+      outline: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
+    },
     '.cm-activeLine': { backgroundColor: 'var(--panel)' },
     '.cm-gutters': { backgroundColor: 'var(--bg)', color: 'var(--faint)', borderRight: '1px solid var(--line)' },
     '.cm-activeLineGutter': { backgroundColor: 'var(--panel)' },

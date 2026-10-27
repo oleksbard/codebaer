@@ -134,6 +134,8 @@ export const git = {
   status: () => invoke<Status>('status'),
   diffStat: () => invoke<DiffStat>('diff_stat'),
   readBlob: (rev: Rev, path: string) => invoke<Blob>('read_blob', { rev, path }),
+  /** The file at the merge base of HEAD and the main branch; null on main or with no commits of its own. */
+  branchBase: (path: string) => invoke<Blob | null>('branch_base', { path }),
   readFile: (path: string) => invoke<FileText>('read_file', { path }),
   /** Whole files up to 16 MB, from the working tree for a null `rev`; empty when the file is not there. */
   readImage: (rev: Rev | null, path: string) => invoke<ArrayBuffer>('read_image', { rev, path }),

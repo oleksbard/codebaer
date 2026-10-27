@@ -5,7 +5,7 @@ import { DEFAULTS } from '#ipc/settings';
 import { notify, S } from '#kernel/store';
 import { g, mountApp } from '#test-app';
 import { exitTick, tick, tipOf } from '#test-setup';
-import { agoText, headline, refreshLimits, resetText, startLimits } from './limits';
+import { agoText, headline, meterWindows, refreshLimits, resetText, startLimits } from './limits';
 
 vi.mock('#ipc/git', async () => {
   const actual = await vi.importActual<typeof import('#ipc/git')>('#ipc/git');
@@ -42,9 +42,26 @@ async function settle(): Promise<void> {
 }
 
 describe('the windows the pill shows', () => {
-  it('is the first weekly window, else the fullest', () => {
+  it('draws the fullest short window above the first weekly one', () => {
+    const fable = win('Week (Fable)', 99, true);
+    const labels = (ws: LimitWindow[]): string[] => meterWindows(ws).map((w) => w.label);
+    expect(labels([...CLAUDE, fable])).toEqual(['Session', 'Week (all models)']);
+    expect(labels([win('5 hours', 31, false), win('Day', 60, false)])).toEqual(['Day']);
+    expect(labels([win('Day', 60, false), win('5 hours', 31, false)])).toEqual(['Day']);
+    expect(labels([win('5 hours', 50, false), win('Day', 50, false)])).toEqual(['Day']);
+    expect(labels([win('Week', 40, true)])).toEqual(['Week']);
+    expect(labels([])).toEqual([]);
+  });
+
+  it('numbers the pill with the fuller of its meters, and the week on a tie', () => {
     expect(headline(CLAUDE)?.label).toBe('Week (all models)');
+    expect(headline([win('Session', 100, false), win('Week (all models)', 81, true)])?.label).toBe('Session');
+    expect(headline([win('Session', 100, false), win('Week (all models)', 100, true)])?.label)
+      .toBe('Week (all models)');
+    expect(headline([win('5 hours', 86.4, false), win('Week', 85.6, true)])?.label).toBe('Week');
+    expect(headline([...CLAUDE, win('Week (Fable)', 99, true)])?.label).toBe('Week (all models)');
     expect(headline([win('5 hours', 31, false), win('Day', 60, false)])?.label).toBe('Day');
+    expect(headline([win('Week', 40, true)])?.label).toBe('Week');
     expect(headline([])).toBeUndefined();
   });
 
@@ -99,7 +116,11 @@ describe('reading the limits', () => {
 
   it('asks only the CLIs that are on, and shows the weekly percent', async () => {
     expect(shown()).toEqual(['claude:86%']);
-    expect(pills()[0]!.getAttribute('aria-label')).toBe('Claude Code: 86% of the week (all models) limit used');
+    expect(pills()[0]!.getAttribute('aria-label')).toBe('Claude Code: 86% used, week (all models) limit');
+    const meters = [...pills()[0]!.querySelectorAll<HTMLElement>('.limit-meter')];
+    expect(meters.map((m) => [m.dataset.level, m.style.getPropertyValue('--used')])).toEqual([
+      ['low', '0.14'], ['mid', '0.86'],
+    ]);
     const tip = await tipOf(pills()[0]!);
     expect(tip).toContain('Week (all models)86%Resets Oct 20 at 9am');
     expect(tip).toContain('Session14%Resets today at 11:20pm');
@@ -180,5 +201,17 @@ describe('reading the limits', () => {
     await settle();
     expect(S.limits.codex?.error).toBe('chatgpt authentication required to read rate limits');
     expect(shown()).toEqual(['claude:86%']);
+  });
+
+  it('shows a full session over a week that is not full', async () => {
+    g.usageLimits!.mockResolvedValueOnce([win('Session', 100, false), win('Week (all models)', 81, true)]);
+    pills()[0]!.click();
+    await settle();
+    const pill = pills()[0]!;
+    expect(shown()).toEqual(['claude:100%']);
+    expect(pill.dataset.level).toBe('high');
+    expect(pill.getAttribute('aria-label')).toBe('Claude Code: 100% used, session limit');
+    const meters = [...pill.querySelectorAll<HTMLElement>('.limit-meter')];
+    expect(meters.map((m) => m.dataset.level)).toEqual(['high', 'mid']);
   });
 });

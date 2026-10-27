@@ -27,6 +27,8 @@ export type Scenario = {
   /** `none` for a build that never sends usage data, as every build but main's packages; `ask` also has the
    *  launch ask whether to share. */
   usageData: 'none' | 'available' | 'ask';
+  /** Claude's session window is full while its week is not, which the limits pill must show. */
+  sessionFull: boolean;
 };
 
 const ROOT = '/Users/dev/projects/acme-shop';
@@ -174,7 +176,11 @@ const DAY = 24 * HOUR;
 const REPO: RepoSeed = {
   files: {
     ...UNCHANGED,
-    'src/cart.ts': { head: CART_HEAD, work: CART_WORK },
+    'src/cart.ts': {
+      head: CART_HEAD, work: CART_WORK,
+      base: CART_HEAD.replace('filter((i) => i.sku !== sku)', 'filter((line) => line.sku !== sku)')
+        .replace(/export function itemCount[^}]*}\n\n/, ''),
+    },
     'src/checkout.ts': { head: CHECKOUT_HEAD, index: CHECKOUT_INDEX, work: CHECKOUT_WORK },
     'src/money.ts': { head: MONEY, work: null },
     'src/utils/money.ts': { work: MONEY_NEW },
@@ -253,6 +259,7 @@ function review(): Scenario {
     orphans: NO_ORPHANS,
     updates: null,
     usageData: 'none',
+    sessionFull: false,
   };
 }
 
@@ -377,6 +384,7 @@ function video(): Scenario {
     orphans: NO_ORPHANS,
     updates: null,
     usageData: 'none',
+    sessionFull: false,
   };
 }
 
@@ -532,6 +540,9 @@ export const SCENARIOS: Record<string, () => Scenario> = {
 
   // the launch that asks whether to share usage data
   'usage-data': () => ({ ...review(), usageData: 'ask' }),
+
+  // Claude's 5-hour session is used up while its week is not
+  'session-full': () => ({ ...review(), sessionFull: true }),
 
   // a release is out: Check for Updates… in the palette finds it
   update: () => ({

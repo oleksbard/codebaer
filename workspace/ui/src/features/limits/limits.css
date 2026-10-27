@@ -17,11 +17,17 @@
   &[data-busy] { opacity: .6; }
   &[data-stale] { border-style: dashed; }
   &[data-level="high"] { color: var(--del); border-color: var(--del); }
-
-  .limit-meter { width: 24px; }
 }
 
-.limit-pill, .limit-row {
+.limit-meters {
+  display: grid;
+  gap: 2px;
+  width: 24px;
+
+  .limit-meter { height: 3px; }
+}
+
+.limit-row, .limit-meters > .limit-meter {
   --level: var(--add);
   &[data-level="mid"] { --level: var(--warn); }
   &[data-level="high"] { --level: var(--del); }
@@ -48,7 +54,7 @@
 
 /* two pills fit the header's right column at the narrowest window */
 @media (max-width: 1100px) {
-  .head .limit-pill .limit-meter { display: none; }
+  .head .limit-pill .limit-meters { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

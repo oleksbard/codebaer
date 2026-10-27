@@ -1,0 +1,11 @@
+/* the branch's changes against main, on the line numbers' left edge; the merge gutter on their right keeps the
+   uncommitted ones */
+.cm-editor .cm-lineNumbers .cm-gutterElement.cm-branchLine { --branch: var(--mod); }
+.cm-editor .cm-lineNumbers .cm-gutterElement.cm-branchAdded { --branch: var(--add); }
+.cm-editor .cm-lineNumbers .cm-gutterElement.cm-branchModified,
+.cm-editor .cm-lineNumbers .cm-gutterElement.cm-branchAdded { box-shadow: inset 3px 0 0 var(--branch); }
+
+/* the deleted lines were above this one */
+.cm-editor .cm-lineNumbers .cm-gutterElement.cm-branchDeleted {
+  background: linear-gradient(var(--del), var(--del)) top left / 8px 2px no-repeat;
+}

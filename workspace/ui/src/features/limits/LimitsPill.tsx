@@ -6,7 +6,7 @@ import { useApp } from '#kernel/store';
 import { Count } from '#ui/Count';
 import { Reveal } from '#ui/Reveal';
 import { Tip } from '#ui/Tip';
-import { agoText, headline, refreshLimit, resetText } from './limits';
+import { agoText, headline, meterWindows, refreshLimit, resetText } from './limits';
 import type { Limits } from './state';
 
 const pct = (n: number): string => `${n}%`;
@@ -47,11 +47,16 @@ function LimitPill({ provider, limits, windows, busy }: {
     <Tip label={`${name} usage`} detail={<LimitCard limits={limits} />} align="end">
       <button type="button" className="pill limit-pill" data-provider={provider}
         data-level={level(used)} data-stale={limits.error !== null || undefined} data-busy={busy || undefined}
-        aria-label={`${name}: ${used}% of the ${head.label.toLowerCase()} limit used`}
+        aria-label={`${name}: ${used}% used, ${head.label.toLowerCase()} limit`}
         onClick={() => void refreshLimit(provider)}>
         {tool && <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d={tool.logo} /></svg>}
         <Count value={used} format={pct} />
-        <span className="limit-meter" style={meter(used)} />
+        <span className="limit-meters">
+          {meterWindows(windows).map((w) => {
+            const part = Math.round(w.percent);
+            return <span key={w.label} className="limit-meter" data-level={level(part)} style={meter(part)} />;
+          })}
+        </span>
       </button>
     </Tip>
   );

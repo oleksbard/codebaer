@@ -820,7 +820,11 @@ pub fn head_entry(root: &Path, rel: &str) -> Result<Option<(String, String)>, Ap
     if !head_exists(root)? {
         return Ok(None);
     }
-    let out = run(root, &["ls-tree", "-z", "HEAD", "--", rel], None, Some(LOCAL))?;
+    tree_entry(root, "HEAD", rel)
+}
+
+fn tree_entry(root: &Path, tree: &str, rel: &str) -> Result<Option<(String, String)>, AppError> {
+    let out = run(root, &["ls-tree", "-z", tree, "--", rel], None, Some(LOCAL))?;
     let s = String::from_utf8_lossy(&out.stdout);
     Ok(s.split('\0').find_map(|l| {
         let (meta, path) = l.split_once('\t')?;
@@ -843,6 +847,10 @@ fn blob_oid(root: &Path, rev: Rev, rel: &str, max: u64) -> Result<Option<String>
         Rev::Index => index_entry(root, rel)?,
         Rev::Head => head_entry(root, rel)?,
     };
+    checked_blob(root, entry, max)
+}
+
+fn checked_blob(root: &Path, entry: Option<(String, String)>, max: u64) -> Result<Option<String>, AppError> {
     let Some((mode, oid)) = entry else { return Ok(None) };
     if mode != "100644" && mode != "100755" {
         return Err(AppError::Special);
@@ -861,6 +869,42 @@ pub fn read_blob_impl(root: &Path, rev: Rev, rel: &str) -> Result<Blob, AppError
     };
     let ft = text_from_bytes(run(root, &["cat-file", "blob", &oid], None, Some(LOCAL))?.stdout)?;
     Ok(Blob { text: ft.text, eol: ft.eol, oid: Some(oid), exists: true })
+}
+
+/// What the branch is measured against: the remote's default branch, else a local or remote main or master.
+fn base_ref(root: &Path) -> Result<Option<String>, AppError> {
+    let remote_head = run_raw(root, &["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], None, Some(LOCAL), None)?;
+    if remote_head.code == 0 {
+        return Ok(Some(line_of(remote_head)));
+    }
+    for r in ["refs/heads/main", "refs/heads/master", "refs/remotes/origin/main", "refs/remotes/origin/master"] {
+        if run_raw(root, &["rev-parse", "-q", "--verify", r], None, Some(LOCAL), None)?.code == 0 {
+            return Ok(Some(r.to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// The file where the branch forked from the base, at their merge base. None when there is no base, or the branch
+/// has no commits of its own, since the review view already shows the uncommitted changes.
+pub fn branch_base_impl(root: &Path, rel: &str) -> Result<Option<Blob>, AppError> {
+    if !head_exists(root)? {
+        return Ok(None);
+    }
+    let Some(base) = base_ref(root)? else { return Ok(None) };
+    let fork = run_raw(root, &["merge-base", "HEAD", &base], None, Some(LOCAL), None)?;
+    if fork.code != 0 {
+        return Ok(None);
+    }
+    let fork = line_of(fork);
+    if fork == line_of(run(root, &["rev-parse", "HEAD"], None, Some(LOCAL))?) {
+        return Ok(None);
+    }
+    let Some(oid) = checked_blob(root, tree_entry(root, &fork, rel)?, MAX_BYTES)? else {
+        return Ok(Some(Blob { text: String::new(), eol: Eol::Lf, oid: None, exists: false }));
+    };
+    let ft = text_from_bytes(run(root, &["cat-file", "blob", &oid], None, Some(LOCAL))?.stdout)?;
+    Ok(Some(Blob { text: ft.text, eol: ft.eol, oid: Some(oid), exists: true }))
 }
 
 /// The image preview reads whole files, which the editor's MAX_BYTES would turn away.
@@ -909,6 +953,13 @@ pub fn read_blob(state: State<AppState>, rev: Rev, path: String) -> Result<Blob,
     let root = state.root()?;
     resolve(&root, &path)?;
     read_blob_impl(&root, rev, &path)
+}
+
+#[tauri::command(async)]
+pub fn branch_base(state: State<AppState>, path: String) -> Result<Option<Blob>, AppError> {
+    let root = state.root()?;
+    resolve(&root, &path)?;
+    branch_base_impl(&root, &path)
 }
 
 /// Raw bytes, which reach the webview as an ArrayBuffer; an empty one for a file that is not there, which

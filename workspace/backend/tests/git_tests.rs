@@ -1,5 +1,5 @@
 use codebaer_lib::eol::Eol;
-use codebaer_lib::git::{blame_impl, discover, find, found, init_impl, head_entry, bytes_stamp_impl, read_blob_impl, read_bytes_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
+use codebaer_lib::git::{blame_impl, branch_base_impl, discover, find, found, init_impl, head_entry, bytes_stamp_impl, read_blob_impl, read_bytes_impl, read_file_at, resolve, run, run_locked, run_raw, stage_content_impl, status_impl, write_file_impl, FileText, Rev, LOCAL};
 use codebaer_lib::git::{discard_all_impl, discard_preview_impl, revert_path_impl, stage_all_impl, stage_path_impl, unstage_all_impl, unstage_path_impl};
 use codebaer_lib::git::{branches_impl, commit_impl, create_branch_impl, create_dir_impl, list_dir_impl, list_files_impl, switch_branch_impl, Branch};
 use codebaer_lib::git::{outgoing_impl, undo_commit_guarded, undo_commit_impl, OUTGOING};
@@ -1792,4 +1792,25 @@ fn a_terminal_starts_in_the_repo_or_else_the_folder_open_without_one() {
     // a folder deleted since the open is named as gone, not as a folder with no repo
     drop(dir);
     assert!(matches!(state.cwd(), Err(AppError::Io(ref m)) if m.contains("no longer exists")));
+}
+
+#[test]
+fn branch_base_reads_the_file_where_the_branch_forked_from_main() {
+    let d = repo();
+    let r = d.path();
+    assert_eq!(branch_base_impl(r, "a.txt").unwrap(), None, "main itself has no base");
+    sh(r, &["checkout", "-q", "-b", "feature"]);
+    assert_eq!(branch_base_impl(r, "a.txt").unwrap(), None, "a branch with no commits of its own has none");
+    fs::write(r.join("a.txt"), "a\nB\nc\nd\n").unwrap();
+    fs::write(r.join("new.txt"), "n\n").unwrap();
+    sh(r, &["add", "."]);
+    sh(r, &["commit", "-qm", "feature"]);
+    sh(r, &["checkout", "-q", "main"]);
+    fs::write(r.join("a.txt"), "main moved on\n").unwrap();
+    sh(r, &["commit", "-qam", "main"]);
+    sh(r, &["checkout", "-q", "feature"]);
+    let base = branch_base_impl(r, "a.txt").unwrap().unwrap();
+    assert_eq!(base.text, "a\nb\nc\nd\n");
+    let added = branch_base_impl(r, "new.txt").unwrap().unwrap();
+    assert!(!added.exists && added.text.is_empty());
 }

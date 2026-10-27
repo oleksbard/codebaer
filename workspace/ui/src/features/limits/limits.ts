@@ -83,10 +83,21 @@ export function startLimits(): void {
   setInterval(() => { if (!document.hidden && Date.now() - last >= EVERY_MS) auto(); }, TICK_MS);
 }
 
-/** The window the pill shows: the first weekly one, else the fullest. */
+/** Compares the percents the pill shows, so two windows that both read 86% tie. A tie goes to the later window. */
+const fullest = (windows: readonly LimitWindow[]): LimitWindow | undefined =>
+  windows.reduce<LimitWindow | undefined>(
+    (top, w) => (top && Math.round(top.percent) > Math.round(w.percent) ? top : w), undefined);
+
+/** The pill's meters, top to bottom: the fullest short window, then the first weekly one. A model's own week
+ *  comes after the week of all models, so it stays in the card. */
+export function meterWindows(windows: readonly LimitWindow[]): LimitWindow[] {
+  return [fullest(windows.filter((w) => !w.weekly)), windows.find((w) => w.weekly)].filter((w) => w !== undefined);
+}
+
+/** The pill's number: the fuller of its meters, since a full session blocks as a full week does. On a tie the
+ *  week, which blocks for longer. */
 export function headline(windows: readonly LimitWindow[]): LimitWindow | undefined {
-  return windows.find((w) => w.weekly)
-    ?? windows.reduce<LimitWindow | undefined>((top, w) => (top && top.percent >= w.percent ? top : w), undefined);
+  return fullest(meterWindows(windows));
 }
 
 const DAY_MS = 24 * 3_600_000;

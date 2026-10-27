@@ -8,9 +8,10 @@ import {
 } from '@codemirror/view';
 import { foldEffect, foldedRanges, language, syntaxHighlighting, unfoldEffect } from '@codemirror/language';
 import { getChunks, getOriginalDoc, updateOriginalDoc, type Chunk } from '@codemirror/merge';
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
+import { searchKeymap } from '@codemirror/search';
 import { folding } from './editor';
 import { editorDark, editorHighlight, editorTheme, setEditorDark } from './editor-theme';
+import { selectionMatches } from './match-marks';
 
 // The working-tree editor stays the unified merge view that accept, reject, comments and folds all drive, with its
 // inline deletions hidden, and a read-only editor of its original goes on its left. @codemirror/merge's MergeView
@@ -246,7 +247,7 @@ function leftState(right: EditorView): EditorState {
       lineNumbers(),
       drawSelection(),
       EditorView.lineWrapping,
-      highlightSelectionMatches(),
+      selectionMatches,
       editorTheme,
       editorDark(s.facet(EditorView.darkTheme)),
       syntaxHighlighting(editorHighlight),

@@ -1,12 +1,13 @@
 import { ChangeSet, EditorState, Transaction, type Extension, type Text } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyField, historyKeymap } from '@codemirror/commands';
-import { gotoLine, highlightSelectionMatches, searchKeymap } from '@codemirror/search';
+import { gotoLine, searchKeymap } from '@codemirror/search';
 import {
   LanguageDescription, codeFolding, foldKeymap, syntaxHighlighting, type LanguageSupport,
 } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { editorDark, editorHighlight, editorTheme } from './editor-theme';
+import { selectionMatches } from './match-marks';
 import { logError } from '#ipc/log';
 import { attachTip } from '#ui/domTip';
 import { getTheme, isDark } from '#ui/theme';
@@ -74,7 +75,7 @@ export async function buildState(
     highlightActiveLine(),
     drawSelection(),
     EditorView.lineWrapping,
-    highlightSelectionMatches(),
+    selectionMatches,
     editorTheme,
     editorDark(isDark(getTheme())),
     syntaxHighlighting(editorHighlight),

@@ -13,6 +13,8 @@ export type Entry = {
 /** Omitted stages inherit: index from head, work from index. null is absent. */
 export type FileSeed = {
   head?: string | null; index?: string | null; work?: string | null;
+  /** At the branch's merge base with main; omitted is head. */
+  base?: string | null;
   eol?: Eol; kind?: 'binary' | 'large'; conflicted?: boolean;
 };
 
@@ -186,6 +188,8 @@ export type Repo = ReturnType<typeof createRepo>;
 
 export function createRepo(seed: RepoSeed) {
   const files = new Map(Object.entries(seed.files).map(([p, s]) => [p, fromSeed(s)]));
+  const bases = new Map(Object.entries(seed.files).map(([p, s]) => [p, s.base === undefined ? s.head ?? null : s.base]
+  ));
   const madeDirs = new Set<string>();
   let { branch, upstream, ahead, behind } = seed;
   const seeded = Math.floor(Date.now() / 1000);
@@ -293,6 +297,17 @@ export function createRepo(seed: RepoSeed) {
       if (!e || !v) return { text: '', eol: 'lf', oid: null, exists: false };
       readable(e);
       return { text: v.text, eol: v.eol, oid: oidOfVersion(v), exists: true };
+    },
+
+    /** `branch_base_impl`: null on main, as on a branch with no commits of its own. */
+    branchBase(path: string): Blob | null {
+      if (branch === null || branch === 'main') return null;
+      const e = files.get(path);
+      if (e?.conflicted) fail({ kind: 'Conflicted' });
+      const text = bases.get(path) ?? null;
+      if (text === null) return { text: '', eol: 'lf', oid: null, exists: false };
+      if (e) readable(e);
+      return { text, eol: e?.head?.eol ?? 'lf', oid: oidOf(text), exists: true };
     },
 
     /** `read_bytes_impl`. A binary file holds base64 text, which this decodes; anything else reads as UTF-8. */

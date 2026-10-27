@@ -19,6 +19,23 @@
   overflow: auto;
 }
 
+/* editor/match-marks.ts sets the strip's top and height to the scroller's, and each mark's top */
+.cm-matchMarks {
+  position: absolute;
+  right: 0;
+  width: 6px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.cm-matchMark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
 /* placed and animated from editor/ghost.ts, not CSS: its rect comes from lineBlockAt at the moment of the
    accept or reject, which a class alone cannot reach */
 .cm-ghost {
