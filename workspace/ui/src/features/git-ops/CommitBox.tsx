@@ -6,6 +6,7 @@ import { Count } from '#ui/Count';
 import { CHECK, REFRESH, StrokeIcon } from '#ui/Icon';
 import { IconButton } from '#ui/IconButton';
 import { Kbd } from '#ui/Kbd';
+import { Reveal } from '#ui/Reveal';
 import { Spinner } from '#ui/Spinner';
 import { Tip } from '#ui/Tip';
 import { aiMessage, cancel, checkout, commit, network, setCommitMessage } from './git-ops';
@@ -104,6 +105,7 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
   const ref = useRef<HTMLTextAreaElement>(null);
   const message = s.commitMessage;
   const aiOn = s.settings['general.headless-ai-provider'] !== 'off';
+  const showAi = message === '' || s.aiBusy;
   const landed = useLanded(message, s.aiBusy);
   const cls = [s.aiBusy ? 'writing' : '', landed ? `land${landed % 2}` : ''].filter(Boolean).join(' ');
   useEffect(() => {
@@ -130,30 +132,34 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
   return (
     <div className="commit" hidden={hidden}>
       <BranchBar />
-      {/* read-only while the AI writes, because its message replaces whatever is typed meanwhile */}
-      <textarea id="commit-message" rows={1} aria-label="Commit message" value={message}
-        className={cls || undefined} readOnly={s.aiBusy} aria-busy={s.aiBusy}
-        placeholder={s.aiBusy ? 'Writing a commit message…' : 'Commit message'}
-        ref={(el) => { ref.current = el; refs.commit = el; }}
-        onChange={(e) => setCommitMessage(e.target.value)}
-        onKeyDown={(e) => { if (matches(e, 'git.commit')) { e.preventDefault(); void commit(); } }} />
-      <div className="bar">
-        <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
-        <span className="r">
+      <div className={showAi ? 'msg ai' : 'msg'}>
+        {/* read-only while the AI writes, because its message replaces whatever is typed meanwhile */}
+        <textarea id="commit-message" rows={1} aria-label="Commit message" value={message}
+          className={cls || undefined} readOnly={s.aiBusy} aria-busy={s.aiBusy}
+          placeholder={s.aiBusy ? 'Writing a commit message…' : 'Commit message'}
+          ref={(el) => { ref.current = el; refs.commit = el; }}
+          onChange={(e) => setCommitMessage(e.target.value)}
+          onKeyDown={(e) => { if (matches(e, 'git.commit')) { e.preventDefault(); void commit(); } }} />
+        <Reveal when={showAi} as="span" kind="pop" className="ai-slot">
           {/* a disabled .ico takes no pointer events, so the reason sits on a wrapper that does */}
           <Tip label={aiOn ? '' : AI_OFF} side="top">
             <span className="ai-wrap">
               <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={s.aiBusy}
-                disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}><Sparkle /></IconButton>
+                side="top" disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}>
+                <Sparkle />
+              </IconButton>
             </span>
           </Tip>
-          <Button variant="primary" id="commit-btn" busy={s.committing || s.committed}
-            disabled={staged === 0 || !message.trim() || s.committing} onClick={() => void commit()}>
-            {s.committing ? <><Spinner />Committing…</>
-              : s.committed ? <><StrokeIcon d={CHECK} size={13} />Committed</>
-                : <>Commit <Kbd>{keyLabel('git.commit')}</Kbd></>}
-          </Button>
-        </span>
+        </Reveal>
+      </div>
+      <div className="bar">
+        <span className="hint">{staged ? `${staged} file${staged > 1 ? 's' : ''} staged` : 'Nothing staged yet'}</span>
+        <Button variant="primary" id="commit-btn" busy={s.committing || s.committed}
+          disabled={staged === 0 || !message.trim() || s.committing} onClick={() => void commit()}>
+          {s.committing ? <><Spinner />Committing…</>
+            : s.committed ? <><StrokeIcon d={CHECK} size={13} />Committed</>
+              : <>Commit <Kbd>{keyLabel('git.commit')}</Kbd></>}
+        </Button>
       </div>
     </div>
   );

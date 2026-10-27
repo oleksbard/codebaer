@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { tick, tipOf } from '#test-setup';
+import { exitTick, tick, tipOf } from '#test-setup';
 import type { FileEntry, Status } from '#ipc/git';
 import type { Row } from '#core/model';
 
@@ -92,10 +92,16 @@ describe('commit button', () => {
 describe('AI commit message button', () => {
   const btn = () => side.querySelector<HTMLButtonElement>('#ai-btn')!;
 
-  it('is disabled with nothing staged and enabled once something is', async () => {
+  it('is disabled with nothing staged and shows in the message box only while the box is empty', async () => {
     await render([]);
     expect(btn().disabled).toBe(true);
     await render([], [row('a.ts', 'M', 'staged')]);
+    expect(btn().disabled).toBe(false);
+    expect(btn().closest('.msg')!.classList.contains('ai')).toBe(true);
+    S.commitMessage = 'F'; notify(); await tick(); await exitTick();
+    expect(side.querySelector('#ai-btn')).toBeNull();
+    expect(side.querySelector('.msg')!.classList.contains('ai')).toBe(false);
+    S.commitMessage = ''; notify(); await tick();
     expect(btn().disabled).toBe(false);
   });
 
@@ -109,8 +115,9 @@ describe('AI commit message button', () => {
     S.aiBusy = false; notify(); await tick();
     expect(btn().disabled).toBe(false);
     expect(btn().classList.contains('busy')).toBe(false);
-    S.commitMessage = 'Fix the thing'; notify(); await tick();
+    S.commitMessage = 'Fix the thing'; notify(); await tick(); await exitTick();
     expect(side.querySelector<HTMLTextAreaElement>('#commit-message')!.value).toBe('Fix the thing');
+    expect(side.querySelector('#ai-btn')).toBeNull();
   });
 
   it('locks the box while the AI writes and marks only a message that lands', async () => {

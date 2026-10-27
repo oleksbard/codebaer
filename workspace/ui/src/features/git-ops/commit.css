@@ -74,10 +74,35 @@
     .busy { gap: 6px; }
   }
 
+  .msg {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+
+    &.ai textarea { padding-right: 34px; }
+  }
+
+  /* the button shows only while the box is empty, so the box is one line tall and centring places it in it */
+  .ai-slot {
+    position: absolute;
+    top: 0;
+    right: 4px;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+
+    .ico {
+      width: 24px;
+      height: 24px;
+
+      &:hover { background: var(--accent-soft); color: var(--accent); }
+    }
+  }
+
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .hint { color: var(--faint); font-size: var(--fs-1); }
-  .r { display: flex; align-items: center; gap: 6px; }
-  .ai-wrap { display: flex; }
+  .ai-wrap { display: flex; pointer-events: auto; }
 
   .ai-wrap .ico.busy svg {
     animation: none;
