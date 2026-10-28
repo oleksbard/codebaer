@@ -69,6 +69,8 @@ export type Stash = {
 export type Commit = { oid: string; summary: string; author: string; time: number };
 /** The commits a push would send, newest first; `more` when there are more than the backend lists. */
 export type Outgoing = { commits: Commit[]; more: boolean };
+/** The AI's reading of a failed git command: what went wrong, and how to make it pass. */
+export type FailureHint = { tldr: string; fix: string };
 
 export type AppError =
   | { kind: 'Git' | 'Io' | 'InvalidPath' | 'Ai'; detail: string }
@@ -168,6 +170,7 @@ export const git = {
   aiCommitMessage: () => invoke<string>('ai_commit_message'),
   /** null when there is nothing to stash. */
   aiStashDescription: (kind: StashKind) => invoke<string | null>('ai_stash_description', { kind }),
+  aiExplainFailure: (message: string) => invoke<FailureHint>('ai_explain_failure', { message }),
   settings: () => invoke<Settings>('settings_get'),
   saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
   commands: () => invoke<CustomCommand[]>('commands_get'),

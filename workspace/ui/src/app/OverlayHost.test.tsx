@@ -201,13 +201,106 @@ describe('error dialog', () => {
     expect(document.querySelector('.dialog.error')).not.toBeNull();
     expect(document.querySelector('.dialog-title')!.textContent).toBe('Push failed');
     expect(document.querySelector('.dialog-body')!.textContent).toBe('rejected: non-fast-forward');
-    expect(document.querySelector('.dialog-actions .btn:not(.primary)')).toBeNull();
+    expect(document.querySelector('.dialog-actions .btn:not(.primary):not(.copy)')).toBeNull();
+    expect(document.querySelector('.ai-hint')).toBeNull();
     const close = document.querySelector<HTMLButtonElement>('.dialog-actions .btn.primary')!;
     expect(close.textContent).toBe('Close');
+    expect(document.activeElement).toBe(close);
     close.click();
     await expect(p).resolves.toBeUndefined();
     await exitTick();
     expect(document.querySelector('.dialog')).toBeNull();
+  });
+
+  it('Copy puts the title and the whole log on the clipboard, and a failure shows as a toast', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const message = 'Commit failed\n✖ oxlint:\n  2 errors\nhusky - pre-commit script failed (code 1)';
+    void errorDialog(message);
+    await tick();
+    const copy = document.querySelector<HTMLButtonElement>('.dialog-actions .copy')!;
+    expect(copy.textContent).toBe('Copy');
+    copy.click();
+    await tick();
+    expect(writeText).toHaveBeenCalledWith(message);
+    expect(copy.textContent).toBe('Copied');
+    expect(document.querySelector('.dialog [role="status"]')!.textContent).toBe('Copied to the clipboard');
+
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    copy.click();
+    await tick();
+    expect(copy.textContent).toBe('Copy');
+    expect(S.toasts.map((t) => [t.message, t.kind])).toEqual([['Could not copy the error: Error: denied', 'err']]);
+  });
+
+  it('shows the AI reading the log, then its answer above the log, which Copy takes too', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    let answer!: (hint: { tldr: string; fix: string }) => void;
+    void errorDialog('Push failed\nrejected\nhint: pull first', () => new Promise((r) => { answer = r; }));
+    await tick();
+    const hint = document.querySelector('.ai-hint')!;
+    expect(hint.querySelector('.ai-hint-phrase')!.textContent).toBe('Reading the log…');
+    expect(hint.getAttribute('aria-busy')).toBe('true');
+    document.querySelector<HTMLButtonElement>('.dialog-actions .copy')!.click();
+    await tick();
+    expect(writeText).toHaveBeenLastCalledWith('Push failed\nrejected\nhint: pull first');
+
+    answer({ tldr: 'The remote has new commits.', fix: 'Pull, then push again.' });
+    await tick();
+    expect(document.querySelector('.ai-hint-busy')).toBeNull();
+    expect(hint.getAttribute('aria-busy')).toBe('false');
+    expect([...document.querySelectorAll('.ai-hint :is(dt, dd)')].map((d) => d.textContent))
+      .toEqual(['TL;DR', 'The remote has new commits.', 'Fix', 'Pull, then push again.']);
+    expect(hint.nextElementSibling!.className).toBe('dialog-body');
+    document.querySelector<HTMLButtonElement>('.dialog-actions .copy')!.click();
+    await tick();
+    expect(writeText).toHaveBeenLastCalledWith('Push failed\n\nTL;DR: The remote has new commits.\n'
+      + 'Fix: Pull, then push again.\n\nrejected\nhint: pull first');
+  });
+
+  it('steps through what the AI does while it reads, and stays on the last step', async () => {
+    // only the phrase timer is faked: React's scheduler and the frames exitTick waits on stay real
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const wait = async (ms: number) => { await vi.advanceTimersByTimeAsync(ms); await exitTick(); };
+    try {
+      void errorDialog('Push failed\nrejected', () => new Promise(() => {}));
+      await wait(0);
+      const phrase = () => document.querySelector('.ai-hint-phrase')!.textContent;
+      expect(phrase()).toBe('Reading the log…');
+      await wait(1600);
+      expect(phrase()).toBe('Finding what failed…');
+      for (let i = 0; i < 5; i++) await wait(1600);
+      expect(phrase()).toBe('Writing a fix…');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says why the AI gave no answer, with the last line of a long reason', async () => {
+    void errorDialog('Push failed\nrejected',
+      () => Promise.reject({ kind: 'Ai', detail: 'reading the log\nthinking\nerror: the model is overloaded\n' }));
+    await tick();
+    expect(document.querySelector('.ai-hint-failed')!.textContent)
+      .toBe('No AI summary: error: the model is overloaded');
+  });
+
+  it('drops an answer that comes after another dialog took its place', async () => {
+    let answer!: (hint: { tldr: string; fix: string }) => void;
+    void errorDialog('Commit failed\nhook failed', () => new Promise((r) => { answer = r; }));
+    const first = S.confirm!;
+    void errorDialog('Pull failed\nconflict');
+    answer({ tldr: 'late', fix: 'late' });
+    await tick();
+    expect(first.hint).toEqual({ state: 'busy' });
+    expect(S.confirm!.hint).toBeUndefined();
+    expect(document.querySelector('.ai-hint')).toBeNull();
+  });
+
+  it('a question has no Copy', async () => {
+    void confirmDialog('Discard all changes?');
+    await tick();
+    expect(document.querySelector('.dialog-actions .copy')).toBeNull();
   });
 });
 

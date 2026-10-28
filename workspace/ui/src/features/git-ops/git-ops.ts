@@ -30,6 +30,8 @@ export async function initRepo(): Promise<void> {
   }
 }
 
+const explain = () => (S.settings['general.headless-ai-provider'] === 'off' ? undefined : git.aiExplainFailure);
+
 export async function commit(): Promise<void> {
   if (S.committing) return;
   const msg = S.commitMessage.trim();
@@ -44,7 +46,7 @@ export async function commit(): Promise<void> {
     const gen = ++committedGen;
     setTimeout(() => { if (gen === committedGen) { S.committed = false; notify(); } }, DUR[5] * 1000);
   } catch (e) {
-    void errorDialog(`Commit failed\n${errText(e)}`);
+    void errorDialog(`Commit failed\n${errText(e)}`, explain());
   } finally {
     S.committing = false;
     notify();
@@ -114,7 +116,7 @@ export async function network(name: Net): Promise<void> {
     toast(NET[name].done, 'ok');
   } catch (e) {
     if (errKind(e) === 'Cancelled') toast('Cancelled', 'info');
-    else void errorDialog(`${NET[name].verb} failed\n${errText(e)}`);
+    else void errorDialog(`${NET[name].verb} failed\n${errText(e)}`, explain());
   } finally {
     S.cancellable = false;
     notify();

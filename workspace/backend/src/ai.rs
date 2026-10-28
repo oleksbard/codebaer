@@ -2,7 +2,7 @@ use crate::error::AppError;
 use crate::git::{self, AppState, StashKind};
 use crate::pty::{client::executable, daemon::login_shell};
 use crate::settings::{self, AiProvider};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
@@ -14,6 +14,8 @@ use tauri::{AppHandle, State};
 
 const SYSTEM: &str = "You write git commit messages. Describe the purpose of the change, not the edits. Infer the intent from the diff: what the change fixes, adds, or makes possible, and why. Simplified Technical English: short sentences, active voice, one idea per sentence, no filler. Format: line 1 is an imperative summary of the whole change, at most 50 characters. Add a body only when the summary is not enough: one blank line, then at most 2 sentences with the reason or the key consequence. Write the body as one paragraph on a single line, however long it gets; never break a sentence across lines. Never list files, functions, or individual edits. Output only the message: no quotes, no markdown, no commentary.";
 const STASH_SYSTEM: &str = "You label a git stash: uncommitted code changes that a developer puts aside to come back to later. The label is all they see in a list of stashes, so weeks later it must tell them at a glance what work the stash holds. Write one short sentence of at most 8 words, the way a developer tells a teammate what they were working on, such as: Adds dark mode to settings; Fixes the crash on file rename; Moves search into the sidebar. Name the feature, the fix or the idea the changes are for, not the edits that make it. When the changes do several things, name only the main one. Use plain words: never name files, functions, variables or other identifiers from the code. No period at the end. Output only the sentence: no quotes, no markdown, no commentary.";
+const FAILURE_SYSTEM: &str = "You explain a failed git command to the developer who ran it in a code review app. The first line names the command that failed; the rest is git's output, often with the log of a hook that ran before it. The developer sees your answer above that output, so keep it short. tldr: one sentence of at most 20 words, in plain words, on what went wrong; name the file, check or remote at fault when the output shows it. fix: at most 2 short sentences, 35 words in all, on what to change so the command succeeds; join several problems into one sentence, and add no last step such as running the command again. Fix the cause rather than skip a check. Use only what the output shows; when it does not show the cause, say so. Plain text: no markdown.";
+const FAILURE_SCHEMA: &str = r#"{"type":"object","properties":{"tldr":{"type":"string"},"fix":{"type":"string"}},"required":["tldr","fix"],"additionalProperties":false}"#;
 const ICON_SYSTEM: &str = "You pick one icon for each command in a developer tool's command menu. Each command has a name and the shell line it runs. Pick the icon a developer recognises fastest as that command's purpose. For an action such as test, build, lint, format or deploy, pick an icon for the action, not the logo of the tool that runs it. Pick a brand logo only when the command is about that product itself, such as opening Chrome or starting Docker. Answer with ids from the given lists, exactly as written. Give two commands the same icon only when they do the same thing.";
 const REPO_ICON_SYSTEM: &str = "You pick one icon for each software project in a developer tool's project switcher, where the icon stands in for the project's name. Each project has the name the switcher shows, its folder name and, when it has one, a line from its README or manifest. Pick the icon a developer recognises fastest as that project: what the product is or what it does, not the language or the tools it is built with. Pick a brand logo only when the project is about that product itself, such as a VS Code extension or a Docker setup. Answer with ids from the given lists, exactly as written. Give two projects the same icon only when they are the same kind of thing.";
 const ICON_SCHEMA: &str = r#"{"type":"object","properties":{"icons":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"},"icon":{"type":"string"}},"required":["n","icon"],"additionalProperties":false}}},"required":["icons"],"additionalProperties":false}"#;
@@ -24,6 +26,8 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 const SHELL_TIMEOUT: Duration = Duration::from_secs(10);
 // ponytail: the summary needs the shape of the change, not a whole lockfile churn; raise if messages miss real edits
 const MAX_DIFF: usize = 200 * 1024;
+/// A hook's log ends with its error, so a longer failure keeps its tail.
+const MAX_LOG: usize = 50 * 1024;
 /// Enough of a shell line to tell what it does.
 const MAX_LINE: usize = 500;
 /// Enough of a failed run's stderr to hold its error; codex writes its whole run there.
@@ -342,6 +346,49 @@ pub async fn ai_stash_description(app: AppHandle, state: State<'_, AppState>, ki
         .map_err(|e| AppError::Ai(e.to_string()))?
 }
 
+#[derive(Debug, PartialEq, Serialize)]
+pub struct FailureHint {
+    pub tldr: String,
+    pub fix: String,
+}
+
+/// The first line names the command that failed, so it stays when the rest is cut to its tail.
+fn failure_input(message: &str) -> String {
+    if message.chars().count() <= MAX_LOG {
+        return message.to_string();
+    }
+    let (head, rest) = message.split_once('\n').unwrap_or(("", message));
+    format!("{head}\n…\n{}", tail(rest, MAX_LOG))
+}
+
+fn failure_hint(reply: &Value) -> Option<FailureHint> {
+    let field = |k: &str| reply[k].as_str().map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|s| !s.is_empty());
+    Some(FailureHint { tldr: field("tldr")?, fix: field("fix")? })
+}
+
+pub fn explain_failure_impl(provider: AiProvider, message: &str) -> Result<FailureHint, AppError> {
+    let Some(c) = cli(provider) else {
+        return Err(AppError::Ai("AI failure summaries are off. Turn them on in Settings.".into()));
+    };
+    let input = failure_input(message);
+    let a = Ask {
+        system: FAILURE_SYSTEM,
+        instruction: "Explain this failure:",
+        input: &input,
+        claude_model: "sonnet",
+        schema: Some(FAILURE_SCHEMA),
+    };
+    let out = ask(provider, &a)?;
+    json_object(&out).as_ref().and_then(failure_hint).ok_or_else(|| AppError::Ai(format!("{} gave no summary", c.bin)))
+}
+
+#[tauri::command]
+pub async fn ai_explain_failure(app: AppHandle, message: String) -> Result<FailureHint, AppError> {
+    tauri::async_runtime::spawn_blocking(move || explain_failure_impl(settings::load(&app).headless_ai_provider, &message))
+        .await
+        .map_err(|e| AppError::Ai(e.to_string()))?
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct IconItem {
     pub name: String,
@@ -628,6 +675,24 @@ mod tests {
     fn a_long_error_keeps_its_end() {
         assert_eq!(tail("abcdef", 3), "def");
         assert_eq!(tail("ab", 3), "ab");
+    }
+
+    #[test]
+    fn a_long_failure_keeps_the_command_and_the_end_of_its_log() {
+        assert_eq!(failure_input("Push failed\nrejected"), "Push failed\nrejected");
+        let log = format!("{}the error", "x".repeat(MAX_LOG));
+        let input = failure_input(&format!("Commit failed\n{log}"));
+        assert!(input.starts_with("Commit failed\n…\nx"), "{}", &input[..30]);
+        assert!(input.ends_with("the error"));
+        assert_eq!(input.chars().count(), "Commit failed\n…\n".chars().count() + MAX_LOG);
+    }
+
+    #[test]
+    fn a_failure_hint_needs_both_answers_on_one_line_each() {
+        let reply = serde_json::json!({ "tldr": "The hook\nfailed.", "fix": " Fix the lint error. " });
+        assert_eq!(failure_hint(&reply), Some(FailureHint { tldr: "The hook failed.".into(), fix: "Fix the lint error.".into() }));
+        assert_eq!(failure_hint(&serde_json::json!({ "tldr": "The hook failed.", "fix": "  " })), None);
+        assert_eq!(failure_hint(&serde_json::json!({ "tldr": "The hook failed." })), None);
     }
 
     #[test]

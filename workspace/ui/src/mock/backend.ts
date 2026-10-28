@@ -1,7 +1,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import type { AppError, Blob, BlameLine, Branch, BranchInfo, DiffStat, Eol, FileText, IconItem, IconSet, LimitWindow,
-  Listing,
+import type { AppError, Blob, BlameLine, Branch, BranchInfo, DiffStat, Eol, FailureHint, FileText, IconItem, IconSet,
+  LimitWindow, Listing,
   Opened, Outgoing, Recent, RepoItem, Rev, Scripts, SearchMsg, StageResult, Stash, StashKind, Status, Update,
 } from '#ipc/git';
 import {
@@ -379,6 +379,16 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
       await sleep(opts.slow);
       const what = paths.length === 1 ? basename(paths[0]!) : `${basename(paths[0]!)} and ${paths.length - 1} more`;
       return `Changes ${what}. Written by browser mode from the stashed paths, not by an AI.`;
+    },
+    ai_explain_failure: async ({ message }: { message: string }): Promise<FailureHint> => {
+      if (settings['general.headless-ai-provider'] === 'off') {
+        throw { kind: 'Ai', detail: 'AI failure summaries are off. Turn them on in Settings.' } satisfies AppError;
+      }
+      await sleep(opts.slow);
+      return {
+        tldr: `${message.split('\n')[0]!}, read by browser mode, not by an AI.`,
+        fix: 'Read the log below, fix what it names, then try again.',
+      };
     },
     settings_get: (): Settings => ({ ...settings }),
     settings_set: ({ settings: s }: { settings: Settings }) => { settings = { ...s }; },

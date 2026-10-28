@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { FailureHint } from '#ipc/git';
 import type { Item } from './pick';
 
 export type ToastKind = 'info' | 'ok' | 'warn' | 'err';
@@ -7,11 +8,12 @@ export type Toast = { id: number; message: string; kind: ToastKind };
 export type PaletteRequest = {
   id: number; items: Item<unknown>[]; placeholder: string; wide: boolean; resolve(v: unknown): void;
 };
+export type ErrorHint = { state: 'busy' } | ({ state: 'done' } & FailureHint) | { state: 'failed'; reason: string };
 /** `ok` and `alt` relabel OK and add a second answer beside it, which `resolve` reports as 'alt'. `id` keys the
  *  dialog, as it keys the palette: a request that arrives while the last dialog is still in its exit animation
  *  mounts a dialog of its own, which takes focus, instead of reviving the closing one, which cannot. */
 export type ConfirmRequest = {
-  id: number; message: string; error?: boolean; ok?: string; cancel?: string; alt?: string;
+  id: number; message: string; error?: boolean; ok?: string; cancel?: string; alt?: string; hint?: ErrorHint;
   resolve(answer: boolean | 'alt'): void;
   /** Called instead of `resolve` when another dialog replaces this one. */
   displaced?(): void;

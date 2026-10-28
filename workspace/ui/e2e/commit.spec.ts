@@ -33,4 +33,5 @@ test('a rejected push shows why', async ({ page, open }) => {
   await page.getByRole('button', { name: 'Push 1 commit' }).click();
   await mock.idle();
   await expect(page.getByText('rejected: non-fast-forward')).toBeVisible();
+  await expect(page.locator('.ai-hint dd').first()).toHaveText('Push failed, read by browser mode, not by an AI.');
 });

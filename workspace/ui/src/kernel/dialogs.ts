@@ -1,5 +1,8 @@
+import { errText, type FailureHint } from '#ipc/git';
 import { logError } from '#ipc/log';
-import { notify, S, type ConfirmRequest, type DeepReadonly, type PromptRequest, type ToastKind } from './store';
+import {
+  notify, S, type ConfirmRequest, type DeepReadonly, type ErrorHint, type PromptRequest, type ToastKind,
+} from './store';
 
 let nextId = 1;
 const TOAST_MS = 6000;
@@ -102,13 +105,33 @@ export function choiceDialog(message: string, ok: string, alt: string): Promise<
   });
 }
 
-/** Git failures are long and worth reading; a dialog blocks until it is dismissed, a toast does not. */
-export function errorDialog(message: string): Promise<void> {
+type Explain = (message: string) => Promise<FailureHint>;
+
+/** Git failures are long and worth reading; a dialog blocks until it is dismissed, a toast does not. `explain`
+ *  reads the failure with the AI, and the dialog shows its answer once it comes. */
+export function errorDialog(message: string, explain?: Explain): Promise<void> {
   displace();
   return new Promise((resolve) => {
-    S.confirm = { id: nextId++, message, error: true, resolve: () => resolve() };
+    const req: ConfirmRequest = { id: nextId++, message, error: true, resolve: () => resolve() };
+    S.confirm = req;
+    if (explain) {
+      req.hint = { state: 'busy' };
+      void explainInto(req, explain);
+    }
     notify();
   });
+}
+
+async function explainInto(req: ConfirmRequest, explain: Explain): Promise<void> {
+  let hint: ErrorHint;
+  try {
+    hint = { state: 'done', ...await explain(req.message) };
+  } catch (e) {
+    hint = { state: 'failed', reason: errText(e) };
+  }
+  if (S.confirm !== req) return;
+  req.hint = hint;
+  notify();
 }
 
 /** `wide` is for a value that runs long, such as a branch name made from an issue title. */

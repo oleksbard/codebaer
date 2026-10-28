@@ -279,6 +279,17 @@ kbd {
 
     .dialog-title { padding-right: 24px; }
   }
+
+  /* a git failure carries a hook's whole log: the dialog grows with its longest line, and the log gives up
+     height first so Close stays on screen */
+  &.alert.error {
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    min-width: min(440px, calc(100vw - 32px));
+    max-width: min(880px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+  }
 }
 
 @keyframes dialog-in {
@@ -313,10 +324,17 @@ kbd {
 }
 
 .dialog.error .dialog-body {
+  padding: 8px 10px;
+  background: var(--chrome);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
   font: var(--fs-2)/1.5 var(--mono);
   color: var(--text);
-  max-height: 40vh;
+  overflow-wrap: anywhere;
+  max-height: 60vh;
   overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .dialog-actions {
@@ -325,7 +343,10 @@ kbd {
   gap: 8px;
 }
 
-.dialog-actions .alt { margin-right: auto; }
+.dialog-actions .alt,
+.dialog-actions .copy { margin-right: auto; }
+
+.dialog-actions .copy svg { color: var(--muted); }
 
 .check {
   flex: none;

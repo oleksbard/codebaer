@@ -2,14 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useApp, type DeepReadonly } from '#kernel/store';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
-import { CHECK, StrokeIcon } from '#ui/Icon';
+import { CHECK, COPY, StrokeIcon } from '#ui/Icon';
 import { Spinner } from '#ui/Spinner';
 import { useLatest } from '#ui/useLatest';
 import { checkAgain, closeAiTools, copyInstall, openGuide } from './actions';
 import { TOOLS, type Tool } from './catalog';
 import type { AiTools } from './state';
 
-const COPY = 'M5.5 5.5h7v7h-7zM10.5 3.5h-7v7';
 const EXTERNAL = 'M9 3.5h3.5V7M12.5 3.5 7.5 8.5M11 9.5v3H3.5V5h3';
 const COPIED_MS = 1500;
 

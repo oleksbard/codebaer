@@ -123,6 +123,28 @@ describe('a failed commit', () => {
     S.confirm!.resolve(false);
     S.confirm = null;
   });
+
+  it('has the AI explain it while the AI is on, and not while it is off', async () => {
+    g.push!.mockRejectedValueOnce({ kind: 'Git', detail: 'rejected (fetch first)' });
+    await network('push');
+    expect(S.confirm?.hint).toBeUndefined();
+    expect(g.aiExplainFailure!).not.toHaveBeenCalled();
+
+    S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+    try {
+      S.toasts = [];
+      S.commitMessage = 'a message';
+      g.aiExplainFailure!.mockResolvedValueOnce({ tldr: 'The lint hook failed.', fix: 'Fix the lint error.' });
+      g.commit!.mockRejectedValueOnce({ kind: 'Git', detail: 'pre-commit hook failed' });
+      await commit();
+      expect(g.aiExplainFailure!).toHaveBeenCalledWith('Commit failed\npre-commit hook failed');
+      await vi.waitFor(() => expect(S.confirm?.hint)
+        .toEqual({ state: 'done', tldr: 'The lint hook failed.', fix: 'Fix the lint error.' }));
+    } finally {
+      S.settings = { ...S.settings, 'general.headless-ai-provider': 'off' };
+      S.confirm = null;
+    }
+  });
 });
 
 describe('the branch row', () => {

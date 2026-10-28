@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { closePalette, fuzzy } from '#kernel/pick';
+import { copyText } from '#kernel/clipboard';
 import { closeConfirm, closePrompt, holdToast, removeToast } from '#kernel/dialogs';
 import { AlertDialog } from '#ui/AlertDialog';
 import { Button } from '#ui/Button';
@@ -7,8 +8,11 @@ import { Dialog } from '#ui/Dialog';
 import { Kbd } from '#ui/Kbd';
 import { Presence } from '#ui/Presence';
 import { Reveal } from '#ui/Reveal';
+import { Spinner } from '#ui/Spinner';
 import { Toasts } from '#ui/Toasts';
-import { useApp, type ConfirmRequest, type DeepReadonly, type PaletteRequest, type PromptRequest } from '#kernel/store';
+import {
+  useApp, type ConfirmRequest, type DeepReadonly, type ErrorHint, type PaletteRequest, type PromptRequest,
+} from '#kernel/store';
 import { chords } from '#kernel/keymap';
 import { features } from '#kernel/registry';
 
@@ -114,6 +118,53 @@ function ConfirmDialog({ req }: { req: DeepReadonly<ConfirmRequest> }) {
   const title = i < 0 ? req.message : req.message.slice(0, i);
   const body = i < 0 ? undefined : req.message.slice(i + 1);
   return <AlertDialog title={title} body={body} confirmLabel={req.error ? 'Close' : req.ok ?? 'OK'}
-    cancelLabel={req.cancel} altLabel={req.alt} error={req.error} onResult={(ok) => closeConfirm(req, ok)}
-    onAlt={() => closeConfirm(req, 'alt')} />;
+    cancelLabel={req.cancel} altLabel={req.alt} error={req.error}
+    copy={req.error ? () => copyText(withHint(title, body, req.hint), 'error') : undefined}
+    onResult={(ok) => closeConfirm(req, ok)} onAlt={() => closeConfirm(req, 'alt')}>
+    {req.hint ? <AiHint hint={req.hint} /> : null}
+  </AlertDialog>;
+}
+
+function withHint(title: string, body: string | undefined, hint: DeepReadonly<ErrorHint> | undefined): string {
+  const answer = hint?.state === 'done' ? `TL;DR: ${hint.tldr}\nFix: ${hint.fix}` : undefined;
+  return answer ? [title, answer, body].filter(Boolean).join('\n\n') : [title, body].filter(Boolean).join('\n');
+}
+
+/** What the AI does while it reads, in order; the last stays until it answers. */
+const PHRASES = ['Reading the log…', 'Finding what failed…', 'Tracing the cause…', 'Writing a fix…'];
+const PHRASE_MS = 1600;
+
+function Waiting() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (n >= PHRASES.length - 1) return;
+    const t = setTimeout(() => setN(n + 1), PHRASE_MS);
+    return () => clearTimeout(t);
+  }, [n]);
+  return (
+    <p className="ai-hint-busy">
+      <Spinner />
+      <span key={n} className="ai-hint-phrase" aria-hidden="true">{PHRASES[n]}</span>
+      <span className="sr-only">The AI is reading the log</span>
+    </p>
+  );
+}
+
+/** A CLI that fails can leave its whole run as the reason, which ends with the error. */
+const lastLine = (text: string): string => text.trim().split('\n').at(-1) ?? '';
+
+function AiHint({ hint }: { hint: DeepReadonly<ErrorHint> }) {
+  return (
+    <div className="ai-hint" role="status" aria-busy={hint.state === 'busy'}>
+      {hint.state === 'busy' ? <Waiting /> : null}
+      <Reveal when={hint.state === 'done'}>
+        {hint.state === 'done'
+          ? <dl><dt>TL;DR</dt><dd>{hint.tldr}</dd><dt>Fix</dt><dd>{hint.fix}</dd></dl>
+          : null}
+      </Reveal>
+      <Reveal when={hint.state === 'failed'}>
+        {hint.state === 'failed' ? <p className="ai-hint-failed">No AI summary: {lastLine(hint.reason)}</p> : null}
+      </Reveal>
+    </div>
+  );
 }

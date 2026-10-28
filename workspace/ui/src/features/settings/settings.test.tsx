@@ -146,6 +146,7 @@ describe('settings dialog', () => {
     await tick();
     expect([...document.querySelectorAll('.tip li')].map((li) => li.textContent)).toEqual([
       'Writes the commit message from the staged diff', 'Describes what each stash holds',
+      "Explains a failed commit, push, pull or fetch from git's output",
       'Picks an icon for each repository in the switcher',
       'Picks an icon for each command in the command menu, and for each terminal',
     ]);

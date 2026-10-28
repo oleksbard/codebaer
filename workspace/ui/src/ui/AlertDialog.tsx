@@ -1,14 +1,22 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { AlertDialog as RA } from 'radix-ui';
 import { motion, useIsPresent } from 'motion/react';
 import { Button } from './Button';
+import { CopyButton } from './CopyButton';
 import { lastFocusOutside, restoreFocusTo } from './focus';
 import { CLOSE, StrokeIcon } from './Icon';
 import { IconButton } from './IconButton';
 import { DUR, EASE } from './motion';
 
+/** Radix focuses Cancel on open, and an error has none: without this nothing in it has focus, so Tab and Enter
+ *  reach the page behind it. */
+function focusClose(e: Event): void {
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>('.dialog-actions .primary')?.focus();
+}
+
 export function AlertDialog({
-  title, body, confirmLabel = 'OK', cancelLabel = 'Cancel', altLabel, error = false, onResult, onAlt,
+  title, body, confirmLabel = 'OK', cancelLabel = 'Cancel', altLabel, error = false, copy, onResult, onAlt, children,
 }: {
   title: string;
   body?: string | undefined;
@@ -17,8 +25,12 @@ export function AlertDialog({
   /** A second answer, on the far left like macOS puts Don't Save. */
   altLabel?: string | undefined;
   error?: boolean | undefined;
+  /** Shows a Copy button on the far left; true when the text reached the clipboard. */
+  copy?: (() => Promise<boolean>) | undefined;
   onResult(ok: boolean): void;
   onAlt?(): void;
+  /** Between the title and the body. */
+  children?: ReactNode;
 }) {
   const present = useIsPresent();
   const [opener] = useState(lastFocusOutside);
@@ -29,12 +41,15 @@ export function AlertDialog({
           <motion.div className="scrim" inert={!present} exit={{ opacity: 0 }}
             transition={{ duration: DUR[2], ease: EASE.std }} />
         </RA.Overlay>
-        <RA.Content asChild forceMount onCloseAutoFocus={restoreFocusTo(opener)}>
+        <RA.Content asChild forceMount onOpenAutoFocus={(e) => { if (error) focusClose(e); }}
+          onCloseAutoFocus={restoreFocusTo(opener)}>
           <motion.div className={`dialog alert${error ? ' error' : ''}`} inert={!present}
             exit={{ opacity: 0, scale: .98 }} transition={{ duration: DUR[2], ease: EASE.std }}>
             <RA.Title className="dialog-title">{title}</RA.Title>
+            {children}
             {body ? <RA.Description className="dialog-body">{body}</RA.Description> : null}
             <div className="dialog-actions">
+              {copy ? <CopyButton className="copy" copy={copy} done="Copied to the clipboard" /> : null}
               {altLabel && onAlt ? <Button className="alt" onClick={onAlt}>{altLabel}</Button> : null}
               {!error && <RA.Cancel asChild><Button>{cancelLabel}</Button></RA.Cancel>}
               <RA.Action asChild>

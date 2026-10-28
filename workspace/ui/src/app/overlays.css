@@ -121,3 +121,95 @@
   color: var(--muted);
   z-index: 30;
 }
+
+/* contained, so the answer wraps to the width the log gives the dialog instead of widening it when it comes */
+.ai-hint {
+  contain: inline-size;
+  flex: none;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  font-size: var(--fs-3);
+  -webkit-user-select: text;
+  user-select: text;
+
+  p { margin: 0; }
+
+  dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    margin: 0;
+  }
+
+  dt {
+    color: var(--muted);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    line-height: 1.75;
+  }
+
+  dd { margin: 0; }
+}
+
+.ai-hint-busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+/* the reason's last line can still run long */
+.ai-hint-failed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--muted);
+}
+
+.ai-hint-phrase {
+  display: inline-block;
+  animation: ai-hint-phrase-in var(--dur-3) var(--ease-out);
+}
+
+/* a light band sweeps the muted text; at rest the 300% gradient shows only its muted left third */
+@media (prefers-reduced-motion: no-preference) {
+  .ai-hint-phrase {
+    background: linear-gradient(90deg, var(--muted) 38%, var(--text) 50%, var(--muted) 62%) 0 0 / 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: ai-hint-phrase-in var(--dur-3) var(--ease-out),
+      ai-hint-shimmer calc(var(--dur-loop) * 1.5) linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-hint-phrase { animation-name: ai-hint-fade-in; }
+}
+
+:root[data-motion="lite"] .ai-hint-phrase {
+  background: none;
+  color: inherit;
+  animation: none;
+}
+
+@keyframes ai-hint-phrase-in {
+  from { opacity: 0; transform: translateY(3px); }
+}
+
+@keyframes ai-hint-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes ai-hint-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}

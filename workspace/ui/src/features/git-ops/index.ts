@@ -35,6 +35,9 @@ export const gitOps = defineFeature({
     icon: 'lucide:git-commit-horizontal',
   }, {
     command: 'ai_stash_description', label: 'Describes what each stash holds', icon: 'lucide:archive',
+  }, {
+    command: 'ai_explain_failure', label: "Explains a failed commit, push, pull or fetch from git's output",
+    icon: 'lucide:lightbulb',
   }],
   onRefresh: () => { onStatus(); void loadOutgoing(); },
   onRepoChange: { reset: () => { S.outgoing = NO_OUTGOING; } },
