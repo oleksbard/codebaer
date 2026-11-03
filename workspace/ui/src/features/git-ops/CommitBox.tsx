@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { keyLabel, matches } from '#kernel/keymap';
 import { refs, useApp } from '#kernel/store';
+import { SparkleIcon } from '#ui/AppIcons';
 import { Button } from '#ui/Button';
 import { Count } from '#ui/Count';
 import { CHECK, REFRESH, StrokeIcon } from '#ui/Icon';
@@ -13,15 +14,6 @@ import { aiMessage, cancel, checkout, commit, network, setCommitMessage } from '
 
 const PULL = 'M8 2v8M4.75 6.75 8 10l3.25-3.25M2.75 13.5h10.5';
 const PUSH = 'M8 10V3M4.75 6.25 8 3l3.25 3.25M2.75 13.5h10.5';
-
-function Sparkle() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-      <path d="M6.5 1Q7.1 5.4 11.5 6.5Q7.1 7.6 6.5 12Q5.9 7.6 1.5 6.5Q5.9 5.4 6.5 1z" />
-      <path d="M12.5 9.5Q12.8 11.7 15 12.2Q12.8 12.7 12.5 15Q12.2 12.7 10 12.2Q12.2 11.7 12.5 9.5z" />
-    </svg>
-  );
-}
 
 const commits = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
 
@@ -146,7 +138,7 @@ export function CommitBox({ staged, hidden }: { staged: number; hidden: boolean 
             <span className="ai-wrap">
               <IconButton id="ai-btn" label={aiOn ? 'Write the commit message with Claude' : AI_OFF} busy={s.aiBusy}
                 side="top" disabled={!aiOn || staged === 0 || s.aiBusy} onClick={() => void aiMessage()}>
-                <Sparkle />
+                <SparkleIcon />
               </IconButton>
             </span>
           </Tip>

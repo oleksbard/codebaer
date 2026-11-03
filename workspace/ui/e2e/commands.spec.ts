@@ -67,3 +67,21 @@ test('a command menu taller than the window scrolls, with Manage commands kept i
   await expect(last).toBeInViewport();
   await expect(page.getByRole('menuitem', { name: /Manage commands/ })).toBeInViewport();
 });
+
+test('with its button hidden in Settings, a command still runs from the app menu', async ({ page, open }) => {
+  const mock = await open();
+  await page.keyboard.press('ControlOrMeta+Comma');
+  await page.getByRole('tab', { name: 'Sidebar' }).click();
+  await page.locator('.setting').filter({ hasText: 'sidebar.commands' }).getByRole('radio', { name: 'Hide' }).click();
+  await mock.idle();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.task-b')).toHaveCount(0);
+
+  await page.locator('.brand').click();
+  await page.locator('.menu-sub').filter({ hasText: 'Commands' }).click();
+  await mock.idle();
+  await page.locator('.task-menu .menu-item').filter({ hasText: 'build' }).click();
+  await mock.idle();
+  expect(await mock.calls()).toContain('task_run');
+  await expect(page.locator('.dialog.task')).toBeVisible();
+});

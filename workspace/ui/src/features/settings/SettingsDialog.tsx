@@ -16,6 +16,7 @@ function OptionText({ option, id }: { option: Option; id: string }) {
   return (
     <div className="setting-text">
       <div className="setting-head">
+        {option.icon && <span className="setting-icon"><option.icon /></span>}
         <span className="setting-label" id={`${id}-label`}>{option.label}</span>
         {uses.length > 0 && (
           <InfoTip label={`What uses the ${option.label.replace(/^\w/, (c) => c.toLowerCase())}`}>

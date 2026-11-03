@@ -104,6 +104,14 @@
   gap: 6px;
 }
 
+/* the activity bar's 32px icon, at the label's size */
+.setting-icon {
+  display: grid;
+  color: var(--muted);
+
+  svg { width: 18px; height: 18px; }
+}
+
 .setting-label {
   font-size: var(--fs-3);
   font-weight: 500;

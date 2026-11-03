@@ -1,12 +1,16 @@
+import type { ComponentType } from 'react';
 import { AI_PROVIDERS, type SettingKey, type Settings } from '#ipc/settings';
 import { aiUses } from '#kernel/registry';
 import { S } from '#kernel/store';
+import { ChangesIcon, FilesIcon, PlayIcon, SearchIcon } from '#ui/AppIcons';
 import { THEMES } from '#ui/theme';
 
 export type Choice<K extends SettingKey> = { value: Settings[K]; label: string };
 export type Option = {
   [K in SettingKey]: {
     key: K; label: string; description: string; choices: Choice<K>[];
+    /** Drawn before the label. */
+    icon?: ComponentType;
     /** What depends on the option, read when the row renders so the list follows the registered features. */
     uses?(): { label: string; icon: string }[];
     /** Choices that cannot be picked right now, with the reason, keyed by value. */
@@ -115,6 +119,20 @@ export const SECTIONS: Section[] = [
         ],
       },
     ],
+  },
+  {
+    id: 'sidebar',
+    label: 'Sidebar',
+    options: ([
+      ['Changes', ChangesIcon], ['Files', FilesIcon], ['Search', SearchIcon], ['Commands', PlayIcon],
+    ] as const).map(([tab, icon]) => ({
+      key: `sidebar.${tab.toLowerCase() as Lowercase<typeof tab>}`,
+      label: tab,
+      icon,
+      description: `The ${tab} button in the activity bar, on the left of the window. `
+        + `When it is hidden, ${tab} still opens from the menu under the bear.`,
+      choices: [{ value: 'hide', label: 'Hide' }, { value: 'show', label: 'Show' }],
+    })),
   },
   // a list the user edits rather than choices, so SettingsDialog.tsx draws this pane itself
   { id: 'commands', label: 'Commands', options: [] },

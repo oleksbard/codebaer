@@ -7,33 +7,15 @@ import * as term from '#features/terminals';
 import { isExited, isTask, killTerminal, statusLabel, type TermIcon } from '#features/terminals';
 import type { Info, Task } from '#ipc/terminal';
 import { useApp, type DeepReadonly } from '#kernel/store';
+import { GearIcon, PlayIcon } from '#ui/AppIcons';
 import { Button } from '#ui/Button';
 import { Dialog } from '#ui/Dialog';
+import { StrokeIcon } from '#ui/Icon';
 import { inertOnClose, keepFocus } from '#ui/focus';
 import { Tip } from '#ui/Tip';
 import { useLatest } from '#ui/useLatest';
 import { closeTask, openTask, promoteTask, runTask, taskMenu } from './runner';
 import { outcome, withoutSharedPrefix } from './tasks';
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
-      strokeLinejoin="round" aria-hidden="true">
-      <path d="M5.25 3.25v9.5L12.75 8z" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" aria-hidden="true">
-      <circle cx="8" cy="8" r="4" strokeWidth="1.4" />
-      <circle cx="8" cy="8" r="1.5" strokeWidth="1.2" />
-      <path d="M12.5 8h2M1.5 8h2M8 12.5v2M8 1.5v2M11.2 11.2l1.4 1.4M3.4 3.4l1.4 1.4M4.8 11.2l-1.4 1.4M12.6 3.4l-1.4 1.4"
-        strokeWidth="2" />
-    </svg>
-  );
-}
 
 /** Cut at the start when it does not fit: the end of a command is what tells two apart. */
 function Command({ text }: { text: string }) {
@@ -48,17 +30,10 @@ function tone(s: DeepReadonly<Info>): string {
 /** Scripts are read per repo, so a switch never shows the last repo's list, not even for a frame. */
 type Listed = { root: string | null; scripts: Scripts | null; error: string | null };
 
-export function TaskMenu() {
+/** What the Commands menu lists. `load` reads the repo's scripts again, for a menu that opens. */
+function useTaskList() {
   const app = useApp();
   const [listed, setListed] = useState<Listed | null>(null);
-  // the icon's key, so each hidden run remounts it and plays the animation again
-  const [launched, setLaunched] = useState(0);
-  const tasks = app.terminals.filter(isTask);
-  const running = tasks.filter((t) => !isExited(t)).length;
-  const saved = app.commands.filter((c) => inMenu(c, app.root));
-  const here = listed?.root === app.root ? listed : null;
-  const scripts = (here?.scripts?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, app.root, sc.name));
-  const shown = withoutSharedPrefix(scripts.map((sc) => sc.command));
   const load = async () => {
     const root = app.root;
     let found: Scripts | null = null;
@@ -73,7 +48,83 @@ export function TaskMenu() {
     const shownScripts = (found?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, root, sc.name));
     void ensureIcons([...unpicked, ...shownScripts]);
   };
-  const run = (task: Task, icon: TermIcon) => {
+  return { listed, load };
+}
+
+type Run = (task: Task, icon: TermIcon) => void;
+
+/** The body of the Commands menu, in the Commands button's menu and in the app menu's Commands submenu. */
+function TaskItems({ listed, run }: { listed: Listed | null; run: Run }) {
+  const app = useApp();
+  const tasks = app.terminals.filter(isTask);
+  const saved = app.commands.filter((c) => inMenu(c, app.root));
+  const here = listed?.root === app.root ? listed : null;
+  const scripts = (here?.scripts?.scripts ?? []).filter((sc) => !scriptHidden(app.hiddenScripts, app.root, sc.name));
+  const shown = withoutSharedPrefix(scripts.map((sc) => sc.command));
+  return (
+    <>
+      <div className="task-scroll">
+        {tasks.length > 0 && (
+          <>
+            <div className="menu-label">Output</div>
+            {tasks.map((t) => (
+              <DropdownMenu.Item key={t.id} className="menu-item" onSelect={() => openTask(t.id)}>
+                <span className="name"><span className={`term-dot ${tone(t)}`} aria-hidden="true" />{t.title}</span>
+                <span className="detail">{outcome(t)?.text ?? statusLabel(t, Date.now())}</span>
+              </DropdownMenu.Item>
+            ))}
+            <DropdownMenu.Separator className="menu-sep" />
+          </>
+        )}
+        <div className="menu-label">Commands</div>
+        {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
+        {saved.map((c, i) => {
+          const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
+          return (
+            <Tip key={i} label={c.command} side="right" mono slow>
+              <DropdownMenu.Item className="menu-item"
+                onSelect={() => run({ t: 'Custom', ...c }, { name: c.name, command: c.command, icon: c.icon })}>
+                {commandTitle(c) === c.command
+                  ? <span className="name wide">{icon}{c.command}</span>
+                  : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
+              </DropdownMenu.Item>
+            </Tip>
+          );
+        })}
+        {here?.error && <div className="menu-empty">{here.error}</div>}
+        {here?.scripts && scripts.length > 0 && (
+          <>
+            <DropdownMenu.Separator className="menu-sep" />
+            <div className="menu-label">package.json · {here.scripts.runner}</div>
+            {scripts.map((sc, i) => (
+              <Tip key={sc.name} label={sc.command} side="right" mono slow>
+                <DropdownMenu.Item className="menu-item"
+                  onSelect={() => run({ t: 'Script', name: sc.name }, { ...sc, icon: null })}>
+                  <span className="name">
+                    <CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}
+                  </span>
+                  <Command text={shown[i] ?? sc.command} />
+                </DropdownMenu.Item>
+              </Tip>
+            ))}
+          </>
+        )}
+      </div>
+      <DropdownMenu.Separator className="menu-sep" />
+      <DropdownMenu.Item className="menu-item menu-foot" onSelect={() => void openSettings('commands')}>
+        <GearIcon />Manage commands…
+      </DropdownMenu.Item>
+    </>
+  );
+}
+
+export function TaskMenu() {
+  const app = useApp();
+  const { listed, load } = useTaskList();
+  // the icon's key, so each hidden run remounts it and plays the animation again
+  const [launched, setLaunched] = useState(0);
+  const running = app.terminals.filter((t) => isTask(t) && !isExited(t)).length;
+  const run: Run = (task, icon) => {
     if (task.t === 'Custom' && task.hide_terminal) setLaunched((n) => n + 1);
     void runTask(task, icon);
   };
@@ -96,60 +147,28 @@ export function TaskMenu() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu term-menu task-menu" side="right" align="start" sideOffset={6}
           collisionPadding={8} ref={inertOnClose} onCloseAutoFocus={keepFocus}>
-          <div className="task-scroll">
-            {tasks.length > 0 && (
-              <>
-                <div className="menu-label">Output</div>
-                {tasks.map((t) => (
-                  <DropdownMenu.Item key={t.id} className="menu-item" onSelect={() => openTask(t.id)}>
-                    <span className="name"><span className={`term-dot ${tone(t)}`} aria-hidden="true" />{t.title}</span>
-                    <span className="detail">{outcome(t)?.text ?? statusLabel(t, Date.now())}</span>
-                  </DropdownMenu.Item>
-                ))}
-                <DropdownMenu.Separator className="menu-sep" />
-              </>
-            )}
-            <div className="menu-label">Commands</div>
-            {saved.length === 0 && <div className="menu-empty">None saved{app.root ? ' for this repository' : ''}</div>}
-            {saved.map((c, i) => {
-              const icon = <CommandIcon name={c.name} command={c.command} icon={c.icon} />;
-              return (
-                <Tip key={i} label={c.command} side="right" mono slow>
-                  <DropdownMenu.Item className="menu-item"
-                    onSelect={() => run({ t: 'Custom', ...c }, { name: c.name, command: c.command, icon: c.icon })}>
-                    {commandTitle(c) === c.command
-                      ? <span className="name wide">{icon}{c.command}</span>
-                      : <><span className="name">{icon}{commandTitle(c)}</span><Command text={c.command} /></>}
-                  </DropdownMenu.Item>
-                </Tip>
-              );
-            })}
-            {here?.error && <div className="menu-empty">{here.error}</div>}
-            {here?.scripts && scripts.length > 0 && (
-              <>
-                <DropdownMenu.Separator className="menu-sep" />
-                <div className="menu-label">package.json · {here.scripts.runner}</div>
-                {scripts.map((sc, i) => (
-                  <Tip key={sc.name} label={sc.command} side="right" mono slow>
-                    <DropdownMenu.Item className="menu-item"
-                      onSelect={() => run({ t: 'Script', name: sc.name }, { ...sc, icon: null })}>
-                      <span className="name">
-                        <CommandIcon name={sc.name} command={sc.command} icon={null} />{sc.name}
-                      </span>
-                      <Command text={shown[i] ?? sc.command} />
-                    </DropdownMenu.Item>
-                  </Tip>
-                ))}
-              </>
-            )}
-          </div>
-          <DropdownMenu.Separator className="menu-sep" />
-          <DropdownMenu.Item className="menu-item menu-foot" onSelect={() => void openSettings('commands')}>
-            <GearIcon />Manage commands…
-          </DropdownMenu.Item>
+          <TaskItems listed={listed} run={run} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  );
+}
+
+/** The Commands menu as a submenu of another `DropdownMenu`. */
+export function TaskSubmenu() {
+  const { listed, load } = useTaskList();
+  return (
+    <DropdownMenu.Sub onOpenChange={(open) => { if (open) void load(); }}>
+      <DropdownMenu.SubTrigger className="menu-item menu-sub">
+        <PlayIcon />Commands<span className="chev"><StrokeIcon d="M6.5 4.5 10 8l-3.5 3.5" size={12} /></span>
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent className="menu term-menu task-menu" sideOffset={6} collisionPadding={8}
+          ref={inertOnClose}>
+          <TaskItems listed={listed} run={(task, icon) => void runTask(task, icon)} />
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
   );
 }
 

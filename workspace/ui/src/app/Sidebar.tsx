@@ -9,51 +9,27 @@ import { SearchPane } from '#features/search';
 import { findOrphans } from '#features/orphans';
 import { allChangesShown, QueueList, type QueueSection } from '#features/review';
 import { openSettings } from '#features/settings';
-import { TaskMenu } from '#features/tasks';
+import { TaskMenu, TaskSubmenu } from '#features/tasks';
 import { TerminalRail } from '#features/terminals';
 import { checkForUpdates } from '#features/updates';
 import { keyLabel } from '#kernel/keymap';
+import { run } from '#kernel/registry';
 import { useApp } from '#kernel/store';
 import { Count } from '#ui/Count';
 import { inertOnClose, keepFocus } from '#ui/focus';
 import { glowLayer } from '#ui/glow';
+import { REFRESH, StrokeIcon } from '#ui/Icon';
 import { Kbd } from '#ui/Kbd';
 import { LayoutGroup } from '#ui/List';
+import { ChangesIcon, FilesIcon, GearIcon, SearchIcon, SparkleIcon, TerminalIcon } from '#ui/AppIcons';
 import { Tabs } from '#ui/Tabs';
 import { setTab } from './actions';
 
-function ChangesIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
-      aria-hidden="true">
-      <circle cx="4.5" cy="3" r="1.75" />
-      <circle cx="4.5" cy="13" r="1.75" />
-      <circle cx="11.5" cy="3" r="1.75" />
-      <path d="M4.5 4.75v6.5M11.5 4.75v1.25a3 3 0 0 1-3 3h-4" />
-    </svg>
-  );
-}
-
-function FilesIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
-      strokeLinejoin="round" aria-hidden="true">
-      <path d="M6.5 1.75h3L12.75 5v6.25a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V2.5a.75.75 0 0 1 .75-.75z" />
-      <path d="M9.5 1.75V5h3.25" />
-      <path d="M10 14.25H4.75A.75.75 0 0 1 4 13.5V4.5" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.2"
-      strokeLinecap="round" aria-hidden="true">
-      <circle cx="7" cy="7" r="4.25" />
-      <path d="M10.25 10.25 13.5 13.5" />
-    </svg>
-  );
-}
+const TABS = [
+  { value: 'changes', caption: 'Changes', icon: <ChangesIcon />, command: null },
+  { value: 'files', caption: 'Files', icon: <FilesIcon />, command: 'files.show' },
+  { value: 'search', caption: 'Search', icon: <SearchIcon />, command: 'search.show' },
+] as const;
 
 function BrandMenu() {
   const s = useApp();
@@ -65,22 +41,33 @@ function BrandMenu() {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu" side="right" align="start" sideOffset={6} ref={inertOnClose}
-          onCloseAutoFocus={keepFocus}>
+        <DropdownMenu.Content className="menu app-menu" side="right" align="start" sideOffset={6}
+          ref={inertOnClose} onCloseAutoFocus={keepFocus}>
           <DropdownMenu.Item className="menu-item" onSelect={() => void openSettings()}>
-            Settings…<span className="detail"><Kbd>{keyLabel('settings.open')}</Kbd></span>
+            <GearIcon />Settings…<span className="detail"><Kbd>{keyLabel('settings.open')}</Kbd></span>
           </DropdownMenu.Item>
           <DropdownMenu.Item className="menu-item" onSelect={openAiTools}>
-            Explore AI Tools…
+            <SparkleIcon />Explore AI Tools…
           </DropdownMenu.Item>
           <DropdownMenu.Item className="menu-item" onSelect={() => void findOrphans()}>
-            Terminals and Orphans…
+            <TerminalIcon />Terminals and Orphans…
           </DropdownMenu.Item>
           {s.canUpdate && (
             <DropdownMenu.Item className="menu-item" onSelect={() => void checkForUpdates()}>
-              Check for Updates…
+              <StrokeIcon d={REFRESH} />Check for Updates…
             </DropdownMenu.Item>
           )}
+          <DropdownMenu.Separator className="menu-sep" />
+          {TABS.map((t) => (
+            <DropdownMenu.Item key={t.value} className="menu-item"
+              onSelect={() => { if (t.command) run(t.command); else void setTab(t.value); }}>
+              {t.icon}{t.caption}
+              {t.command && keyLabel(t.command) && (
+                <span className="detail"><Kbd>{keyLabel(t.command)}</Kbd></span>
+              )}
+            </DropdownMenu.Item>
+          ))}
+          <TaskSubmenu />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -90,24 +77,22 @@ function BrandMenu() {
 export function ActivityBar() {
   const s = useApp();
   const unstaged = s.status ? buildQueue(s.status).unstaged.length : 0;
-  const tabs = [
-    {
-      value: 'changes',
+  const tabs = TABS.filter((t) => s.settings[`sidebar.${t.value}`] !== 'hide').map((t) => (t.value === 'changes'
+    ? {
+      value: t.value,
       label: unstaged ? `Changes - ${unstaged} to review` : 'Changes',
-      caption: 'Changes',
+      caption: t.caption,
       icon: (
         <span className="tab-icon">
-          <ChangesIcon />
+          {t.icon}
           {unstaged > 0 &&
             <span className="tab-count" aria-hidden="true">
               <Count value={unstaged} format={(n) => n > 99 ? '99+' : String(n)} />
             </span>}
         </span>
       ),
-    },
-    { value: 'files', label: 'Files', caption: 'Files', icon: <FilesIcon /> },
-    { value: 'search', label: 'Search', caption: 'Search', icon: <SearchIcon /> },
-  ];
+    }
+    : { value: t.value, label: t.caption, caption: t.caption, icon: t.icon }));
   // one id, so the current-item fill slides between here and the terminal rail's own current tile
   const indicatorId = useId();
   return (
@@ -116,7 +101,7 @@ export function ActivityBar() {
       <LayoutGroup>
         <Tabs vertical value={s.tab} onValueChange={(v) => void setTab(v as Tab)} items={tabs}
           indicatorId={indicatorId} />
-        <TaskMenu />
+        {s.settings['sidebar.commands'] !== 'hide' && <TaskMenu />}
         <TerminalRail indicatorId={indicatorId} />
       </LayoutGroup>
     </div>

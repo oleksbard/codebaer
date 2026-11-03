@@ -7,6 +7,8 @@ export type AiProvider = 'off' | (typeof AI_PROVIDERS)[number];
 export const LIMIT_PROVIDERS = ['claude', 'codex'] as const;
 export type LimitProvider = (typeof LIMIT_PROVIDERS)[number];
 
+export type SidebarButton = 'show' | 'hide';
+
 /** Keyed by option key, the same flat shape as settings-codebaer.json and the Rust `Settings`. */
 export type Settings = {
   'general.headless-ai-provider': AiProvider; 'general.auto-fetch': 'on' | 'off';
@@ -14,6 +16,8 @@ export type Settings = {
   'limits.claude': 'on' | 'off'; 'limits.codex': 'on' | 'off';
   'appearance.theme': Theme;
   'appearance.diff-layout': 'unified' | 'side-by-side'; 'appearance.glow': GlowMode;
+  'sidebar.changes': SidebarButton; 'sidebar.files': SidebarButton; 'sidebar.search': SidebarButton;
+  'sidebar.commands': SidebarButton;
 };
 export type SettingKey = keyof Settings;
 
@@ -32,4 +36,5 @@ export const DEFAULTS: Settings = {
   'general.headless-ai-provider': 'off', 'general.auto-fetch': 'on', 'general.check-updates': 'on',
   'general.usage-data': 'off', 'limits.claude': 'on', 'limits.codex': 'on',
   'appearance.theme': DEFAULT_THEME, 'appearance.diff-layout': 'unified', 'appearance.glow': 'animated',
+  'sidebar.changes': 'show', 'sidebar.files': 'show', 'sidebar.search': 'show', 'sidebar.commands': 'show',
 };

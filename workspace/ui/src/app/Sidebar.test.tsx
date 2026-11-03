@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { tick } from '#test-setup';
+import { DEFAULTS } from '#ipc/settings';
 import type { FileEntry, Status } from '#ipc/git';
 import type { Row } from '#core/model';
 
 vi.mock('./actions', () => ({ setTab: vi.fn() }));
+vi.mock('#kernel/registry', async () => ({
+  ...(await vi.importActual<object>('#kernel/registry')), run: vi.fn(),
+}));
 vi.mock('#kernel/clipboard', () => {
   const copyPath = vi.fn();
   return {
@@ -31,6 +35,7 @@ const h = {
   openSettings: (await import('#features/settings')).openSettings,
   openAiTools: (await import('#features/ai-tools')).openAiTools,
   copyPath: (await import('#kernel/clipboard')).copyPath,
+  run: (await import('#kernel/registry')).run,
 } as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 /** Builds the Status whose buildQueue() yields exactly these rows. */
@@ -56,7 +61,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="host"></div>';
   S.status = null; S.files = []; S.tab = 'changes'; S.selected = null; S.open = null;
   S.filesOpen = new Set(); S.aiBusy = false; S.committing = false; S.commitMessage = ''; S.ignored = [];
-  S.ignoredKids = new Map(); S.settings = { ...S.settings, 'general.headless-ai-provider': 'claude' };
+  S.ignoredKids = new Map(); S.settings = { ...DEFAULTS, 'general.headless-ai-provider': 'claude' };
   root = createRoot(document.getElementById('host')!);
   flushSync(() => root.render(<Sidebar />));
   side = document.querySelector<HTMLElement>('.side')!;
@@ -76,19 +81,37 @@ async function render(unstaged: Row[], staged: Row[] = [], selected: string | nu
 }
 
 describe('brand menu', () => {
-  it('opens Settings and the AI tools from its items', async () => {
+  async function openBrand(): Promise<{ host: HTMLElement; bar: Root; items: HTMLElement[] }> {
     const host = document.body.appendChild(document.createElement('div'));
     const bar = createRoot(host);
     flushSync(() => bar.render(<ActivityBar />));
     host.querySelector<HTMLButtonElement>('.brand')!
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await tick();
-    const items = [...document.querySelectorAll<HTMLElement>('.menu-item')];
-    expect(items.map((i) => i.textContent)).toEqual(['Settings…⌘,', 'Explore AI Tools…', 'Terminals and Orphans…']);
+    return { host, bar, items: [...document.querySelectorAll<HTMLElement>('.menu-item')] };
+  }
+
+  it('opens Settings and the AI tools from its items, and lists each tab', async () => {
+    const { bar, items } = await openBrand();
+    expect(items.map((i) => i.textContent)).toEqual([
+      'Settings…⌘,', 'Explore AI Tools…', 'Terminals and Orphans…', 'Changes', 'Files⌘⇧E', 'Search⌘⇧F', 'Commands',
+    ]);
     items[0]!.click();
     expect(h.openSettings).toHaveBeenCalledTimes(1);
     items[1]!.click();
     expect(h.openAiTools).toHaveBeenCalledTimes(1);
+    bar.unmount();
+  });
+
+  it('still lists the tabs whose buttons the settings hide', async () => {
+    S.settings = { ...S.settings, 'sidebar.files': 'hide', 'sidebar.commands': 'hide' };
+    const { host, bar, items } = await openBrand();
+    expect([...host.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Changes', 'Search']);
+    expect(host.querySelector('.task-b')).toBeNull();
+    expect(items.map((i) => i.textContent)).toContain('Commands');
+    // the item runs what the shortcut it shows runs, which also opens a collapsed sidebar
+    items.find((i) => i.textContent.startsWith('Files'))!.click();
+    expect(h.run).toHaveBeenCalledWith('files.show');
     bar.unmount();
   });
 });

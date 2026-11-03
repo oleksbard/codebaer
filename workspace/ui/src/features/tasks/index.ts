@@ -15,4 +15,4 @@ export const tasks = defineFeature({
   overlays: [{ id: 'tasks', isOpen: () => S.taskView !== null, component: TaskOverlay }],
 });
 
-export { TaskMenu } from './TaskMenu';
+export { TaskMenu, TaskSubmenu } from './TaskMenu';

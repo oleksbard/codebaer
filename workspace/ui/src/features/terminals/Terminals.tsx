@@ -5,6 +5,7 @@ import type { Info } from '#ipc/terminal';
 import { keyLabel } from '#kernel/keymap';
 import { baseName } from '#kernel/paths';
 import { useApp, type DeepReadonly } from '#kernel/store';
+import { TerminalIcon } from '#ui/AppIcons';
 import { Button } from '#ui/Button';
 import { ContextMenu } from '#ui/ContextMenu';
 import { FileIcon } from '#ui/FileIcon';
@@ -82,16 +83,6 @@ function EndedIcon() {
       strokeLinecap="round" aria-hidden="true">
       <path d="M8 2.4v5.4" />
       <path d="M4.66 4.62a5.2 5.2 0 1 0 6.68 0" />
-    </svg>
-  );
-}
-
-function TerminalIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" />
-      <path d="M4.5 6.25 6.5 8l-2 1.75M8.25 9.75h3.25" />
     </svg>
   );
 }

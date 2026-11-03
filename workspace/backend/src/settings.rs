@@ -71,6 +71,15 @@ pub enum Glow {
     Animated,
 }
 
+/// Whether the activity bar shows a tab's button; a hidden tab still opens from the app menu.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarButton {
+    #[default]
+    Show,
+    Hide,
+}
+
 /// The ids of the frontend's `THEMES` in `workspace/ui/src/ui/theme.ts`; a theme added there needs its variant here.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -119,6 +128,14 @@ pub struct Settings {
     pub diff_layout: DiffLayout,
     #[serde(rename = "appearance.glow")]
     pub glow: Glow,
+    #[serde(rename = "sidebar.changes")]
+    pub sidebar_changes: SidebarButton,
+    #[serde(rename = "sidebar.files")]
+    pub sidebar_files: SidebarButton,
+    #[serde(rename = "sidebar.search")]
+    pub sidebar_search: SidebarButton,
+    #[serde(rename = "sidebar.commands")]
+    pub sidebar_commands: SidebarButton,
 }
 
 /// A command saved in Settings. `repo` is the canonical root of the one repository it belongs to, the
@@ -200,6 +217,10 @@ fn from_file(map: &Map<String, Value>) -> Settings {
         theme: choice(map, "appearance.theme"),
         diff_layout: choice(map, "appearance.diff-layout"),
         glow: choice(map, "appearance.glow"),
+        sidebar_changes: choice(map, "sidebar.changes"),
+        sidebar_files: choice(map, "sidebar.files"),
+        sidebar_search: choice(map, "sidebar.search"),
+        sidebar_commands: choice(map, "sidebar.commands"),
     }
 }
 
@@ -399,6 +420,10 @@ mod tests {
         theme: Theme::Codebaer,
         diff_layout: DiffLayout::Unified,
         glow: Glow::Animated,
+        sidebar_changes: SidebarButton::Show,
+        sidebar_files: SidebarButton::Show,
+        sidebar_search: SidebarButton::Show,
+        sidebar_commands: SidebarButton::Show,
     };
 
     #[test]
@@ -540,6 +565,7 @@ mod tests {
         let want = serde_json::json!({
             "general.headless-ai-provider": "claude", "general.auto-fetch": "on", "general.check-updates": "on",
             "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on", "appearance.theme": "codebaer", "appearance.diff-layout": "unified", "appearance.glow": "animated",
+            "sidebar.changes": "show", "sidebar.files": "show", "sidebar.search": "show", "sidebar.commands": "show",
         });
         assert_eq!(on_disk, want);
         let rose = Settings { theme: Theme::RosePineDawn, diff_layout: DiffLayout::SideBySide, ..CLAUDE };
@@ -568,6 +594,7 @@ mod tests {
             "general.check-updates": "on", "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on",
             "appearance.theme": "codebaer",
             "appearance.diff-layout": "unified", "appearance.glow": "animated",
+            "sidebar.changes": "show", "sidebar.files": "show", "sidebar.search": "show", "sidebar.commands": "show",
         });
         assert_eq!(on_disk, want);
     }
@@ -770,6 +797,7 @@ mod tests {
             json!({
                 "general.headless-ai-provider": ai, "general.auto-fetch": "on", "general.check-updates": "on",
                 "general.usage-data": "off", "limits.claude": "on", "limits.codex": "on", "appearance.theme": theme, "appearance.diff-layout": "unified", "appearance.glow": "animated",
+                "sidebar.changes": "show", "sidebar.files": "show", "sidebar.search": "show", "sidebar.commands": "show",
             })
         };
         assert!(serde_json::from_value::<Settings>(with("gpt", "codebaer")).is_err());

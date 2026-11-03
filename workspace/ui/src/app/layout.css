@@ -70,6 +70,14 @@
   img { display: block; width: 36px; height: 36px; border-radius: inherit; }
 }
 
+/* the activity bar's 32px icons are drawn at the size of the rest */
+.app-menu .menu-item {
+  align-items: center;
+
+  > svg { flex: none; width: 16px; height: 16px; margin-right: 10px; color: var(--muted); }
+  &[data-highlighted] > svg { color: var(--text); }
+}
+
 .tab-icon {
   position: relative;
   display: grid;

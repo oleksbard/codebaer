@@ -420,6 +420,14 @@ kbd {
   &[data-highlighted] { background: var(--sel); }
 }
 
+/* a submenu's trigger, which keeps its fill while the pointer is in the submenu */
+.menu-sub {
+  align-items: center;
+
+  &[data-state="open"] { background: var(--sel); }
+  .chev { display: grid; margin-left: auto; padding-left: 12px; color: var(--muted); }
+}
+
 .menu-sep {
   height: 1px;
   margin: 4px 0;
