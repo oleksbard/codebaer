@@ -39,6 +39,45 @@ test('the current terminal fills its tile, as the current tab of the activity ba
   expect(await page.locator('.rail-b:not(.on):not(.new) >> nth=0 >> .rail-ind').count()).toBe(0);
 });
 
+test('a terminal dragged along the rail keeps its place on reload, and never passes the New button',
+  async ({ page, open }) => {
+    const mock = await open();
+    const order = () => page.locator('.rail .rail-b')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-term') ?? 'new'));
+    const drag = async (id: number, to: string, edge: 'top' | 'bottom') => {
+      const from = (await page.locator(`.rail-b[data-term="${id}"]`).boundingBox())!;
+      const end = (await page.locator(to).boundingBox())!;
+      const x = from.x + from.width / 2;
+      const y0 = from.y + from.height / 2;
+      const y1 = edge === 'top' ? end.y : end.y + end.height;
+      await page.mouse.move(x, y0);
+      await page.mouse.down();
+      // a frame per step, as a hand moves: Motion reads the speed of the pointer to know which way it goes
+      for (let i = 1; i <= 12; i++) {
+        await page.mouse.move(x, y0 + (y1 - y0) * i / 12);
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+      }
+      await page.mouse.up();
+      await mock.idle();
+    };
+    await expect.poll(order).toEqual(['1', '2', 'new']);
+
+    // React keeps the dragged tile's node where it was here, so the browser clicks it on release
+    await drag(2, '.rail-b[data-term="1"]', 'top');
+    await expect.poll(order).toEqual(['2', '1', 'new']);
+    await expect(page.locator('.rail-b.on')).toHaveCount(0);
+
+    await page.reload();
+    await page.waitForSelector('html[data-mock-idle]', { state: 'attached' });
+    await mock.idle();
+    await expect.poll(order).toEqual(['2', '1', 'new']);
+
+    await drag(2, '.rail-b.new', 'bottom');
+    await expect.poll(order).toEqual(['1', '2', 'new']);
+    await page.locator('.rail-b[data-term="2"]').click();
+    await expect(page.locator('.rail-b.on')).toHaveAttribute('data-term', '2');
+  });
+
 test('an existing agent session is replayed into the rail', async ({ page, open }) => {
   const mock = await open();
   await page.keyboard.press('ControlOrMeta+Shift+T');

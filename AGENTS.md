@@ -208,7 +208,7 @@ Motion ships with the feature, not in a later pass, and most of it comes from th
   - UI that appears after an action or a background event: `<Reveal when>`, not `{cond && …}`. Its children take their data from props.
   - a number that changes: `<Count value>`.
   - the current item of a group: `Segmented`, `Tabs` or `TabIndicator`.
-  - a list whose rows come and go: `Presence` with stable keys (never the index), `ListRow` and `ListSection` from `ui/List.tsx` with a `layoutDependency`, and `Pop` for a tile.
+  - a list whose rows come and go: `Presence` with stable keys (never the index), `ListRow` and `ListSection` from `ui/List.tsx` with a `layoutDependency`, and `Pop` in a `PopList` for a tile that the pointer drags into a new order.
   - a message: `toast()`, or `updateToast()` for a result that replaces the toast in place.
 
   A surface that none of these covers gets a new primitive in `ui/`, not a one-off.

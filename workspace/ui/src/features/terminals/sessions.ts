@@ -5,6 +5,7 @@ import type { Info, ServerMsg, SpawnKind } from '#ipc/terminal';
 import { promptDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
 import { forgetIcon, restoreIcons, watchLong } from './icons';
+import { inSavedOrder } from './order';
 import { isTask, terminalsOf, wantsYou } from './status';
 import * as term from './xterm';
 
@@ -34,9 +35,9 @@ export function onTermEvent(m: ServerMsg): void {
   try {
     switch (m.t) {
       case 'Hello': {
-        S.terminals = m.sessions;
+        S.terminals = inSavedOrder(m.sessions);
         restoreIcons(m.sessions);
-        const rail = terminalsOf(m.sessions);
+        const rail = terminalsOf(S.terminals);
         if (!rail.some((t) => t.id === S.activeTerm)) S.activeTerm = rail.at(-1)?.id ?? null;
         taskEvents.hello(m.sessions);
         break;

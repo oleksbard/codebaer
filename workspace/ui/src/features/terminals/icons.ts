@@ -26,7 +26,7 @@ export function iconFor(s: DeepReadonly<Info>, kept: ReadonlyMap<number, DeepRea
 }
 
 /** The session's own pid tells it from one a newer host gave the same id. */
-const keyOf = (s: DeepReadonly<Info>): string | null => (s.pid == null ? null : `${s.id}:${s.pid}`);
+export const keyOf = (s: DeepReadonly<Info>): string | null => (s.pid == null ? null : `${s.id}:${s.pid}`);
 
 function asIcon(v: unknown): TermIcon | null {
   const it = v as Partial<TermIcon> | null | undefined;

@@ -11,12 +11,13 @@ import { FileIcon } from '#ui/FileIcon';
 import { inertOnClose, keepFocus } from '#ui/focus';
 import { Kbd } from '#ui/Kbd';
 import { heavyMotion } from '#ui/motion';
-import { Pop } from '#ui/Pop';
+import { Pop, PopList } from '#ui/Pop';
 import { Presence } from '#ui/Presence';
 import { TabIndicator } from '#ui/Tabs';
 import { Tip } from '#ui/Tip';
 import { ensureTermIcons, iconFor } from './icons';
 import { Away, OutsideBadge } from './OutsideBadge';
+import { reorderTerminals } from './order';
 import { closeTerminal, killTerminal, newTerminal, selectTerminal } from './sessions';
 import {
   agentNamed, agentOf, agentState, agentStatus, awayLabel, elapsed, homeFrom, isExited, shortCwd, statusLabel,
@@ -227,55 +228,59 @@ export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
     app.settings['general.headless-ai-provider'], ...icons.map((it) => `${it.icon}\n${it.name}\n${it.command}`),
   ].join('\0');
   useEffect(() => { ensureTermIcons(icons); }, [wanted]);
-  // only a session opening or closing changes this, never a keystroke elsewhere
-  const sessionKey = sessions.map((s) => s.id).join(',');
+  // only a session opening, closing or moving changes this, never a keystroke elsewhere
+  const ids = sessions.map((s) => s.id);
+  const sessionKey = ids.join(',');
   return (
     <div className="rail">
-      <Presence mode={heavyMotion() ? 'popLayout' : 'sync'}>
-        {sessions.map((s) => {
-          const wants = app.termAttention.has(s.id);
-          const home = homeFrom(s.cwd);
-          const away = awayLabel(s, app.root, home);
-          const name = names.get(s.id) ?? s.title;
-          // the number and the glyph are both decorative once the label carries the same words
-          const label = `${name} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
-            + `${wants ? ' · wants attention' : ''}`;
-          return (
-            <ContextMenu
-              key={s.id}
-              items={isExited(s)
-                ? [{ label: 'Close', onSelect: () => void closeTerminal(s.id) }]
-                : [
-                  { label: 'Kill', onSelect: () => void killTerminal(s.id) },
-                  // the host's Close kills a live session before dropping it
-                  { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
-                ]}
-            >
-              <Tip side="right" align="start"
-                label={<TermTip session={s} name={name} home={home} away={away} wants={wants} />}>
-                <Pop
-                  className={`rail-item rail-b${s.id === active ? ' on' : ''}${working(s) ? ' busy' : ''}`
-                    + `${away ? ' outside' : ''}`}
-                  layoutDependency={sessionKey}
-                  data-term={s.id}
-                  aria-current={s.id === active || undefined}
-                  aria-label={label}
-                  onClick={() => selectTerminal(s.id)}
-                >
-                  <span className="tile">
-                    {s.id === active && <TabIndicator id={id} value={active} className="rail-ind" leaveOnExit />}
-                    <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
-                    {away && <Away />}
-                    <Dot session={s} />
-                    {wants && <span className="bell" aria-hidden="true" />}
-                  </span>
-                  <span className="cap">{name}</span>
-                </Pop>
-              </Tip>
-            </ContextMenu>
-          );
-        })}
-      </Presence>
+      <PopList values={ids} onReorder={reorderTerminals}>
+        <Presence mode={heavyMotion() ? 'popLayout' : 'sync'}>
+          {sessions.map((s) => {
+            const wants = app.termAttention.has(s.id);
+            const home = homeFrom(s.cwd);
+            const away = awayLabel(s, app.root, home);
+            const name = names.get(s.id) ?? s.title;
+            // the number and the glyph are both decorative once the label carries the same words
+            const label = `${name} · ${statusLabel(s, Date.now(), home)}${away ? ` · ${away}` : ''}`
+              + `${wants ? ' · wants attention' : ''}`;
+            return (
+              <ContextMenu
+                key={s.id}
+                items={isExited(s)
+                  ? [{ label: 'Close', onSelect: () => void closeTerminal(s.id) }]
+                  : [
+                    { label: 'Kill', onSelect: () => void killTerminal(s.id) },
+                    // the host's Close kills a live session before dropping it
+                    { label: 'Kill & Close', onSelect: () => void closeTerminal(s.id) },
+                  ]}
+              >
+                <Tip side="right" align="start"
+                  label={<TermTip session={s} name={name} home={home} away={away} wants={wants} />}>
+                  <Pop
+                    value={s.id}
+                    className={`rail-item rail-b${s.id === active ? ' on' : ''}${working(s) ? ' busy' : ''}`
+                      + `${away ? ' outside' : ''}`}
+                    layoutDependency={sessionKey}
+                    data-term={s.id}
+                    aria-current={s.id === active || undefined}
+                    aria-label={label}
+                    onClick={() => selectTerminal(s.id)}
+                  >
+                    <span className="tile">
+                      {s.id === active && <TabIndicator id={id} value={active} className="rail-ind" leaveOnExit />}
+                      <TermGlyph session={s} fallback={<span className="num" aria-hidden="true">{s.id}</span>} />
+                      {away && <Away />}
+                      <Dot session={s} />
+                      {wants && <span className="bell" aria-hidden="true" />}
+                    </span>
+                    <span className="cap">{name}</span>
+                  </Pop>
+                </Tip>
+              </ContextMenu>
+            );
+          })}
+        </Presence>
+      </PopList>
       <NewMenu />
     </div>
   );
