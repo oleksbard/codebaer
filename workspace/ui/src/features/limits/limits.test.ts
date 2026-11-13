@@ -159,6 +159,21 @@ describe('reading the limits', () => {
     expect(asked()).toEqual(['claude', 'codex']);
   });
 
+  it('shows a spinner in place of the logo while it reads', async () => {
+    let answer: (windows: LimitWindow[]) => void = () => {};
+    g.usageLimits!.mockReturnValueOnce(new Promise((r) => { answer = r; }));
+    pills()[0]!.click();
+    await tick();
+    expect(pills()[0]!.dataset.busy).toBe('true');
+    expect(pills()[0]!.querySelector('.spinner')).not.toBeNull();
+    expect(pills()[0]!.querySelector('svg')).toBeNull();
+    answer(CLAUDE);
+    await settle();
+    expect(pills()[0]!.dataset.busy).toBeUndefined();
+    expect(pills()[0]!.querySelector('.spinner')).toBeNull();
+    expect(pills()[0]!.querySelector('svg')).not.toBeNull();
+  });
+
   it('keeps the last windows after a failed read, says why in the tip, and logs the reason once', async () => {
     g.usageLimits!.mockRejectedValue({ kind: 'Ai', detail: 'Not logged in' });
     pills()[0]!.click();

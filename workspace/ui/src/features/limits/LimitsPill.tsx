@@ -5,6 +5,7 @@ import { LIMIT_PROVIDERS, type LimitProvider } from '#ipc/settings';
 import { useApp } from '#kernel/store';
 import { Count } from '#ui/Count';
 import { Reveal } from '#ui/Reveal';
+import { Spinner } from '#ui/Spinner';
 import { Tip } from '#ui/Tip';
 import { agoText, headline, meterWindows, refreshLimit, resetText } from './limits';
 import type { Limits } from './state';
@@ -49,7 +50,8 @@ function LimitPill({ provider, limits, windows, busy }: {
         data-level={level(used)} data-stale={limits.error !== null || undefined} data-busy={busy || undefined}
         aria-label={`${name}: ${used}% used, ${head.label.toLowerCase()} limit`}
         onClick={() => void refreshLimit(provider)}>
-        {tool && <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d={tool.logo} /></svg>}
+        {busy ? <Spinner />
+          : tool && <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d={tool.logo} /></svg>}
         <Count value={used} format={pct} />
         <span className="limit-meters">
           {meterWindows(windows).map((w) => {

@@ -12,7 +12,9 @@
   font-variant-numeric: tabular-nums;
   transition: opacity var(--dur-2) var(--ease-std), background var(--dur-1) var(--ease-std);
 
-  svg { width: 11px; height: 11px; flex: none; }
+  /* the spinner takes the logo's place at the logo's size, so the pill keeps its width while it reads */
+  svg, .spinner { width: 11px; height: 11px; flex: none; }
+  .spinner { border-width: 1.5px; border-color: currentColor; border-top-color: transparent; }
   &:hover { background: var(--panel2); color: var(--text); }
   &[data-busy] { opacity: .6; }
   &[data-stale] { border-style: dashed; }
