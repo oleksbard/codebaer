@@ -37,6 +37,20 @@ pub fn kill_group(pid: u32) {
     signal_group(pid, libc::SIGKILL);
 }
 
+/// How long git gets after SIGTERM before SIGKILL. Git deletes its lock files on SIGTERM, but a SIGKILL leaves
+/// index.lock behind, and then every later write to the index fails until someone deletes it by hand.
+const STOP_GRACE: Duration = Duration::from_secs(1);
+
+fn stop_group(pid: u32, mut running: impl FnMut() -> bool) {
+    signal_group(pid, libc::SIGTERM);
+    let start = Instant::now();
+    while running() && start.elapsed() < STOP_GRACE {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // also after git exits: a hook that ignored SIGTERM still runs, and while it runs, no new process gets its group id
+    kill_group(pid);
+}
+
 fn signal_group(pid: u32, signal: libc::c_int) {
     // pid 0 means "this process's own group" and 1 is init/launchd: never valid
     // targets here, and passing either through to libc::kill would take out the
@@ -161,8 +175,9 @@ pub fn run_child(
         }
         if let Some(t) = timeout {
             if start.elapsed() > t {
-                kill_group(child.id());
                 guard.clear();
+                let pid = child.id();
+                stop_group(pid, || matches!(child.try_wait(), Ok(None)));
                 let _ = child.wait();
                 return Err(AppError::Timeout);
             }
@@ -1971,9 +1986,11 @@ pub fn cancel_impl(state: &AppState) {
     if state.net_waiting.load(Ordering::SeqCst) {
         state.cancelled.store(true, Ordering::SeqCst);
     }
-    if let Some(pid) = *state.net_pid.lock().unwrap_or_else(|e| e.into_inner()) {
+    let pid = *state.net_pid.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(pid) = pid {
         state.cancelled.store(true, Ordering::SeqCst);
-        kill_group(pid);
+        // the thread that runs the command clears the slot once git exits
+        stop_group(pid, || *state.net_pid.lock().unwrap_or_else(|e| e.into_inner()) == Some(pid));
     }
 }
 

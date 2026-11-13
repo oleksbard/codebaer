@@ -141,6 +141,7 @@ workspace/backend/src/   Rust backend
   ai.rs                  the local `claude` CLI: commit messages over `git diff --cached`, and command and repo icons
   browser.rs             opens an https page in the default browser
   updates.rs             the self-update through tauri-plugin-updater: check, download, install and restart
+  webcontent.rs          a stopped web content process (macOS): a few reloads with longer waits, then a restart dialog
   limits.rs              plan usage limits: `claude -p /usage`, and `account/rateLimits/read` on `codex app-server`
   telemetry.rs           opt-in anonymous usage data for PostHog: a fixed set of events and counts, the launch
                          count for the question, the hourly and quit summaries

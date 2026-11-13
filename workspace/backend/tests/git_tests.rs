@@ -87,13 +87,26 @@ fn run_times_out_and_kills_the_process_group() {
         .expect("hook should have written its pid before sleeping")
         .trim()
         .to_string();
-    // SIGKILL lands immediately but reaping the grandchild can lag by a beat,
+    // the signals land immediately but reaping the grandchild can lag by a beat,
     // so poll briefly instead of asserting on the very first sample.
     let gone = (0..20).any(|_| {
         std::thread::sleep(std::time::Duration::from_millis(50));
         !Command::new("ps").args(["-p", &pid]).output().unwrap().status.success()
     });
     assert!(gone, "hook process {pid} should have been killed with the process group");
+}
+
+#[test]
+fn a_timeout_leaves_no_index_lock() {
+    let d = repo();
+    let script = d.path().join("fsm.sh");
+    fs::write(&script, "#!/bin/sh\nsleep 30\n").unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    sh(d.path(), &["config", "core.fsmonitor", script.to_str().unwrap()]);
+    // add holds index.lock while it waits on the hook
+    let err = run(d.path(), &["add", "-A"], None, Some(std::time::Duration::from_millis(500))).unwrap_err();
+    assert_eq!(err, AppError::Timeout);
+    assert!(!d.path().join(".git/index.lock").exists());
 }
 
 #[test]

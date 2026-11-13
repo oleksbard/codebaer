@@ -16,6 +16,7 @@ pub mod tasks;
 pub mod telemetry;
 pub mod updates;
 pub mod watcher;
+pub mod webcontent;
 
 pub use error::AppError;
 
@@ -254,7 +255,7 @@ pub fn run_app() {
         })
         .enable_macos_default_menu(false);
     #[cfg(target_os = "macos")]
-    let builder = builder.menu(menu);
+    let builder = builder.menu(menu).on_web_content_process_terminate(webcontent::stopped);
     builder
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -297,12 +298,13 @@ pub fn run_app() {
             // both variants: closing the last window and the Quit menu item give ExitRequested, but Dock > Quit
             // and logout go through applicationWillTerminate, which tauri maps to Exit.
             // A rebuild SIGKILLs us and reaches neither, which is how the host tells them apart. A restart into
-            // an update whose host protocol matches skips it too, so the new app reattaches to the sessions.
+            // an update whose host protocol matches skips it too, so the new app reattaches to the sessions, and so
+            // does the restart after the page stopped working.
             let exiting = matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit);
             if exiting {
                 telemetry::exiting(app);
             }
-            if exiting && !updates::keeps_terminals() {
+            if exiting && !updates::keeps_terminals() && !webcontent::restarting() {
                 pty::client::shutdown(app);
             }
         });
