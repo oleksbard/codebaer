@@ -16,6 +16,8 @@ const SYSTEM: &str = "You write git commit messages. Describe the purpose of the
 const STASH_SYSTEM: &str = "You label a git stash: uncommitted code changes that a developer puts aside to come back to later. The label is all they see in a list of stashes, so weeks later it must tell them at a glance what work the stash holds. Write one short sentence of at most 8 words, the way a developer tells a teammate what they were working on, such as: Adds dark mode to settings; Fixes the crash on file rename; Moves search into the sidebar. Name the feature, the fix or the idea the changes are for, not the edits that make it. When the changes do several things, name only the main one. Use plain words: never name files, functions, variables or other identifiers from the code. No period at the end. Output only the sentence: no quotes, no markdown, no commentary.";
 const FAILURE_SYSTEM: &str = "You explain a failed git command to the developer who ran it in a code review app. The first line names the command that failed; the rest is git's output, often with the log of a hook that ran before it. The developer sees your answer above that output, so keep it short. tldr: one sentence of at most 20 words, in plain words, on what went wrong; name the file, check or remote at fault when the output shows it. fix: at most 2 short sentences, 35 words in all, on what to change so the command succeeds; join several problems into one sentence, and add no last step such as running the command again. Fix the cause rather than skip a check. Use only what the output shows; when it does not show the cause, say so. Plain text: no markdown.";
 const FAILURE_SCHEMA: &str = r#"{"type":"object","properties":{"tldr":{"type":"string"},"fix":{"type":"string"}},"required":["tldr","fix"],"additionalProperties":false}"#;
+const SESSION_SYSTEM: &str = "You name a terminal session in which a developer works with an AI coding agent. The name is the caption under the session's button in a narrow sidebar, where it tells the developer's sessions apart at a glance. Write one or two plain words of at most 10 characters each, in lowercase, such as: dark mode; login bug; flaky tests; docs update. Name the task the developer works on, not the agent, the repository or the act of asking. You get the developer's recent prompts to the agent, oldest first, and the session's current name when it has one. The newest prompt counts most. When the current name still fits the work, answer it unchanged; give a new name only when the work clearly moved to another task. Set sure to false when the prompts do not show a clear task, such as a greeting, a yes, a slash command or a short follow-up.";
+const SESSION_SCHEMA: &str = r#"{"type":"object","properties":{"name":{"type":"string"},"sure":{"type":"boolean"}},"required":["name","sure"],"additionalProperties":false}"#;
 const ICON_SYSTEM: &str = "You pick one icon for each command in a developer tool's command menu. Each command has a name and the shell line it runs. Pick the icon a developer recognises fastest as that command's purpose. For an action such as test, build, lint, format or deploy, pick an icon for the action, not the logo of the tool that runs it. Pick a brand logo only when the command is about that product itself, such as opening Chrome or starting Docker. Answer with ids from the given lists, exactly as written. Give two commands the same icon only when they do the same thing.";
 const REPO_ICON_SYSTEM: &str = "You pick one icon for each software project in a developer tool's project switcher, where the icon stands in for the project's name. Each project has the name the switcher shows, its folder name and, when it has one, a line from its README or manifest. Pick the icon a developer recognises fastest as that project: what the product is or what it does, not the language or the tools it is built with. Pick a brand logo only when the project is about that product itself, such as a VS Code extension or a Docker setup. Answer with ids from the given lists, exactly as written. Give two projects the same icon only when they are the same kind of thing.";
 const ICON_SCHEMA: &str = r#"{"type":"object","properties":{"icons":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"},"icon":{"type":"string"}},"required":["n","icon"],"additionalProperties":false}}},"required":["icons"],"additionalProperties":false}"#;
@@ -32,6 +34,8 @@ const MAX_LOG: usize = 50 * 1024;
 const MAX_LINE: usize = 500;
 /// Enough of a failed run's stderr to hold its error; codex writes its whole run there.
 const MAX_ERR: usize = 2000;
+/// The prompt asks for two words of 10; a longer answer is cut by the caption's clamp, a much longer one is not a name.
+const MAX_NAME: usize = 24;
 
 const PROVIDERS: [AiProvider; 3] = [AiProvider::Claude, AiProvider::Codex, AiProvider::Opencode];
 
@@ -389,6 +393,57 @@ pub async fn ai_explain_failure(app: AppHandle, message: String) -> Result<Failu
         .map_err(|e| AppError::Ai(e.to_string()))?
 }
 
+fn session_input(prompts: &[String], current: Option<&str>) -> String {
+    let mut s = match current {
+        Some(name) => format!("Current name: {name}\n\nPrompts, oldest first:\n"),
+        None => "The session has no name yet.\n\nPrompts, oldest first:\n".to_string(),
+    };
+    for (i, p) in prompts.iter().enumerate() {
+        s += &format!("\n{}. {p}\n", i + 1);
+    }
+    s
+}
+
+/// None keeps the current name: the AI was not sure, gave the same name, or gave something that is not one.
+fn session_name(reply: &Value, current: Option<&str>) -> Option<String> {
+    if reply["sure"].as_bool() != Some(true) {
+        return None;
+    }
+    let name = reply["name"].as_str()?.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let name = name.trim_matches(|c| matches!(c, '"' | '\'' | '`' | '.')).to_string();
+    let fits = !name.is_empty() && name.split(' ').count() <= 2 && name.chars().count() <= MAX_NAME;
+    (fits && Some(name.as_str()) != current).then_some(name)
+}
+
+pub fn session_name_impl(provider: AiProvider, prompts: &[String], current: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(c) = cli(provider) else {
+        return Err(AppError::Ai("AI session names are off. Turn them on in Settings.".into()));
+    };
+    if prompts.is_empty() {
+        return Ok(None);
+    }
+    let input = session_input(prompts, current);
+    let a = Ask {
+        system: SESSION_SYSTEM,
+        instruction: "Name this session:",
+        input: &input,
+        claude_model: "haiku",
+        schema: Some(SESSION_SCHEMA),
+    };
+    let out = ask(provider, &a)?;
+    let reply = json_object(&out).ok_or_else(|| AppError::Ai(format!("{} gave no name", c.bin)))?;
+    Ok(session_name(&reply, current))
+}
+
+#[tauri::command]
+pub async fn ai_session_name(app: AppHandle, prompts: Vec<String>, current: Option<String>) -> Result<Option<String>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        session_name_impl(settings::load(&app).headless_ai_provider, &prompts, current.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Ai(e.to_string()))?
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct IconItem {
     pub name: String,
@@ -696,13 +751,41 @@ mod tests {
     }
 
     #[test]
+    fn the_session_input_gives_the_current_name_and_numbers_the_prompts() {
+        let prompts = ["Fix the login bug".to_string(), "Now add a test".to_string()];
+        assert_eq!(
+            session_input(&prompts, Some("Login bug")),
+            "Current name: Login bug\n\nPrompts, oldest first:\n\n1. Fix the login bug\n\n2. Now add a test\n",
+        );
+        assert!(session_input(&prompts[..1], None).starts_with("The session has no name yet.\n"));
+    }
+
+    #[test]
+    fn a_session_name_is_taken_only_when_sure_short_and_new() {
+        let name = |name: &str, sure: bool, current: Option<&str>| {
+            session_name(&serde_json::json!({ "name": name, "sure": sure }), current)
+        };
+        assert_eq!(name(" \"Login\n bug.\" ", true, None), Some("login bug".into()));
+        assert_eq!(name("Dark mode", true, Some("login bug")), Some("dark mode".into()));
+        assert_eq!(name("Login bug", true, Some("login bug")), None, "the same name changes nothing");
+        assert_eq!(name("Login bug", false, None), None, "an unsure answer keeps the name");
+        assert_eq!(name("Fix the login bug", true, None), None, "more than two words");
+        assert_eq!(name("Internationalisation-work", true, None), None, "longer than any caption");
+        assert_eq!(name(" . ", true, None), None);
+        assert_eq!(session_name(&serde_json::json!({ "name": "Login bug" }), None), None);
+    }
+
+    #[test]
     fn nothing_is_asked_while_the_provider_is_off_or_for_no_commands() {
         let off = command_icons_impl(AiProvider::Off, &[item("dev", "vite")], &sets());
         assert!(matches!(off, Err(AppError::Ai(ref m)) if m.contains("off")));
         let off = commit_message_impl(Path::new("/nowhere"), AiProvider::Off);
         assert!(matches!(off, Err(AppError::Ai(ref m)) if m.contains("off")));
+        let off = session_name_impl(AiProvider::Off, &["Fix the login bug".into()], None);
+        assert!(matches!(off, Err(AppError::Ai(ref m)) if m.contains("off")));
         for p in PROVIDERS {
             assert_eq!(command_icons_impl(p, &[], &sets()).unwrap(), Vec::<Option<String>>::new());
+            assert_eq!(session_name_impl(p, &[], None).unwrap(), None);
         }
     }
 }

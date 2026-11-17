@@ -53,6 +53,9 @@ export const terminals = defineFeature({
     // the badge already compares against the new root; this only freshens folders up to a sweep old
     reset: () => { pty.checkCwd().catch((e: unknown) => logError(e, 'terminal folders')); },
   },
+  aiUses: [{
+    command: 'ai_session_name', label: 'Names each claude terminal from your prompts to it', icon: 'lucide:tag',
+  }],
 });
 
 export { keepIcon } from './icons';

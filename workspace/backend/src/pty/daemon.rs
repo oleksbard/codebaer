@@ -583,21 +583,27 @@ pub fn hook_token(hub: &Shared) -> String {
 }
 
 fn on_hook(hub: &Shared, h: &agent::Hook) {
-    let note = {
+    let (tx, notes) = {
         let mut hub = hub.lock().unwrap();
         let tx = hub.out.clone();
         if h.token != hub.token {
             return;
         }
-        hub.sessions.get_mut(&h.session).and_then(|s| {
-            let now = now_ms();
-            let fresh = s.info.agent.is_none();
-            let a = s.info.agent.get_or_insert_with(|| Agent::new(now));
-            (agent::reduce(a, h, now) || fresh).then(|| (tx, ServerMsg::Agent { id: h.session, agent: a.clone() }))
-        })
+        let Some(s) = hub.sessions.get_mut(&h.session) else { return };
+        let now = now_ms();
+        let fresh = s.info.agent.is_none();
+        let a = s.info.agent.get_or_insert_with(|| Agent::new(now));
+        let mut notes = Vec::new();
+        if agent::reduce(a, h, now) || fresh {
+            notes.push(ServerMsg::Agent { id: h.session, agent: a.clone() });
+        }
+        if !h.prompt.is_empty() {
+            notes.push(ServerMsg::Prompt { id: h.session, text: h.prompt.clone() });
+        }
+        (tx, notes)
     };
-    if let Some((tx, msg)) = note {
-        emit(tx.as_ref(), &msg);
+    for msg in &notes {
+        emit(tx.as_ref(), msg);
     }
 }
 

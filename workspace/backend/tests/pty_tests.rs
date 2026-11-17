@@ -530,14 +530,19 @@ fn a_hook_event_reaches_the_client_and_esc_interrupts_the_turn() {
     let h = Harness::start();
     let mut c = h.connect();
     let id = c.spawn_sh("/tmp");
-    h.hook(&format!(r#""session":{},"event":"UserPromptSubmit""#, id + 100));
-    h.hook(&format!(r#""session":{id},"event":"UserPromptSubmit""#));
+    h.hook(&format!(r#""session":{},"event":"UserPromptSubmit","prompt":"elsewhere""#, id + 100));
+    h.hook(&format!(r#""session":{id},"event":"UserPromptSubmit","prompt":"Fix the login bug""#));
     // the host takes one connection at a time in order, so the next line is read only after this one
     h.forged_hook(&format!(r#""session":{id},"event":"PreToolUse","tool":"Forged","call":"f""#));
     h.hook(&format!(r#""session":{id},"event":"PreToolUse","tool":"Read","detail":"/r/a.ts","call":"t1""#));
     assert!(c.wait_for_agent(id, |a| a.phase == Phase::Working && a.calls.len() == 1), "{:?}", c.msgs);
     let forged = |m: &ServerMsg| matches!(m, ServerMsg::Agent { agent, .. } if agent.actions > 1);
     assert!(!c.msgs.iter().any(forged), "a line without this host's token counted: {:?}", c.msgs);
+    let prompts: Vec<_> = c.msgs.iter().filter_map(|m| match m {
+        ServerMsg::Prompt { id: got, text } => Some((*got, text.as_str())),
+        _ => None,
+    }).collect();
+    assert_eq!(prompts, [(id, "Fix the login bug")]);
     c.input(id, b"\x1b");
     assert!(c.wait_for_agent(id, |a| a.end == Some(End::Interrupted)), "{:?}", c.msgs);
     assert!(!c.msgs.iter().any(|m| matches!(m, ServerMsg::Agent { id: got, .. } if *got != id)));

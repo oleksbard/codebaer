@@ -26,11 +26,13 @@ declare module '#kernel/store' {
     termFind: string;
     /** A shell's first long command and a task's own command, by session; a program is picked for by its title. */
     termIcons: Map<number, TermIcon>;
+    /** What the headless AI named a claude session from its prompts, by session. */
+    termNames: Map<number, string>;
     termPeek: TermPeek | null;
   }
 }
 
 export const terminalsState = () => ({
   terminals: [], activeTerm: null, termAttention: new Set<number>(), termMenu: null, termError: null, termFind: '',
-  termIcons: new Map<number, TermIcon>(), termPeek: null,
+  termIcons: new Map<number, TermIcon>(), termNames: new Map<number, string>(), termPeek: null,
 });

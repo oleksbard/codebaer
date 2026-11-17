@@ -5,6 +5,7 @@ import type { Info, ServerMsg, SpawnKind } from '#ipc/terminal';
 import { promptDialog, toast } from '#kernel/dialogs';
 import { notify, S } from '#kernel/store';
 import { forgetIcon, restoreIcons, watchLong } from './icons';
+import { forgetName, nameFrom, restoreNames } from './names';
 import { inSavedOrder } from './order';
 import { isTask, terminalsOf, wantsYou } from './status';
 import * as term from './xterm';
@@ -37,6 +38,7 @@ export function onTermEvent(m: ServerMsg): void {
       case 'Hello': {
         S.terminals = inSavedOrder(m.sessions);
         restoreIcons(m.sessions);
+        restoreNames(m.sessions);
         const rail = terminalsOf(S.terminals);
         if (!rail.some((t) => t.id === S.activeTerm)) S.activeTerm = rail.at(-1)?.id ?? null;
         taskEvents.hello(m.sessions);
@@ -79,6 +81,9 @@ export function onTermEvent(m: ServerMsg): void {
         if (wantsYou(before, m.agent)) flag(m.id);
         break;
       }
+      case 'Prompt':
+        void nameFrom(m.id, m.text);
+        break;
       case 'Cwd':
         S.terminals = S.terminals.map((t) => (t.id === m.id ? { ...t, cwd: m.cwd } : t));
         break;
@@ -86,6 +91,7 @@ export function onTermEvent(m: ServerMsg): void {
         S.terminals = S.terminals.filter((t) => t.id !== m.id);
         S.termAttention.delete(m.id);
         forgetIcon(m.id);
+        forgetName(m.id);
         taskEvents.closed(m.id);
         if (S.activeTerm === m.id) S.activeTerm = terminalsOf(S.terminals).at(-1)?.id ?? null;
         // last, because it is the one step here that reaches into xterm: a teardown that

@@ -171,6 +171,9 @@ export const git = {
   /** null when there is nothing to stash. */
   aiStashDescription: (kind: StashKind) => invoke<string | null>('ai_stash_description', { kind }),
   aiExplainFailure: (message: string) => invoke<FailureHint>('ai_explain_failure', { message }),
+  /** null keeps `current`: the AI was not sure, or the work did not move to another task. */
+  aiSessionName: (prompts: string[], current: string | null) =>
+    invoke<string | null>('ai_session_name', { prompts, current }),
   settings: () => invoke<Settings>('settings_get'),
   saveSettings: (settings: Settings) => invoke<void>('settings_set', { settings }),
   commands: () => invoke<CustomCommand[]>('commands_get'),

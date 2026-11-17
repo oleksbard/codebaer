@@ -390,6 +390,18 @@ export function createBackend(name: string, sc: Scenario, opts: Options) {
         fix: 'Read the log below, fix what it names, then try again.',
       };
     },
+    /** The first two long words of the newest prompt, in place of what an AI would name. */
+    ai_session_name: async (
+      { prompts, current }: { prompts: string[]; current: string | null },
+    ): Promise<string | null> => {
+      if (settings['general.headless-ai-provider'] === 'off') {
+        throw { kind: 'Ai', detail: 'AI session names are off. Turn them on in Settings.' } satisfies AppError;
+      }
+      await sleep(opts.slow);
+      const words = (prompts.at(-1) ?? '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3).slice(0, 2);
+      const name = words.join(' ');
+      return name && name !== current ? name : null;
+    },
     settings_get: (): Settings => ({ ...settings }),
     settings_set: ({ settings: s }: { settings: Settings }) => { settings = { ...s }; },
     commands_get: (): CustomCommand[] => [...commands],

@@ -174,6 +174,16 @@
   &:is(:hover, .on) .ended { color: inherit; }
   .mark { font-size: 32px; line-height: 1; }
 
+  /* a name the AI gave is two short words, which read better on two lines than cut on one */
+  > .cap.named {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
   .term-dot { position: absolute; right: 5px; bottom: 5px; }
   /* the one corner the bell and the state dot leave free */
   .away { position: absolute; top: 4px; left: 4px; }

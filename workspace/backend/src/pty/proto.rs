@@ -4,7 +4,7 @@ use super::agent::Agent;
 
 /// Bumped by any change to the frames or messages below. The socket file name carries it,
 /// so an app never speaks to a daemon built against a different version; the orphan idle-reaps.
-pub const PROTO: u32 = 4;
+pub const PROTO: u32 = 5;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +99,8 @@ pub enum ServerMsg {
     Exit { id: u32, code: Option<i32> },
     Bell { id: u32 },
     Agent { id: u32, agent: Agent },
+    /// The head of a prompt submitted to claude, from its UserPromptSubmit hook.
+    Prompt { id: u32, text: String },
     /// Sent only when the folder differs from the last one reported, `Info::cwd` included.
     Cwd { id: u32, cwd: String },
     Closed { id: u32 },

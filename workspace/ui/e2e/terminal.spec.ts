@@ -28,6 +28,25 @@ test('closing a terminal removes it from the rail', async ({ page, open }) => {
   await expect(sessions).toHaveCount(2);
 });
 
+test('a prompt to claude names its rail button, and a reload keeps the name', async ({ page, open }) => {
+  const mock = await open();
+  const caption = page.locator('.rail-b[data-term="2"] .cap');
+  await page.keyboard.press('ControlOrMeta+Shift+T');
+  await mock.idle();
+  await expect(caption).toHaveText('claude:1');
+  await page.locator('.rail-b[data-term="2"]').click();
+  await page.locator('.term-host').click();
+  await page.keyboard.type('refactor the login flow');
+  await page.keyboard.press('Enter');
+  await mock.idle();
+  await expect(caption).toHaveText('refactor login');
+
+  await page.reload();
+  await page.waitForSelector('html[data-mock-idle]', { state: 'attached' });
+  await mock.idle();
+  await expect(caption).toHaveText('refactor login');
+});
+
 test('the current terminal fills its tile, as the current tab of the activity bar does', async ({ page, open }) => {
   const mock = await open();
   const fill = (sel: string) => page.locator(sel).evaluate((el) => getComputedStyle(el).backgroundColor);

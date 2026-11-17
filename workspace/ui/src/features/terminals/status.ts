@@ -171,15 +171,18 @@ export function agentOf(s: DeepReadonly<Info>): Agent | null {
 export const kindOf = (s: DeepReadonly<Info>): string => agentOf(s) ?? (baseName(s.title) || 'terminal');
 
 /** Numbered per kind in rail order over every session, so `claude:2` is the second claude
- *  button counted from the top whether or not the ones above it can take comments. */
-export function termLabels(sessions: readonly DeepReadonly<Info>[]): Map<number, string> {
+ *  button counted from the top whether or not the ones above it can take comments. A session the AI named
+ *  shows that name and still counts, so a name that arrives never renumbers the others. */
+export function termLabels(
+  sessions: readonly DeepReadonly<Info>[], names: ReadonlyMap<number, string> = new Map(),
+): Map<number, string> {
   const seen = new Map<string, number>();
   const out = new Map<number, string>();
   for (const s of sessions) {
     const k = kindOf(s);
     const n = (seen.get(k) ?? 0) + 1;
     seen.set(k, n);
-    out.set(s.id, `${k}:${n}`);
+    out.set(s.id, names.get(s.id) ?? `${k}:${n}`);
   }
   return out;
 }

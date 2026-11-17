@@ -16,6 +16,8 @@ pub const SOCK_ENV: &str = "CODEBAER_HOOK_SOCK";
 pub const TOKEN_ENV: &str = "CODEBAER_HOOK_TOKEN";
 const SESSION_ENV: &str = "CODEBAER_SESSION";
 const MAX_DETAIL: usize = 200;
+/// Enough of a prompt to tell what task it is about; the rest stays in the hook process.
+const MAX_PROMPT: usize = 1000;
 /// More would be parallel calls the label cannot name anyway.
 const MAX_CALLS: usize = 16;
 const MAX_LINE: u64 = 64 * 1024;
@@ -190,6 +192,9 @@ pub struct Hook {
     /// The event came from a subagent.
     #[serde(default)]
     pub sub: bool,
+    /// The head of the prompt a UserPromptSubmit carries, which the app names the session from.
+    #[serde(default)]
+    pub prompt: String,
     #[serde(default)]
     pub token: String,
 }
@@ -313,10 +318,10 @@ pub fn typed(a: &mut Agent, bytes: &[u8], now: u64) -> bool {
     bump(a, &before)
 }
 
-fn clip(s: &str) -> String {
+fn clip(s: &str, max: usize) -> String {
     let flat: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
-    match flat.char_indices().nth(MAX_DETAIL) {
+    match flat.char_indices().nth(max) {
         Some((i, _)) => format!("{}…", &flat[..i]),
         None => flat,
     }
@@ -328,18 +333,21 @@ fn detail_of(tool: &str, input: &Value) -> String {
         "Bash" | "PowerShell" => &["description", "command"],
         _ => &["file_path", "notebook_path", "pattern", "url", "query", "description", "skill", "path"],
     };
-    keys.iter().find_map(|k| arg(k)).map(clip).unwrap_or_default()
+    keys.iter().find_map(|k| arg(k)).map(|d| clip(d, MAX_DETAIL)).unwrap_or_default()
 }
 
 /// Reads a hook's stdin payload into what the host needs. The payload carries the whole tool
-/// input, a file's full text for Write, so only the few fields the label uses leave this process.
+/// input, a file's full text for Write, so only the few fields the label uses and a prompt's head
+/// leave this process.
 pub fn parse(payload: &[u8], session: u32, token: &str) -> Option<Hook> {
     let v: Value = serde_json::from_slice(payload).ok()?;
     let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     let tool = s("tool_name");
+    let event = s("hook_event_name");
     Some(Hook {
         session,
-        event: s("hook_event_name"),
+        prompt: if event == "UserPromptSubmit" { clip(&s("prompt"), MAX_PROMPT) } else { String::new() },
+        event,
         detail: v.get("tool_input").map(|i| detail_of(&tool, i)).unwrap_or_default(),
         tool,
         call: s("tool_use_id"),
@@ -622,9 +630,20 @@ mod tests {
     }
 
     #[test]
+    fn only_a_submitted_prompt_carries_its_text_cut_to_its_head() {
+        let long = "word ".repeat(MAX_PROMPT);
+        let p = format!(r#"{{"hook_event_name":"UserPromptSubmit","prompt":"Fix the\nlogin bug {long}"}}"#);
+        let h = parse(p.as_bytes(), 7, "t").unwrap();
+        assert!(h.prompt.starts_with("Fix the login bug word"), "{}", h.prompt);
+        assert_eq!(h.prompt.chars().count(), MAX_PROMPT + 1);
+        let stop = br#"{"hook_event_name":"Stop","prompt":"not a prompt"}"#;
+        assert_eq!(parse(stop, 7, "t").unwrap().prompt, "");
+    }
+
+    #[test]
     fn a_long_detail_is_cut_on_a_char_boundary() {
         let long = "ä".repeat(MAX_DETAIL + 10);
-        let d = clip(&long);
+        let d = clip(&long, MAX_DETAIL);
         assert_eq!(d.chars().count(), MAX_DETAIL + 1);
         assert!(d.ends_with('…'));
     }

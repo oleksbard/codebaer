@@ -263,7 +263,7 @@ export async function sendComments(): Promise<void> {
   const ask = (name: string): string =>
     `${name} has unsaved changes\nThe agent reads the file on disk, where your comments may point at other lines.`;
   if (onBuffer && !(await offerSave(ask, 'Save & Send', 'Send Anyway'))) return;
-  const labels = termLabels(terminalsOf(S.terminals));
+  const labels = termLabels(terminalsOf(S.terminals), S.termNames);
   const targets = eligible(terminalsOf(S.terminals), S.root)
     .sort((a, b) => Number(b.id === S.lastTarget) - Number(a.id === S.lastTarget));
   if (!targets.length) { toast('No claude, codex or opencode session is open in this repo.', 'warn'); return; }

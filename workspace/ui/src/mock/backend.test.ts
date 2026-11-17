@@ -191,7 +191,7 @@ test('terminals: subscribe says hello, a spawn is announced after its req, and o
   const ev = new Channel<ServerMsg>();
   ev.onmessage = (m) => events.push(m);
   await invoke('term_subscribe', { out, ev });
-  expect(events[0]).toMatchObject({ t: 'Hello', proto: 4 });
+  expect(events[0]).toMatchObject({ t: 'Hello', proto: 5 });
   expect(frames.some((f) => f.id === 1 && f.text.includes('pnpm test'))).toBe(true);
 
   const req = await invoke<number>('term_spawn', { kind: { t: 'Shell', path: '/bin/zsh' }, cols: 80, rows: 24 });

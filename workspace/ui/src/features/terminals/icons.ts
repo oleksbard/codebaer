@@ -34,10 +34,11 @@ function asIcon(v: unknown): TermIcon | null {
   return { name: it.name, command: it.command, icon: typeof it.icon === 'string' ? it.icon : null };
 }
 
-function read(): Record<string, unknown> {
+/** What the webview kept under `key` by `keyOf`. */
+export function readKept(key: string): Record<string, unknown> {
   let raw: unknown;
   try {
-    raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    raw = JSON.parse(localStorage.getItem(key) ?? '{}');
   } catch {
     return {};
   }
@@ -86,7 +87,7 @@ export function watchLong(s: DeepReadonly<Info>): void {
 
 /** A reload keeps the sessions but forgets what they ran. */
 export function restoreIcons(sessions: readonly Info[]): void {
-  const raw = read();
+  const raw = readKept(KEY);
   S.termIcons = new Map();
   for (const t of sessions) {
     const k = keyOf(t);

@@ -46,6 +46,8 @@ export type ServerMsg =
   | { t: 'Exit'; id: number; code: number | null }
   | { t: 'Bell'; id: number }
   | { t: 'Agent'; id: number; agent: AgentState }
+  /** The head of a prompt submitted to claude, flattened to one line. */
+  | { t: 'Prompt'; id: number; text: string }
   | { t: 'Cwd'; id: number; cwd: string }
   | { t: 'Closed'; id: number }
   | { t: 'Error'; id: number | null; message: string };

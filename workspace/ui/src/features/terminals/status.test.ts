@@ -136,6 +136,11 @@ describe('terminal labels', () => {
     expect([...labels.values()])
       .toEqual(['zsh:1', 'claude:1', 'codex:1', 'claude:2', 'claude:3', 'claude:4', 'claude:5']);
   });
+
+  it('shows the name the AI gave, which still counts toward the numbers of the rest', () => {
+    const labels = termLabels([session(1, 'claude'), session(2, 'claude')], new Map([[1, 'Login bug']]));
+    expect([...labels.values()]).toEqual(['Login bug', 'claude:2']);
+  });
 });
 
 describe('the rail', () => {

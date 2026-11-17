@@ -213,7 +213,7 @@ export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
   const id = indicatorId ?? ownId;
   const active = app.tab === 'terminals' ? app.activeTerm : null;
   const sessions = terminalsOf(app.terminals);
-  const names = termLabels(sessions);
+  const names = termLabels(sessions, app.termNames);
   const icons = sessions.flatMap((s) => iconFor(s, app.termIcons) ?? []);
   const wanted = [
     app.settings['general.headless-ai-provider'], ...icons.map((it) => `${it.icon}\n${it.name}\n${it.command}`),
@@ -264,7 +264,7 @@ export function TerminalRail({ indicatorId }: { indicatorId?: string }) {
                       <Dot session={s} />
                       {wants && <span className="bell" aria-hidden="true" />}
                     </span>
-                    <span className="cap">{name}</span>
+                    <span className={`cap${app.termNames.has(s.id) ? ' named' : ''}`}>{name}</span>
                   </Pop>
                 </Tip>
               </ContextMenu>

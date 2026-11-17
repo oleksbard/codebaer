@@ -20,14 +20,14 @@ export type PtyDeps = {
 
 type Session = {
   info: Info; line: string; ring: Uint8Array[]; ringSize: number; cancel?: (() => void) | undefined;
-  /** A bracketed paste was echoed and the Enter that submits it has not come yet. */
-  pasted: boolean;
+  /** A bracketed paste that was echoed, until the Enter that submits it comes. */
+  pasted: string | null;
   /** The option claude's permission prompt has selected, as `Agent::pick` in agent.rs holds it. */
   pick: number;
 };
 
 /** `PROTO` in workspace/backend/src/pty/proto.rs. */
-const PROTO = 4;
+const PROTO = 5;
 const RING_MAX = 256 * 1024;
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
@@ -122,7 +122,7 @@ export function createPty(d: PtyDeps) {
     write(s, `${color(32, name)} ${color(90, d.status().branch ?? '')} $ `);
   };
   const add = (info: Omit<Info, 'id'>, transcript = ''): Session => {
-    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0, pasted: false, pick: 0 };
+    const s: Session = { info: { ...info, id: nextId++ }, line: '', ring: [], ringSize: 0, pasted: null, pick: 0 };
     sessions.set(s.info.id, s);
     if (transcript) write(s, transcript);
     return s;
@@ -135,6 +135,11 @@ export function createPty(d: PtyDeps) {
     stop(s);
     s.info.state = { t: 'Exited', code };
     send({ t: 'Exit', id: s.info.id, code });
+  };
+  /** claude's UserPromptSubmit hook, flattened as `parse` in agent.rs flattens it. */
+  const submit = (s: Session, text: string): void => {
+    const flat = text.split(/\s+/).filter(Boolean).join(' ');
+    if (s.info.agent && flat) send({ t: 'Prompt', id: s.info.id, text: flat });
   };
   const finish = (s: Session, code: number): void => {
     send({ t: 'Command', id: s.info.id, code });
@@ -271,12 +276,13 @@ export function createPty(d: PtyDeps) {
       if (s.info.tier === 'process' && !s.info.task && data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
         const [first = '', ...rest] = data.slice(PASTE_START.length, -PASTE_END.length).split('\r');
         write(s, `${[first, ...rest.map((l) => (l ? `  ${l}` : l))].join('\n')}\n\n`);
-        s.pasted = true;
+        s.pasted = data.slice(PASTE_START.length, -PASTE_END.length);
         return;
       }
-      if (s.pasted) {
-        s.pasted = false;
-        if (data === '\r') return;
+      if (s.pasted !== null) {
+        const pasted = s.pasted;
+        s.pasted = null;
+        if (data === '\r') { submit(s, pasted); return; }
       }
       const text = data.split(PASTE_START).join('').split(PASTE_END).join('');
       if (s.info.task && text.includes('\x03')) { write(s, '^C\n'); exit(s, 130); return; }
@@ -287,7 +293,7 @@ export function createPty(d: PtyDeps) {
       // arrows and other escape sequences: this shell has no history or cursor to move
       if (text.startsWith('\x1b')) return;
       for (const ch of text) {
-        if (ch === '\r') { write(s, '\n'); const l = s.line; s.line = ''; run(s, l); }
+        if (ch === '\r') { write(s, '\n'); const l = s.line; s.line = ''; submit(s, l); run(s, l); }
         else if (ch === '\x7f') { if (s.line) { s.line = s.line.slice(0, -1); write(s, '\b \b'); } }
         else if (ch === '\x03') { s.line = ''; write(s, '^C\n'); prompt(s); }
         else if (ch === '\x0c') { write(s, '\x1b[2J\x1b[H'); prompt(s); write(s, s.line); }
